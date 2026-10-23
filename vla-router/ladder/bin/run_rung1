@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# hagent custom command (plan.md 3.3): staged simulator validation of the current patch.
+#   run_rung1 --seeds N [--config FILE] [--json]      (config defaults to $RUNG1_CONFIG)
+# Register it in hagent's config:
+#   [[commands]]
+#   name = "run_rung1"
+#   path = "<repo>/ladder/bin/run_rung1"
+#   description = "Run staged simulator validation of the current patch. Usage: run_rung1 --seeds N"
+# Exit code: 0 pass or pass_with_residual, 1 fail, 3 ambiguous, 2 error.
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$here/../..${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m ladder.rung1 "$@"

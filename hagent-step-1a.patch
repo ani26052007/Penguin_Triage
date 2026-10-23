@@ -1,0 +1,1805 @@
+From 6f40f93c7e9720be4000b6bae5a6956ba5106a3b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 23 Oct 2026 04:26:39 +0530
+Subject: [PATCH] Step 1A: real token usage, Docker/Podman env, reviewer pass
+ probability, task templates, custom commands
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017j77J5zf5MijEq1MwGCr9k
+---
+ DECISIONS.md                 |  15 ++
+ README.md                    |  12 +-
+ examples/config.example.toml |  24 +++
+ examples/docker/Dockerfile   |   6 +
+ examples/task_template.md    |  18 +++
+ src/hagent/__init__.py       |  10 +-
+ src/hagent/agent.py          |  32 +++-
+ src/hagent/config.py         |  66 +++++++-
+ src/hagent/docker_env.py     | 212 +++++++++++++++++++++++++
+ src/hagent/env.py            | 150 +++++++++++++-----
+ src/hagent/exceptions.py     |   4 +
+ src/hagent/helpers.py        |  36 ++++-
+ src/hagent/hybrid.py         |  19 ++-
+ src/hagent/models.py         |  73 +++++++--
+ src/hagent/prompts.py        |  23 ++-
+ src/hagent/runner.py         |  26 +++-
+ src/hagent/task_template.py  | 102 ++++++++++++
+ tests/test_env_parity.py     | 214 +++++++++++++++++++++++++
+ tests/test_step1a.py         | 292 +++++++++++++++++++++++++++++++++++
+ 19 files changed, 1263 insertions(+), 71 deletions(-)
+ create mode 100644 DECISIONS.md
+ create mode 100644 examples/docker/Dockerfile
+ create mode 100644 examples/task_template.md
+ create mode 100644 src/hagent/docker_env.py
+ create mode 100644 src/hagent/task_template.py
+ create mode 100644 tests/test_env_parity.py
+ create mode 100644 tests/test_step1a.py
+
+diff --git a/DECISIONS.md b/DECISIONS.md
+new file mode 100644
+index 0000000..ee3f548
+--- /dev/null
++++ b/DECISIONS.md
+@@ -0,0 +1,15 @@
++# Decisions
++
++## Step 1A: hagent improvements (plan.md 3.3)
++
++**Token accounting.** `models.py` already read `usage` and fell back to a character estimate, so the change is explicitness, not new plumbing: `Reply.usage_source` (api / partial / estimated), support for `input_tokens`/`output_tokens` and `total_tokens`, per-side fallback, and `Usage.estimated_calls`. An all-zero usage block still counts as missing (kept from the original so caps never silently stop working). Rejected: a tokenizer dependency for exact estimates (breaks stdlib-only; provider counts are the truth anyway).
++
++**Container env.** New `docker_env.DockerEnv` with the same contract as `LocalEnv` (now written down as `env.Env`); git helpers moved unchanged into a shared `GitHelpers` mixin. One long-lived container per run, repo copied in with `docker cp`, one `docker exec` per command (keeps "no state between commands"). Timeout = in-container `timeout -s KILL` (kills the process group) + a sweep by a per-exec env-var id (catches setsid escapes) + a host backstop. Podman uses the same CLI subset. Rejected: bind-mounting the repo read-write (could damage the original); a container per command (slow, and repo state would need copying back and forth); the Docker SDK (non-stdlib).
++
++**Reviewer pass probability.** Second reviewer line `PASS_PROBABILITY: p`, parsed separately from the verdict; the first line alone decides, as before. Logged in `RunResult.reviews`, trajectory `reviews`, and `usage["big"].pass_probabilities` (the user asked for `usage`). Rejected: putting it in the verdict line (would risk breaking the fail-open parse).
++
++**Task template.** `task_template.py`, `<<NAME>>` placeholders (same syntax as prompts.py), single-pass substitution so values cannot inject placeholders, unknown placeholders rejected at load, empty fields rendered as "(not provided)". The default frames the router verdict as a hypothesis to verify first. Rejected: str.format/Jinja (braces in code/logs; dependency).
++
++**Custom commands.** `[[commands]]` config; shims on PATH (host temp dir or in-container dir); system-prompt section that is empty when no commands exist (prompt byte-identical otherwise); per-command output limit via a new `Agent.observation_limit()` hook that defaults to `obs_max_chars`. Rejected: intercepting commands in the agent like `ask_explorer` (would bypass the env and its timeout).
++
++**Not changed:** loop, detector, compaction, caps, review-cap logic. Only hooks (`observation_limit`, `review_log`) and logging were added; defaults reproduce old behaviour.
+diff --git a/README.md b/README.md
+index 75ce6e7..69f6bb1 100644
+--- a/README.md
++++ b/README.md
+@@ -84,6 +84,12 @@ The big model always sees a digest: task, the agent's notes, the last 6 messages
+ - Big-model calls are capped by `max_big_calls`, with one call reserved for the final review.
+ - `<think>...</think>` blocks in replies are stripped before they enter the history.
+ 
++### Repair-incident extras
++
++- **Reviewer pass probability.** The reviewer replies `APPROVE`/`REJECT` and then `PASS_PROBABILITY: <0-1>`. The probability is logged in `RunResult.reviews`, the trajectory's `reviews`, and `usage["big"].pass_probabilities`. It never gates anything; a missing or garbled value is logged as `null`.
++- **Task templates.** `load_task_template(path).render(IncidentContext(...))` builds the task text from `<<TASK>>`, `<<ROUTER_VERDICT>>`, `<<LOCATION_EVIDENCE>>`, `<<REPRO_COMMAND>>`, `<<ROLLOUT_SUMMARY>>`, `<<REPO_PATH>>`. The default (`examples/task_template.md`) frames the router verdict as a hypothesis to verify first.
++- **Custom commands.** `[[commands]]` entries (`name`, `path`, `description`, `max_output_chars`) are listed in the system prompt and put on PATH via shims; output of a command that calls one uses that command's truncation limit.
++
+ ## Benchmarking (do this before tuning)
+ 
+ Run the same tasks with `--mode small`, `--mode big` and `--mode hybrid`, then compare resolve rate vs cost using the `usage` field / `--trajectory` JSON.
+@@ -91,13 +97,13 @@ Only keep a component (planning consult, review, explorer) if it moves that curv
+ 
+ ## Known limitations and caveats
+ 
+-- **The agent runs arbitrary bash.** Run it in a container or throwaway VM for anything you do not fully trust. A Docker/Podman environment is the natural next step: implement the same `execute(command, timeout_s) -> Obs` plus `cwd`, `git_diff()`, `git_diff_hash()` and pass it in.
++- **The agent runs arbitrary bash.** Use the container backend for anything you do not fully trust: `[env] backend = "docker"` (or `runtime = "podman"`) runs every command in a container holding a *copy* of the repo, with no network and CPU/memory/pid limits by default. Timeouts kill the whole process tree, including children that left the process group. The image needs bash, git and coreutils (`examples/docker/Dockerfile`). The copy includes `.git`, so history is visible to the agent; hiding it is the caller's job.
+ - POSIX only (process groups, `/bin/bash`). The working dir should be a git repo with a sensible `.gitignore`; the detector and reviewer rely on `git diff`.
+ - The explorer's read-only guard is a best-effort filter (it can false-positive on `>` inside quoted code, and cannot see writes made by scripts). It reports it if the repo changed. Real isolation needs a read-only mount.
+-- Budgets are in characters (about 4 per token), not exact tokens. Costs are only as accurate as the prices you configure; with prices at 0 the cost cap never triggers.
++- Token counts and the cost cap use the provider's `usage` block (`prompt_tokens`/`completion_tokens`, or `input_tokens`/`output_tokens`, or one side plus `total_tokens`). Only when it is missing are tokens estimated at ~4 characters per token; `Usage.estimated_calls` counts those calls. History budgets (`ctx_char_limit`, `obs_max_chars`) are still in characters. Costs are only as accurate as the prices you configure; with prices at 0 the cost cap never triggers.
+ - Each compaction rewrites the task message, which invalidates provider prefix caching once per compaction.
+ - Model ids in the example config are placeholders. I have not verified the Nemotron model names, context sizes or pricing; check your provider.
+-- Tested with scripted models and a fake HTTP server (77 tests); it has not been run against a live model or on SWE-bench yet.
++- Tested with scripted models, a fake HTTP server and a local Docker daemon (157 tests; container tests skip without Docker); it has not been run against a live model or on SWE-bench yet.
+ 
+ ## Tests
+ 
+diff --git a/examples/config.example.toml b/examples/config.example.toml
+index 937660c..173271e 100644
+--- a/examples/config.example.toml
++++ b/examples/config.example.toml
+@@ -57,3 +57,27 @@ enable_explorer = false
+ max_explorer_calls = 3
+ explorer_max_steps = 12
+ explorer_max_cost = 0.10
++
++# where commands run. "local" = on the host, in the repo itself.
++# "docker" = in a container holding a COPY of the repo (original never modified).
++[env]
++backend = "local"
++runtime = "docker"          # or "podman"
++image = ""                  # e.g. "hagent-sandbox" built from examples/docker/Dockerfile
++network = "none"
++cpus = 2.0
++memory = "4g"
++pids_limit = 512
++workdir = "/workspace/repo"
++user = ""                   # e.g. "agent"
++kill_grace_s = 10
++startup_timeout_s = 120
++
++# extra commands offered to the agent (listed in its system prompt). `path` must be executable
++# in the execution environment (inside the container for the docker backend).
++# max_output_chars overrides obs_max_chars for output of commands that call it (0 = default).
++# [[commands]]
++# name = "run_rung1"
++# path = "/opt/tools/run_rung1"
++# description = "Run staged simulator validation. Usage: run_rung1 --seeds N. Prints pass rate, CI, top error mode."
++# max_output_chars = 2000
+diff --git a/examples/docker/Dockerfile b/examples/docker/Dockerfile
+new file mode 100644
+index 0000000..2dc39f6
+--- /dev/null
++++ b/examples/docker/Dockerfile
+@@ -0,0 +1,6 @@
++# Sandbox image for the docker env backend. Needs bash, git, coreutils (timeout, sleep).
++# Build: docker build -t hagent-sandbox examples/docker
++# Add your project's own dependencies (Python packages, test tools) below.
++FROM python:3.11-slim
++RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
++RUN useradd -m agent
+diff --git a/examples/task_template.md b/examples/task_template.md
+new file mode 100644
+index 0000000..530de82
+--- /dev/null
++++ b/examples/task_template.md
+@@ -0,0 +1,18 @@
++<<TASK>>
++
++## Router hypothesis (verify this first; it may be wrong)
++The automatic router classified this failure as: <<ROUTER_VERDICT>>
++Before editing anything, check this hypothesis against the code and the evidence below. If the
++evidence contradicts it, say so in one sentence and follow the evidence instead.
++
++## Where to look
++<<LOCATION_EVIDENCE>>
++
++## Reproduce
++<<REPRO_COMMAND>>
++
++## Failing rollout summary
++<<ROLLOUT_SUMMARY>>
++
++## Code location
++Controller/wrapper code: <<REPO_PATH>>
+diff --git a/src/hagent/__init__.py b/src/hagent/__init__.py
+index 7eb8e72..7f922f6 100644
+--- a/src/hagent/__init__.py
++++ b/src/hagent/__init__.py
+@@ -1,15 +1,17 @@
+ """hagent: a minimal, bash-only coding agent that routes between a small and a big model."""
+ 
+ from .agent import Agent, RunResult, Usage
+-from .config import Limits, ModelConfig, Settings, load_settings, settings_from_dict
+-from .env import SUBMIT_MARKER, LocalEnv, Obs
++from .config import CustomCommand, EnvConfig, Limits, ModelConfig, Settings, load_settings, settings_from_dict
++from .env import SUBMIT_MARKER, Env, LocalEnv, Obs
+ from .hybrid import HybridAgent
+ from .models import OpenAICompatModel, Reply, ScriptedModel
+-from .runner import solve
++from .runner import make_env, solve
++from .task_template import IncidentContext, TaskTemplate, load_task_template
+ 
+ __all__ = [
+     "Agent", "HybridAgent", "RunResult", "Usage", "Limits", "ModelConfig", "Settings",
+     "load_settings", "settings_from_dict", "LocalEnv", "Obs", "SUBMIT_MARKER",
+-    "OpenAICompatModel", "ScriptedModel", "Reply", "solve",
++    "OpenAICompatModel", "ScriptedModel", "Reply", "solve", "make_env", "Env", "EnvConfig", "CustomCommand",
++    "IncidentContext", "TaskTemplate", "load_task_template",
+ ]
+ __version__ = "0.1.0"
+diff --git a/src/hagent/agent.py b/src/hagent/agent.py
+index f35975b..3cf89ea 100644
+--- a/src/hagent/agent.py
++++ b/src/hagent/agent.py
+@@ -20,7 +20,7 @@ from .compaction import maybe_compact
+ from .config import Settings
+ from .env import Obs
+ from .exceptions import AgentExit, FormatError, ModelError
+-from .models import Model, Reply
++from .models import USAGE_API, Model, Reply
+ from .prompts import FORMAT_ERROR, TASK_TEMPLATE, build_system_prompt
+ from .textutil import parse_action, truncate_middle
+ 
+@@ -31,10 +31,17 @@ TEST_CMD_RE = re.compile(
+ 
+ @dataclass
+ class Usage:
++    """Per-role totals. Token counts are provider-reported where available; `estimated_calls`
++    counts calls whose tokens were (fully or partly) estimated from characters.
++    `pass_probabilities` holds the reviewer's logged pass probability per review this role
++    performed (None when the reviewer gave none). It is logged only and gates nothing."""
++
+     calls: int = 0
+     input_tokens: int = 0
+     output_tokens: int = 0
+     cost: float = 0.0
++    estimated_calls: int = 0
++    pass_probabilities: list[float | None] = field(default_factory=list)
+ 
+ 
+ @dataclass
+@@ -47,6 +54,7 @@ class RunResult:
+     total_cost: float
+     usage: dict[str, Usage] = field(default_factory=dict)
+     messages: list[dict] = field(default_factory=list)
++    reviews: list[dict] = field(default_factory=list)  # reviewer log (verdict, pass probability); never gates
+ 
+     @property
+     def submitted(self) -> bool:
+@@ -73,7 +81,9 @@ class Agent:
+         self.settings = settings
+         self.limits = settings.limits
+         self.role = role
+-        self.system_prompt = system_prompt or build_system_prompt(env.cwd)
++        self.system_prompt = system_prompt or build_system_prompt(env.cwd, commands=settings.commands)
++        self._cmd_limits = [(re.compile(rf"(?:^|[\s;&|(`]){re.escape(c.name)}(?=$|[\s;&|)`])"), c.max_output_chars)
++                            for c in settings.commands if c.max_output_chars > 0]
+         self.trajectory_path = Path(trajectory_path) if trajectory_path else None
+ 
+         self.log = logging.getLogger("hagent")
+@@ -106,6 +116,8 @@ class Agent:
+         u.input_tokens += reply.input_tokens
+         u.output_tokens += reply.output_tokens
+         u.cost += reply.cost
++        if getattr(reply, "usage_source", USAGE_API) != USAGE_API:
++            u.estimated_calls += 1
+ 
+     def merge_usage(self, role: str, other: dict[str, Usage]) -> None:
+         u = self.usage.setdefault(role, Usage())
+@@ -114,6 +126,8 @@ class Agent:
+             u.input_tokens += v.input_tokens
+             u.output_tokens += v.output_tokens
+             u.cost += v.cost
++            u.estimated_calls += v.estimated_calls
++            u.pass_probabilities.extend(v.pass_probabilities)
+ 
+     @property
+     def total_cost(self) -> float:
+@@ -145,6 +159,16 @@ class Agent:
+         """Return None to accept the submission, or feedback text to reject it."""
+         return None
+ 
++    def observation_limit(self, command: str) -> int:
++        """Characters of a command's output shown to the model: limits.obs_max_chars, unless the
++        command calls custom commands with their own limit (then the largest of those)."""
++        own = [limit for pattern, limit in self._cmd_limits if pattern.search(command)]
++        return max(own) if own else self.limits.obs_max_chars
++
++    def review_log(self) -> list[dict]:
++        """Records of final reviews, saved in the trajectory and RunResult (logging only)."""
++        return []
++
+     # ------------------------------------------------------------------ the loop
+     def run(self, task: str) -> RunResult:
+         self.task = task
+@@ -180,6 +204,7 @@ class Agent:
+             total_cost=round(self.total_cost, 6),
+             usage=dict(self.usage),
+             messages=self.messages,
++            reviews=list(self.review_log()),
+         )
+         self._save(result)
+         return result
+@@ -188,7 +213,7 @@ class Agent:
+         reply = self.query()
+         command = parse_action(reply.content)  # raises FormatError
+         obs = self.run_command(command)
+-        self.add("user", format_observation(obs, self.limits.obs_max_chars))
++        self.add("user", format_observation(obs, self.observation_limit(command)))
+         if obs.submission is not None:
+             feedback = self.handle_submission(obs.submission)
+             if feedback is None:
+@@ -246,6 +271,7 @@ class Agent:
+             "messages": self.messages,
+             "usage": {k: asdict(v) for k, v in self.usage.items()},
+             "steps": self.n_steps,
++            "reviews": self.review_log(),
+         }
+         if result is not None:
+             data["exit_status"] = result.exit_status
+diff --git a/src/hagent/config.py b/src/hagent/config.py
+index 39c2b10..f5087b8 100644
+--- a/src/hagent/config.py
++++ b/src/hagent/config.py
+@@ -2,6 +2,7 @@
+ 
+ from __future__ import annotations
+ 
++import re
+ import tomllib
+ from dataclasses import dataclass, field, fields
+ from pathlib import Path
+@@ -59,11 +60,61 @@ class Limits:
+     explorer_max_cost: float = 0.10
+ 
+ 
++@dataclass
++class EnvConfig:
++    """Where commands run. backend="local" runs bash on the host in the repo itself;
++    backend="docker" runs them in a container holding a COPY of the repo (see docker_env.py)."""
++
++    backend: str = "local"  # local | docker
++    runtime: str = "docker"  # docker | podman (same CLI subset is used)
++    image: str = ""  # must provide bash, git, coreutils `timeout` and `sleep`
++    network: str = "none"  # passed to --network; "none" = no network
++    cpus: float = 2.0  # --cpus; 0 = no limit
++    memory: str = "4g"  # --memory; "" = no limit
++    pids_limit: int = 512  # --pids-limit; 0 = no limit
++    workdir: str = "/workspace/repo"  # where the repo copy lives inside the container
++    user: str = ""  # run commands as this user (repo copy is chown'ed to it); "" = image default
++    kill_grace_s: int = 10  # host-side backstop after the in-container timeout
++    startup_timeout_s: int = 120  # for container start and the repo copy
++    extra_run_args: list[str] = field(default_factory=lambda: ["--security-opt", "no-new-privileges"])
++    commands_dir: str = "/opt/hagent/bin"  # in-container dir for custom-command shims
++
++
++_CMD_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
++
++
++@dataclass
++class CustomCommand:
++    """An extra shell command offered to the agent (e.g. `run_rung1`).
++
++    `path` is the executable as seen by the execution environment (host path for the local
++    env, in-container path for the docker env). The agent calls it by `name`; a shim on PATH
++    forwards to `path`. `max_output_chars` is this command's own output-truncation limit
++    (0 = use limits.obs_max_chars)."""
++
++    name: str
++    path: str
++    description: str
++    max_output_chars: int = 0
++
++    def __post_init__(self) -> None:
++        if not _CMD_NAME.match(self.name or ""):
++            raise ValueError(f"custom command name {self.name!r} must match {_CMD_NAME.pattern}")
++        if not self.path:
++            raise ValueError(f"custom command {self.name!r} has no path")
++        if not (self.description or "").strip():
++            raise ValueError(f"custom command {self.name!r} needs a description (it is shown to the agent)")
++        if self.max_output_chars < 0:
++            raise ValueError(f"custom command {self.name!r}: max_output_chars must be >= 0")
++
++
+ @dataclass
+ class Settings:
+     small: ModelConfig = field(default_factory=ModelConfig)
+     big: ModelConfig = field(default_factory=ModelConfig)
+     limits: Limits = field(default_factory=Limits)
++    env: EnvConfig = field(default_factory=EnvConfig)
++    commands: list[CustomCommand] = field(default_factory=list)
+ 
+ 
+ def _build(cls: type, data: dict[str, Any], where: str):
+@@ -75,13 +126,26 @@ def _build(cls: type, data: dict[str, Any], where: str):
+ 
+ 
+ def settings_from_dict(data: dict[str, Any]) -> Settings:
+-    unknown = set(data) - {"small", "big", "limits"}
++    unknown = set(data) - {"small", "big", "limits", "env", "commands"}
+     if unknown:
+         raise ValueError(f"Unknown top-level section(s): {sorted(unknown)}")
++    env = _build(EnvConfig, data.get("env", {}), "env")
++    if env.backend not in ("local", "docker"):
++        raise ValueError(f"[env] backend must be 'local' or 'docker', got {env.backend!r}")
++    raw_cmds = data.get("commands", [])
++    if not isinstance(raw_cmds, list):
++        raise ValueError("[[commands]] must be an array of tables")
++    commands = [_build(CustomCommand, c, f"commands[{i}]") for i, c in enumerate(raw_cmds)]
++    names = [c.name for c in commands]
++    dupes = sorted({n for n in names if names.count(n) > 1})
++    if dupes:
++        raise ValueError(f"duplicate custom command name(s): {dupes}")
+     return Settings(
+         small=_build(ModelConfig, data.get("small", {}), "small"),
+         big=_build(ModelConfig, data.get("big", {}), "big"),
+         limits=_build(Limits, data.get("limits", {}), "limits"),
++        env=env,
++        commands=commands,
+     )
+ 
+ 
+diff --git a/src/hagent/docker_env.py b/src/hagent/docker_env.py
+new file mode 100644
+index 0000000..710ec3d
+--- /dev/null
++++ b/src/hagent/docker_env.py
+@@ -0,0 +1,212 @@
++"""Docker/Podman execution environment. Same contract as `env.Env` (see env.py), stdlib only.
++
++Isolation model
++  - The repo is COPIED into a fresh container (`docker cp`), never bind-mounted, so the agent
++    cannot modify the original checkout. The final patch is read with `git diff` inside the
++    container; nothing is copied back.
++  - Network, CPU, memory and process-count limits come from `EnvConfig` (defaults: no network,
++    2 CPUs, 4 GB, 512 pids, no-new-privileges).
++  - One long-lived container per env (`sleep infinity`); every command is a separate
++    `docker exec`, so no shell state survives between commands, as with LocalEnv.
++
++Timeouts kill the whole process tree, in three layers:
++  1. In the container, the command runs under `timeout -s KILL <t>`. Without --foreground,
++     GNU timeout puts itself in a new process group and kills the whole group.
++  2. Every exec carries a unique HAGENT_EXEC_ID environment variable. After a timeout, a sweep
++     kills every process in the container whose environment holds that id, which also catches
++     children that escaped the process group (setsid, nohup into a new session).
++  3. A host-side backstop (`t + kill_grace_s`) kills the `docker exec` client if the container
++     does not answer, then runs the same sweep.
++
++Image requirements: bash, git, and coreutils `timeout` and `sleep`. Checked at start-up.
++"""
++
++from __future__ import annotations
++
++import shlex
++import shutil
++import subprocess
++import time
++import uuid
++from pathlib import Path
++from typing import Sequence
++
++from .config import CustomCommand, EnvConfig
++from .env import _ENV_DEFAULTS, GitHelpers, Obs, shim_script, submission_of
++from .exceptions import EnvError
++from .textutil import truncate_middle
++
++_REQUIRED_TOOLS = ("bash", "git", "timeout", "sleep")
++# Lets git work on a repo copied in as a different owner than the user running commands.
++_GIT_SAFE_ENV = {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "safe.directory", "GIT_CONFIG_VALUE_0": "*"}
++_KILLED_RC = 137  # 128 + SIGKILL
++
++
++def runtime_available(runtime: str = "docker", timeout_s: int = 15) -> bool:
++    """True if the runtime CLI exists and its daemon/service answers."""
++    if not shutil.which(runtime):
++        return False
++    try:
++        return subprocess.run([runtime, "info"], capture_output=True, timeout=timeout_s).returncode == 0
++    except (OSError, subprocess.TimeoutExpired):
++        return False
++
++
++class DockerEnv(GitHelpers):
++    """Runs commands in a container holding a copy of `repo`. Call close() (or use `with`) to
++    remove the container. Raises EnvError if the container cannot be prepared."""
++
++    def __init__(self, repo: str | Path, cfg: EnvConfig, timeout_s: int = 60,
++                 extra_env: dict[str, str] | None = None, max_output_chars: int = 200_000):
++        if not cfg.image:
++            raise EnvError("[env] image is required for the docker backend")
++        repo_path = Path(repo).resolve()
++        if not repo_path.is_dir():
++            raise EnvError(f"{repo_path} is not a directory")
++        self.cfg = cfg
++        self.rt = cfg.runtime
++        self.cwd = cfg.workdir
++        self.timeout_s = timeout_s
++        self.extra_env = dict(extra_env or {})
++        self.max_output_chars = max_output_chars
++        self.container: str | None = None
++        self._commands_installed = False
++        if not shutil.which(self.rt):
++            raise EnvError(f"container runtime {self.rt!r} not found on PATH")
++        self._start(repo_path)
++
++    # ------------------------------------------------------------------ lifecycle
++    def _run_cli(self, *args: str, timeout: int | None = None, check: bool = True,
++                 input_text: str | None = None) -> subprocess.CompletedProcess:
++        try:
++            p = subprocess.run([self.rt, *args], capture_output=True, text=True, errors="replace",
++                               timeout=timeout or self.cfg.startup_timeout_s, input=input_text)
++        except (OSError, subprocess.TimeoutExpired) as e:
++            raise EnvError(f"{self.rt} {args[0]} failed: {e!r}") from e
++        if check and p.returncode != 0:
++            raise EnvError(f"{self.rt} {args[0]} failed ({p.returncode}): {p.stderr.strip()[:500]}")
++        return p
++
++    def _start(self, repo: Path) -> None:
++        cfg = self.cfg
++        name = f"hagent-{uuid.uuid4().hex[:12]}"
++        run = ["run", "-d", "--name", name, "--label", "hagent=1", "--network", cfg.network]
++        if cfg.cpus > 0:
++            run += ["--cpus", str(cfg.cpus)]
++        if cfg.memory:
++            run += ["--memory", cfg.memory]
++        if cfg.pids_limit > 0:
++            run += ["--pids-limit", str(cfg.pids_limit)]
++        run += [*cfg.extra_run_args, "--entrypoint", "sleep", cfg.image, "infinity"]
++        self.container = self._run_cli(*run).stdout.strip() or name
++        try:
++            check = " && ".join(f"command -v {t} >/dev/null" for t in _REQUIRED_TOOLS)
++            p = self._run_cli("exec", self.container, "bash", "-c", check, check=False)
++            if p.returncode != 0:
++                raise EnvError(f"image {cfg.image!r} must provide: {', '.join(_REQUIRED_TOOLS)}")
++            self._run_cli("exec", "-u", "0", self.container, "mkdir", "-p", cfg.workdir)
++            self._run_cli("cp", f"{repo}/.", f"{self.container}:{cfg.workdir}")
++            if cfg.user:
++                self._run_cli("exec", "-u", "0", self.container, "chown", "-R", cfg.user, cfg.workdir)
++        except BaseException:
++            self.close()
++            raise
++
++    def close(self) -> None:
++        """Remove the container. Idempotent; never raises."""
++        cid, self.container = self.container, None
++        if cid:
++            try:
++                subprocess.run([self.rt, "rm", "-f", cid], capture_output=True, timeout=60)
++            except (OSError, subprocess.TimeoutExpired):
++                pass
++
++    def __enter__(self) -> "DockerEnv":
++        return self
++
++    def __exit__(self, *exc) -> None:
++        self.close()
++
++    # ------------------------------------------------------------------ execution
++    def _exec_argv(self, script: str, env: dict[str, str], user: str | None = None) -> list[str]:
++        argv = [self.rt, "exec", "-w", self.cwd]
++        u = self.cfg.user if user is None else user
++        if u:
++            argv += ["-u", u]
++        for k, v in env.items():
++            argv += ["-e", f"{k}={v}"]
++        return [*argv, self._require_container(), "bash", "-c", script]
++
++    def _require_container(self) -> str:
++        if not self.container:
++            raise EnvError("the container has been closed")
++        return self.container
++
++    def execute(self, command: str, timeout_s: int | None = None) -> Obs:
++        timeout = int(timeout_s or self.timeout_s)
++        exec_id = uuid.uuid4().hex
++        env = {**_ENV_DEFAULTS, **_GIT_SAFE_ENV, **self.extra_env, "HAGENT_EXEC_ID": exec_id}
++        prefix = f"export PATH={shlex.quote(self.cfg.commands_dir)}:$PATH; " if self._commands_installed else ""
++        script = f"{prefix}exec timeout -s KILL {timeout} bash -c {shlex.quote(command)}"
++        t0 = time.monotonic()
++        proc = subprocess.Popen(self._exec_argv(script, env), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
++                                stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
++                                start_new_session=True)
++        timed_out = False
++        try:
++            out, _ = proc.communicate(timeout=timeout + self.cfg.kill_grace_s)
++        except subprocess.TimeoutExpired:  # container did not answer: kill the client, then sweep
++            timed_out = True
++            proc.kill()
++            out, _ = proc.communicate()
++        if not timed_out and proc.returncode == _KILLED_RC and time.monotonic() - t0 >= timeout - 0.5:
++            timed_out = True
++        if timed_out:
++            self._sweep(exec_id)
++        out = truncate_middle(out or "", self.max_output_chars)
++        returncode = -1 if timed_out else proc.returncode
++        return Obs(out, returncode, timed_out, submission_of(out, returncode))
++
++    def _sweep(self, exec_id: str) -> None:
++        """SIGKILL every process in the container started by exec `exec_id` (pure bash)."""
++        script = (
++            "for d in /proc/[0-9]*; do "
++            "while IFS= read -r -d '' e; do "
++            f"if [[ $e == HAGENT_EXEC_ID={exec_id} ]]; then kill -9 \"${{d#/proc/}}\" 2>/dev/null; break; fi; "
++            "done < \"$d/environ\" 2>/dev/null; done; true"
++        )
++        try:
++            subprocess.run(self._exec_argv(script, {}, user="0"), capture_output=True, timeout=30)
++        except (OSError, subprocess.TimeoutExpired, EnvError):
++            pass
++
++    # ------------------------------------------------------------------ custom commands
++    def install_commands(self, commands: Sequence[CustomCommand]) -> None:
++        """Write a shim per command into cfg.commands_dir inside the container; `path` must be an
++        executable inside the container."""
++        if not commands:
++            return
++        cid = self._require_container()
++        lines = [f"mkdir -p {shlex.quote(self.cfg.commands_dir)}"]
++        for c in commands:
++            shim = f"{self.cfg.commands_dir}/{c.name}"
++            lines.append(f"test -x {shlex.quote(c.path)} || {{ echo 'missing: {c.name}'; exit 3; }}")
++            lines.append(f"printf %s {shlex.quote(shim_script(c.path))} > {shlex.quote(shim)}")
++            lines.append(f"chmod 755 {shlex.quote(shim)}")
++        p = self._run_cli("exec", "-u", "0", cid, "bash", "-c", " && ".join(lines), check=False)
++        if p.returncode != 0:
++            raise EnvError(f"custom commands could not be installed: {(p.stdout + p.stderr).strip()[:300]} "
++                           f"(paths must be executable inside the container)")
++        self._commands_installed = True
++
++    # ------------------------------------------------------------------ git
++    def _git(self, *args: str, timeout: int = 30) -> tuple[int, str]:
++        if not self.container:
++            return 1, ""
++        script = "exec git " + " ".join(shlex.quote(a) for a in args)
++        try:
++            p = subprocess.run(self._exec_argv(script, dict(_GIT_SAFE_ENV)), capture_output=True, text=True,
++                               errors="replace", timeout=timeout, stdin=subprocess.DEVNULL)
++        except (OSError, subprocess.TimeoutExpired):
++            return 1, ""
++        return p.returncode, p.stdout
+diff --git a/src/hagent/env.py b/src/hagent/env.py
+index c24385b..9a2fad2 100644
+--- a/src/hagent/env.py
++++ b/src/hagent/env.py
+@@ -4,11 +4,19 @@ from __future__ import annotations
+ 
+ import hashlib
+ import os
++import shlex
++import shutil
+ import signal
+ import subprocess
++import tempfile
+ from dataclasses import dataclass
+ from pathlib import Path
++from typing import TYPE_CHECKING, Protocol, Sequence
+ 
++if TYPE_CHECKING:
++    from .config import CustomCommand
++
++from .exceptions import EnvError
+ from .textutil import truncate_middle
+ 
+ # Same convention as mini-swe-agent: if the *first line* of a successful command's output is
+@@ -33,8 +41,87 @@ class Obs:
+     submission: str | None = None  # set when the command output started with SUBMIT_MARKER
+ 
+ 
+-class LocalEnv:
+-    """Runs commands with bash in `cwd`. POSIX only (process groups are used for timeouts)."""
++class Env(Protocol):
++    """What the agent needs from an execution environment.
++
++    Contract:
++      execute(command, timeout_s)  run `command` with bash in `cwd` as an independent process
++                                   (no state survives between calls), stdin closed, stdout+stderr
++                                   merged and truncated to the env's max_output_chars; on timeout
++                                   the whole process tree is killed and Obs(timed_out=True,
++                                   returncode=-1) is returned. Never raises for command failures.
++      cwd                          the repo path as seen by the commands.
++      git_diff()                   everything changed vs HEAD, including new files ("" if no repo).
++      git_diff_hash()              short hash of git_diff().
++      git_tracked_diff_hash()      short hash of edits to tracked files only.
++      install_commands(cmds)       make each custom command callable by name; raises EnvError if a
++                                   command's path is not executable in this env.
++      close()                      release resources; idempotent.
++    """
++
++    cwd: str
++
++    def execute(self, command: str, timeout_s: int | None = None) -> Obs: ...
++    def git_diff(self) -> str: ...
++    def git_diff_hash(self) -> str: ...
++    def git_tracked_diff_hash(self) -> str: ...
++    def install_commands(self, commands: Sequence[CustomCommand]) -> None: ...
++    def close(self) -> None: ...
++
++
++def submission_of(output: str, returncode: int) -> str | None:
++    """The submission text if `output` starts with SUBMIT_MARKER and the command succeeded."""
++    lines = output.lstrip().splitlines(keepends=True)
++    if returncode == 0 and lines and lines[0].strip() == SUBMIT_MARKER:
++        return "".join(lines[1:])
++    return None
++
++
++def shim_script(path: str) -> str:
++    """A tiny bash wrapper that forwards all arguments to `path`."""
++    return f"#!/bin/bash\nexec {shlex.quote(path)} \"$@\"\n"
++
++
++class GitHelpers:
++    """git-based helpers shared by all envs. Subclasses implement `_git(*args, timeout)`
++    returning (returncode, stdout) and must not raise."""
++
++    def _git(self, *args: str, timeout: int = 30) -> tuple[int, str]:  # pragma: no cover - abstract
++        raise NotImplementedError
++
++    def is_git_repo(self) -> bool:
++        return self._git("rev-parse", "--is-inside-work-tree")[0] == 0
++
++    def git_diff(self) -> str:
++        """Everything changed relative to HEAD, including new files (via intent-to-add)."""
++        if not self.is_git_repo():
++            return ""
++        self._git("add", "-A", "-N")
++        rc, out = self._git("diff", "HEAD")
++        if rc != 0:  # repository without commits
++            rc, out = self._git("diff")
++        return out if rc == 0 else ""
++
++    def git_diff_hash(self) -> str:
++        return hashlib.sha1(self.git_diff().encode("utf-8", "replace")).hexdigest()[:12]
++
++    def git_tracked_diff_hash(self) -> str:
++        """Hash of edits to files git already tracks (modified/deleted only).
++
++        New untracked files, such as a throwaway repro script, do not change it. The loop detector
++        uses this for oscillation, so creating and deleting a scratch file is not mistaken for an
++        edit being undone."""
++        if not self.is_git_repo():
++            return ""
++        flags = ["--no-renames", "--diff-filter=MDT"]
++        rc, out = self._git("diff", "HEAD", *flags)
++        if rc != 0:  # repository without commits
++            rc, out = self._git("diff", *flags)
++        return hashlib.sha1(out.encode("utf-8", "replace")).hexdigest()[:12] if rc == 0 else ""
++
++
++class LocalEnv(GitHelpers):
++    """Runs commands with bash in `cwd` on the host. POSIX only (process groups are used for timeouts)."""
+ 
+     def __init__(self, cwd: str | Path, timeout_s: int = 60, extra_env: dict[str, str] | None = None,
+                  max_output_chars: int = 200_000):
+@@ -42,6 +129,7 @@ class LocalEnv:
+         self.timeout_s = timeout_s
+         self.extra_env = extra_env or {}
+         self.max_output_chars = max_output_chars
++        self._shim_dir: str | None = None
+ 
+     # ----- command execution -----
+     def execute(self, command: str, timeout_s: int | None = None) -> Obs:
+@@ -74,10 +162,30 @@ class LocalEnv:
+ 
+     @staticmethod
+     def _submission(output: str, returncode: int) -> str | None:
+-        lines = output.lstrip().splitlines(keepends=True)
+-        if returncode == 0 and lines and lines[0].strip() == SUBMIT_MARKER:
+-            return "".join(lines[1:])
+-        return None
++        return submission_of(output, returncode)
++
++    # ----- custom commands / lifecycle -----
++    def install_commands(self, commands: Sequence[CustomCommand]) -> None:
++        """Put a shim per command in a private temp dir and prepend it to PATH."""
++        if not commands:
++            return
++        for c in commands:
++            if not (os.path.isfile(c.path) and os.access(c.path, os.X_OK)):
++                raise EnvError(f"custom command {c.name!r}: {c.path} is not an executable file")
++        if self._shim_dir is None:
++            self._shim_dir = tempfile.mkdtemp(prefix="hagent-cmds-")
++        for c in commands:
++            shim = Path(self._shim_dir) / c.name
++            shim.write_text(shim_script(c.path))
++            shim.chmod(0o755)
++        base_path = self.extra_env.get("PATH") or os.environ.get("PATH", "")
++        if not base_path.startswith(self._shim_dir + os.pathsep):
++            self.extra_env["PATH"] = self._shim_dir + os.pathsep + base_path
++
++    def close(self) -> None:
++        if self._shim_dir:
++            shutil.rmtree(self._shim_dir, ignore_errors=True)
++            self._shim_dir = None
+ 
+     # ----- git helpers (used by the loop detector, reviewer and final result) -----
+     def _git(self, *args: str, timeout: int = 30) -> tuple[int, str]:
+@@ -87,33 +195,3 @@ class LocalEnv:
+         except (OSError, subprocess.TimeoutExpired):
+             return 1, ""
+         return p.returncode, p.stdout
+-
+-    def is_git_repo(self) -> bool:
+-        return self._git("rev-parse", "--is-inside-work-tree")[0] == 0
+-
+-    def git_diff(self) -> str:
+-        """Everything changed relative to HEAD, including new files (via intent-to-add)."""
+-        if not self.is_git_repo():
+-            return ""
+-        self._git("add", "-A", "-N")
+-        rc, out = self._git("diff", "HEAD")
+-        if rc != 0:  # repository without commits
+-            rc, out = self._git("diff")
+-        return out if rc == 0 else ""
+-
+-    def git_diff_hash(self) -> str:
+-        return hashlib.sha1(self.git_diff().encode("utf-8", "replace")).hexdigest()[:12]
+-
+-    def git_tracked_diff_hash(self) -> str:
+-        """Hash of edits to files git already tracks (modified/deleted only).
+-
+-        New untracked files, such as a throwaway repro script, do not change it. The loop detector
+-        uses this for oscillation, so creating and deleting a scratch file is not mistaken for an
+-        edit being undone."""
+-        if not self.is_git_repo():
+-            return ""
+-        flags = ["--no-renames", "--diff-filter=MDT"]
+-        rc, out = self._git("diff", "HEAD", *flags)
+-        if rc != 0:  # repository without commits
+-            rc, out = self._git("diff", *flags)
+-        return hashlib.sha1(out.encode("utf-8", "replace")).hexdigest()[:12] if rc == 0 else ""
+diff --git a/src/hagent/exceptions.py b/src/hagent/exceptions.py
+index 9dcbe2d..9c585ad 100644
+--- a/src/hagent/exceptions.py
++++ b/src/hagent/exceptions.py
+@@ -15,6 +15,10 @@ class ModelError(HAgentError):
+     """The model API failed (after retries) or returned something unusable."""
+ 
+ 
++class EnvError(HAgentError):
++    """The execution environment could not be set up (container start, repo copy, missing tool)."""
++
++
+ class AgentExit(HAgentError):
+     """Raised to end the run. `status` becomes RunResult.exit_status.
+ 
+diff --git a/src/hagent/helpers.py b/src/hagent/helpers.py
+index 891d24f..8946d10 100644
+--- a/src/hagent/helpers.py
++++ b/src/hagent/helpers.py
+@@ -2,6 +2,7 @@
+ 
+ from __future__ import annotations
+ 
++import re
+ from dataclasses import dataclass
+ 
+ from .models import Model, Reply
+@@ -11,8 +12,32 @@ from .textutil import truncate_middle
+ 
+ @dataclass
+ class Verdict:
++    """Reviewer outcome. `ok` alone decides accept/reject. `pass_probability` is the reviewer's
++    own estimate (0-1) that the patch passes simulator validation; it is logged for later
++    calibration and must never gate anything. None when absent or unparseable."""
++
+     ok: bool
+     feedback: str = ""
++    pass_probability: float | None = None
++
++
++_PASS_PROB = re.compile(r"^\s*pass[ _-]?probability\s*[:=]\s*([0-9]*\.?[0-9]+)\s*(%?)\s*$", re.IGNORECASE)
++
++
++def parse_pass_probability(text: str) -> float | None:
++    """First `PASS_PROBABILITY: <x>` line (x in 0-1, or a percentage like 70%), clamped to [0, 1]."""
++    for line in (text or "").splitlines():
++        m = _PASS_PROB.match(line)
++        if not m:
++            continue
++        try:
++            value = float(m.group(1))
++        except ValueError:
++            return None
++        if m.group(2) == "%" or value > 1.0:
++            value /= 100.0
++        return min(1.0, max(0.0, value))
++    return None
+ 
+ 
+ def _chat(model: Model, system: str, user: str) -> Reply:
+@@ -52,13 +77,16 @@ def review(model: Model, task: str, diff: str, test_output: str) -> tuple[Verdic
+ 
+ def parse_verdict(text: str) -> Verdict:
+     """First line decides. Anything unparseable is treated as APPROVE (fail open) so a flaky
+-    reviewer can never trap the agent in a review loop."""
++    reviewer can never trap the agent in a review loop. The pass-probability line is parsed
++    separately, removed from the feedback, and never changes `ok`."""
++    prob = parse_pass_probability(text)
+     lines = [ln for ln in text.strip().splitlines() if ln.strip()]
+     if lines and lines[0].strip().upper().startswith("REJECT"):
+         first = lines[0].strip()[len("REJECT"):].lstrip(" :-")
+-        feedback = "\n".join(([first] if first else []) + lines[1:]).strip()
+-        return Verdict(False, feedback or "The reviewer rejected the patch without details.")
+-    return Verdict(True)
++        rest = [ln for ln in lines[1:] if not _PASS_PROB.match(ln)]
++        feedback = "\n".join(([first] if first else []) + rest).strip()
++        return Verdict(False, feedback or "The reviewer rejected the patch without details.", prob)
++    return Verdict(True, "", prob)
+ 
+ 
+ def summarize(model: Model, transcript: str, previous_summary: str) -> Reply:
+diff --git a/src/hagent/hybrid.py b/src/hagent/hybrid.py
+index fb9fc10..22de89d 100644
+--- a/src/hagent/hybrid.py
++++ b/src/hagent/hybrid.py
+@@ -18,7 +18,7 @@ from __future__ import annotations
+ import shlex
+ 
+ from . import helpers
+-from .agent import Agent
++from .agent import Agent, Usage
+ from .compaction import split_summary
+ from .config import Settings
+ from .detector import LoopDetector
+@@ -33,7 +33,7 @@ class HybridAgent(Agent):
+     def __init__(self, small: Model, big: Model, env, settings: Settings, **kw):
+         lim = settings.limits
+         prompt = kw.pop("system_prompt", None) or build_system_prompt(
+-            env.cwd, lim.max_explorer_calls if lim.enable_explorer else 0
++            env.cwd, lim.max_explorer_calls if lim.enable_explorer else 0, settings.commands
+         )
+         super().__init__(small, env, settings, role="small", system_prompt=prompt, **kw)
+         self.big = big
+@@ -45,6 +45,7 @@ class HybridAgent(Agent):
+         self.pending_flag: str | None = None
+         self.review_rejections = 0
+         self.explorer_calls = 0
++        self.reviews: list[dict] = []
+ 
+     # ------------------------------------------------------------------ big-model budget
+     def big_available(self, for_review: bool = False) -> bool:
+@@ -150,11 +151,25 @@ class HybridAgent(Agent):
+             return None
+         self.account("big", reply)
+         self.big_calls += 1
++        self._log_review(verdict)
+         if verdict.ok:
+             return None
+         self.review_rejections += 1
+         return f"[Reviewer rejected your submission]\n{verdict.feedback}\nFix these issues, re-verify, then submit again."
+ 
++    def _log_review(self, verdict) -> None:
++        """Record the review. The pass probability is logged only; it never affects the outcome."""
++        self.usage.setdefault("big", Usage()).pass_probabilities.append(verdict.pass_probability)
++        self.reviews.append({
++            "step": self.n_steps,
++            "verdict": "APPROVE" if verdict.ok else "REJECT",
++            "pass_probability": verdict.pass_probability,
++            "diff_hash": self.env.git_diff_hash(),
++        })
++
++    def review_log(self) -> list[dict]:
++        return self.reviews
++
+     # ------------------------------------------------------------------ explorer
+     def run_command(self, command: str) -> Obs:
+         if self.limits.enable_explorer and command.lstrip().startswith("ask_explorer"):
+diff --git a/src/hagent/models.py b/src/hagent/models.py
+index c34e570..8a53a39 100644
+--- a/src/hagent/models.py
++++ b/src/hagent/models.py
+@@ -15,12 +15,58 @@ from .config import ModelConfig
+ from .exceptions import ModelError
+ 
+ 
++# Where a Reply's token counts came from.
++USAGE_API = "api"            # both counts read from the provider's `usage` block
++USAGE_PARTIAL = "partial"    # one count from the provider, the other estimated
++USAGE_ESTIMATED = "estimated"  # no usable usage block: ~4 characters per token
++
++
+ @dataclass
+ class Reply:
+     content: str
+     input_tokens: int = 0
+     output_tokens: int = 0
+     cost: float = 0.0
++    usage_source: str = USAGE_ESTIMATED
++
++
++def _first_int(usage: dict, *keys: str) -> int | None:
++    for k in keys:
++        v = usage.get(k)
++        if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0:
++            return int(v)
++    return None
++
++
++def read_usage(payload: dict, messages: list[dict], content: str) -> tuple[int, int, str]:
++    """Token counts for one call: (input_tokens, output_tokens, usage_source).
++
++    Contract: provider-reported counts always win. Accepted keys are the OpenAI ones
++    (`prompt_tokens`, `completion_tokens`) and the `input_tokens` / `output_tokens` spelling some
++    gateways use. If only `total_tokens` and one side are given, the other side is total minus that
++    side. A side that is still unknown is estimated at ~4 characters per token, and the source says
++    so. A block where every count is 0 is treated as absent (some servers send zeros instead of
++    omitting it), which keeps token and cost caps working.
++    """
++    usage = payload.get("usage") if isinstance(payload, dict) else None
++    usage = usage if isinstance(usage, dict) else {}
++    tin = _first_int(usage, "prompt_tokens", "input_tokens")
++    tout = _first_int(usage, "completion_tokens", "output_tokens")
++    total = _first_int(usage, "total_tokens")
++    if total is not None:
++        if tin is None and tout is not None and total >= tout:
++            tin = total - tout
++        elif tout is None and tin is not None and total >= tin:
++            tout = total - tin
++    if not (tin or tout or total):
++        tin = tout = None
++    est_in = sum(len(str(m.get("content", ""))) for m in messages) // 4
++    est_out = len(content) // 4
++    if tin is not None and tout is not None:
++        return tin, tout, USAGE_API
++    if tin is None and tout is None:
++        return est_in, est_out, USAGE_ESTIMATED
++    return (tin if tin is not None else est_in), (tout if tout is not None else est_out), USAGE_PARTIAL
+ 
+ 
+ class Model(Protocol):
+@@ -81,19 +127,15 @@ class OpenAICompatModel:
+             raise ModelError(f"[{self.name}] failed after {self.max_retries} attempts: {last_err}")
+ 
+         try:
+-            content = payload["choices"][0]["message"].get("content") or ""
++            raw_content = payload["choices"][0]["message"].get("content") or ""
+         except (KeyError, IndexError, TypeError, AttributeError) as e:
+             raise ModelError(f"[{self.name}] unexpected response shape: {str(payload)[:300]}") from e
+-        content = _THINK.sub("", content).strip()  # some reasoning models inline their thoughts
+-
+-        usage = payload.get("usage") or {}
+-        tin = int(usage.get("prompt_tokens") or 0)
+-        tout = int(usage.get("completion_tokens") or 0)
+-        if not (tin or tout):  # provider sent no usage block: estimate (~4 chars/token) so token caps still work
+-            tin = sum(len(str(m.get("content", ""))) for m in messages) // 4
+-            tout = len(content) // 4
++        content = _THINK.sub("", raw_content).strip()  # some reasoning models inline their thoughts
++
++        # read the raw content length for estimates before <think> stripping would undercount output
++        tin, tout, source = read_usage(payload, messages, raw_content)
+         cost = tin * cfg.price_in_per_mtok / 1e6 + tout * cfg.price_out_per_mtok / 1e6
+-        return Reply(content, tin, tout, cost)
++        return Reply(content, tin, tout, cost, source)
+ 
+ 
+ ScriptItem = "str | Callable[[list[dict]], str]"
+@@ -108,13 +150,17 @@ class ScriptedModel:
+ 
+     `script` items are strings or callables(messages) -> str. With repeat_last=True the
+     final item is repeated forever, which is how loop scenarios are simulated.
++    `tokens_per_call=(in, out)` makes replies report fixed "API" token counts instead of the
++    character estimate (for testing real-usage accounting).
+     """
+ 
+-    def __init__(self, script: Sequence, name: str = "scripted", cost_per_call: float = 0.0, repeat_last: bool = False):
++    def __init__(self, script: Sequence, name: str = "scripted", cost_per_call: float = 0.0, repeat_last: bool = False,
++                 tokens_per_call: tuple[int, int] | None = None):
+         self.script = list(script)
+         self.name = name
+         self.cost_per_call = cost_per_call
+         self.repeat_last = repeat_last
++        self.tokens_per_call = tokens_per_call
+         self.calls: list[list[dict]] = []  # a snapshot of the messages for every call
+ 
+     def query(self, messages: list[dict]) -> Reply:
+@@ -126,8 +172,11 @@ class ScriptedModel:
+             i = len(self.script) - 1
+         item = self.script[i]
+         content = item(messages) if callable(item) else item
++        if self.tokens_per_call is not None:
++            tin, tout = self.tokens_per_call
++            return Reply(content, tin, tout, self.cost_per_call, USAGE_API)
+         tin = sum(len(m["content"]) for m in messages) // 4
+-        return Reply(content, tin, len(content) // 4, self.cost_per_call)
++        return Reply(content, tin, len(content) // 4, self.cost_per_call, USAGE_ESTIMATED)
+ 
+ 
+ def bash(command: str, thought: str = "Running a command.") -> str:
+diff --git a/src/hagent/prompts.py b/src/hagent/prompts.py
+index 45ace80..bf0276e 100644
+--- a/src/hagent/prompts.py
++++ b/src/hagent/prompts.py
+@@ -36,13 +36,19 @@ echo <<MARKER>> && git add -A && git diff --cached
+ ```
+ 
+ The first line of its output must be the marker. Do not submit before you have run the relevant tests.
+-<<EXPLORER>>"""
++<<EXPLORER>><<COMMANDS>>"""
+ 
+ EXPLORER_NOTE = """
+ ## Asking for help exploring
+ For broad questions about a large codebase, run `ask_explorer "your question"` (at most <<N>> times). A read-only helper investigates and returns a short answer. Prefer it over grepping repeatedly.
+ """
+ 
++COMMANDS_NOTE = """
++## Extra commands
++These project commands are on PATH. Run them like any other command, one per bash block:
++<<LIST>>
++"""
++
+ TASK_TEMPLATE = """Solve the following task in the repository at <<CWD>>.
+ 
+ <task>
+@@ -77,7 +83,7 @@ REVIEWER_SYSTEM = """You are a strict code reviewer. You are given a task, the f
+ 
+ Check: (a) does the diff actually address the task, at the root cause; (b) is it minimal, with no debug prints, stray files or unrelated edits; (c) is there evidence that relevant tests passed.
+ 
+-The FIRST line of your reply must be exactly `APPROVE` or `REJECT`. If you reject, follow with at most 150 words listing the concrete problems and what to fix. Be willing to approve a good-enough patch; do not reject over style."""
++The FIRST line of your reply must be exactly `APPROVE` or `REJECT`. The SECOND line must be `PASS_PROBABILITY: <p>`, where p is a number from 0 to 1: your estimate that this patch makes the task succeed when validated for real. If you reject, follow with at most 150 words listing the concrete problems and what to fix. Be willing to approve a good-enough patch; do not reject over style."""
+ 
+ COMPACTOR_SYSTEM = """You compress the working history of a coding agent into notes the agent will rely on instead of the full history. Write at most 300 words of plain facts:
+ - files examined and what was learned (keep exact paths, function names, error messages);
+@@ -104,11 +110,20 @@ EOF
+ CONSULT_HEADER = "[Senior engineer advice - <<REASON>>]"
+ 
+ 
+-def build_system_prompt(cwd: str, explorer_calls: int = 0) -> str:
++def commands_note(commands) -> str:
++    """System-prompt section listing custom commands (empty string when there are none)."""
++    if not commands:
++        return ""
++    lines = [f"- `{c.name}`: {' '.join(c.description.split())}" for c in commands]
++    return COMMANDS_NOTE.replace("<<LIST>>", "\n".join(lines))
++
++
++def build_system_prompt(cwd: str, explorer_calls: int = 0, commands=()) -> str:
+     note = EXPLORER_NOTE.replace("<<N>>", str(explorer_calls)) if explorer_calls > 0 else ""
+     return (SYSTEM_PROMPT.replace("<<CWD>>", cwd)
+             .replace("<<MARKER>>", SUBMIT_MARKER)
+-            .replace("<<EXPLORER>>", note))
++            .replace("<<EXPLORER>>", note)
++            .replace("<<COMMANDS>>", commands_note(commands)))
+ 
+ 
+ def build_explorer_prompt(cwd: str) -> str:
+diff --git a/src/hagent/runner.py b/src/hagent/runner.py
+index 47f6355..392f309 100644
+--- a/src/hagent/runner.py
++++ b/src/hagent/runner.py
+@@ -6,7 +6,7 @@ from pathlib import Path
+ 
+ from .agent import Agent, RunResult
+ from .config import Settings
+-from .env import LocalEnv
++from .env import Env, LocalEnv
+ from .hybrid import HybridAgent
+ from .models import Model, OpenAICompatModel
+ 
+@@ -22,6 +22,7 @@ def solve(
+     small: Model | None = None,
+     big: Model | None = None,
+     trajectory_path: str | Path | None = None,
++    env: Env | None = None,
+ ) -> RunResult:
+     """Run the agent on `repo`.
+ 
+@@ -31,10 +32,31 @@ def solve(
+ 
+     Pass `small=` / `big=` to inject your own Model objects (tests, other providers);
+     otherwise they are built from `settings`.
++    Pass `env=` to use your own environment (you then own its lifecycle); otherwise one is built
++    from `settings.env` and closed when the run ends. Custom commands are installed either way.
+     """
+     if mode not in MODES:
+         raise ValueError(f"mode must be one of {MODES}, got {mode!r}")
+-    env = LocalEnv(repo, timeout_s=settings.limits.cmd_timeout_s)
++    owned = env is None
++    env = env or make_env(repo, settings)
++    try:
++        env.install_commands(settings.commands)
++        return _run(task, settings, mode, env, small, big, trajectory_path)
++    finally:
++        if owned:
++            env.close()
++
++
++def make_env(repo: str | Path, settings: Settings) -> Env:
++    """Build the execution environment selected by settings.env.backend."""
++    if settings.env.backend == "docker":
++        from .docker_env import DockerEnv
++        return DockerEnv(repo, settings.env, timeout_s=settings.limits.cmd_timeout_s)
++    return LocalEnv(repo, timeout_s=settings.limits.cmd_timeout_s)
++
++
++def _run(task: str, settings: Settings, mode: str, env: Env, small: Model | None, big: Model | None,
++         trajectory_path: str | Path | None) -> RunResult:
+     if mode == "hybrid":
+         small = small or OpenAICompatModel(settings.small, "small")
+         big = big or OpenAICompatModel(settings.big, "big")
+diff --git a/src/hagent/task_template.py b/src/hagent/task_template.py
+new file mode 100644
+index 0000000..fbd2b9a
+--- /dev/null
++++ b/src/hagent/task_template.py
+@@ -0,0 +1,102 @@
++"""Task prompt templates for repair incidents (plan.md 3.3).
++
++A template is a text file with <<NAME>> placeholders (same syntax as prompts.py). The rendered
++text is the `task` passed to `solve()`.
++
++Placeholders (all optional except TASK):
++  <<TASK>>               what failed, in plain words (required)
++  <<ROUTER_VERDICT>>     the router's verdict. Templates must frame it as a hypothesis to verify
++                         first, not as a fact: the router can be wrong (plan.md 3.2, 9)
++  <<LOCATION_EVIDENCE>>  where the fault probably is (files, modules, replay that flipped)
++  <<REPRO_COMMAND>>      a command that reproduces the failure
++  <<ROLLOUT_SUMMARY>>    failing-rollout summary (success rate, action-trace stats)
++  <<REPO_PATH>>          repo path of the controller/wrapper code
++
++Contract:
++  - load_task_template(path) raises ValueError if the file uses an unknown placeholder or lacks
++    <<TASK>>.
++  - TaskTemplate.render(ctx) substitutes in ONE pass, so placeholder-like text inside a value
++    (e.g. a log line containing "<<TASK>>") is never re-substituted. Empty values render as
++    `missing_text`.
++  - Nothing here may carry bug-injection ground truth; callers decide what goes in the context
++    (no-leakage rule, plan.md 3.3).
++"""
++
++from __future__ import annotations
++
++import re
++from dataclasses import dataclass, fields
++from pathlib import Path
++
++_PLACEHOLDER = re.compile(r"<<([A-Z_]+)>>")
++
++
++@dataclass
++class IncidentContext:
++    task: str
++    router_verdict: str = ""
++    location_evidence: str = ""
++    repro_command: str = ""
++    rollout_summary: str = ""
++    repo_path: str = ""
++
++    def values(self) -> dict[str, str]:
++        return {f.name.upper(): str(getattr(self, f.name) or "") for f in fields(self)}
++
++
++PLACEHOLDERS = frozenset(f.name.upper() for f in fields(IncidentContext))
++
++DEFAULT_TEMPLATE = """<<TASK>>
++
++## Router hypothesis (verify this first; it may be wrong)
++The automatic router classified this failure as: <<ROUTER_VERDICT>>
++Before editing anything, check this hypothesis against the code and the evidence below. If the
++evidence contradicts it, say so in one sentence and follow the evidence instead.
++
++## Where to look
++<<LOCATION_EVIDENCE>>
++
++## Reproduce
++<<REPRO_COMMAND>>
++
++## Failing rollout summary
++<<ROLLOUT_SUMMARY>>
++
++## Code location
++Controller/wrapper code: <<REPO_PATH>>
++"""
++
++
++@dataclass(frozen=True)
++class TaskTemplate:
++    text: str
++    missing_text: str = "(not provided)"
++
++    def __post_init__(self) -> None:
++        validate_template(self.text)
++
++    def render(self, ctx: IncidentContext) -> str:
++        values = ctx.values()
++        if not values["TASK"].strip():
++            raise ValueError("IncidentContext.task must not be empty")
++
++        def sub(m: re.Match) -> str:
++            v = values[m.group(1)].strip()
++            return v if v else self.missing_text
++
++        return _PLACEHOLDER.sub(sub, self.text).strip() + "\n"
++
++
++def validate_template(text: str) -> None:
++    used = set(_PLACEHOLDER.findall(text))
++    unknown = used - PLACEHOLDERS
++    if unknown:
++        raise ValueError(f"unknown placeholder(s) {sorted(unknown)}; valid: {sorted(PLACEHOLDERS)}")
++    if "TASK" not in used:
++        raise ValueError("template must contain <<TASK>>")
++
++
++def load_task_template(path: str | Path | None = None, missing_text: str = "(not provided)") -> TaskTemplate:
++    """Load a template file; with path=None, return the built-in DEFAULT_TEMPLATE."""
++    text = DEFAULT_TEMPLATE if path is None else Path(path).read_text()
++    return TaskTemplate(text, missing_text)
+diff --git a/tests/test_env_parity.py b/tests/test_env_parity.py
+new file mode 100644
+index 0000000..03071cf
+--- /dev/null
++++ b/tests/test_env_parity.py
+@@ -0,0 +1,214 @@
++"""The same env contract tests for LocalEnv and DockerEnv, plus container-only isolation tests.
++
++Docker tests need a running daemon and an image with bash, git, coreutils (and python3 for the
++network test). Set HAGENT_TEST_IMAGE (default "hagent-sandbox:test"); they skip cleanly otherwise.
++"""
++
++import os
++import subprocess
++import time
++
++import pytest
++
++from hagent.config import CustomCommand, EnvConfig
++from hagent.docker_env import DockerEnv, runtime_available
++from hagent.env import SUBMIT_MARKER, LocalEnv
++from hagent.exceptions import EnvError
++
++IMAGE = os.environ.get("HAGENT_TEST_IMAGE", "hagent-sandbox:test")
++RUNTIME = os.environ.get("HAGENT_TEST_RUNTIME", "docker")
++
++
++def _image_present() -> bool:
++    try:
++        return subprocess.run([RUNTIME, "image", "inspect", IMAGE], capture_output=True, timeout=20).returncode == 0
++    except (OSError, subprocess.TimeoutExpired):
++        return False
++
++
++DOCKER_OK = runtime_available(RUNTIME) and _image_present()
++needs_docker = pytest.mark.skipif(not DOCKER_OK, reason=f"{RUNTIME} daemon or image {IMAGE!r} not available")
++
++
++def docker_cfg(**kw) -> EnvConfig:
++    base = dict(backend="docker", runtime=RUNTIME, image=IMAGE, cpus=1.0, memory="512m", pids_limit=256, kill_grace_s=5)
++    base.update(kw)
++    return EnvConfig(**base)
++
++
++@pytest.fixture(params=["local", pytest.param("docker", marks=needs_docker)])
++def make_env(request, repo):
++    """Factory: make_env(timeout_s=...) -> env of the parametrized backend; closed after the test."""
++    made = []
++
++    def make(timeout_s=60):
++        if request.param == "local":
++            env = LocalEnv(repo, timeout_s=timeout_s)
++        else:
++            env = DockerEnv(repo, docker_cfg(), timeout_s=timeout_s)
++        made.append(env)
++        return env
++
++    yield make
++    for env in made:
++        env.close()
++
++
++# ================================================================ shared contract
++def test_runs_commands_and_returns_code(make_env):
++    env = make_env()
++    assert env.execute("echo hi").output.strip() == "hi"
++    assert env.execute("exit 3").returncode == 3
++
++
++def test_is_stateless_between_commands(make_env):
++    env = make_env()
++    env.execute("cd /tmp && export FOO=1")
++    assert env.execute("pwd; echo ${FOO:-unset}").output.split() == [env.cwd, "unset"]
++
++
++def test_timeout_kills_process_group(make_env):
++    env = make_env(timeout_s=1)
++    t0 = time.time()
++    obs = env.execute("sleep 30 & sleep 30")
++    assert obs.timed_out and obs.returncode == -1
++    assert time.time() - t0 < 8
++
++
++def test_stdin_is_closed(make_env):
++    assert make_env(timeout_s=5).execute("cat").returncode == 0
++
++
++def test_submission_detection(make_env):
++    env = make_env()
++    assert env.execute(f"echo {SUBMIT_MARKER}; echo patch-body").submission == "patch-body\n"
++    assert env.execute(f"echo not-first; echo {SUBMIT_MARKER}").submission is None
++    assert env.execute(f"echo {SUBMIT_MARKER}; exit 1").submission is None
++
++
++def test_git_diff_includes_new_files_and_hash_changes(make_env):
++    env = make_env()
++    assert env.git_diff() == ""
++    h0 = env.git_diff_hash()
++    env.execute("echo x > new.txt && sed -i 's/a - b/a + b/' app.py")
++    diff = env.git_diff()
++    assert "new.txt" in diff and "+    return a + b" in diff
++    assert env.git_diff_hash() != h0
++
++
++def test_tracked_hash_ignores_new_files_but_sees_edits(make_env):
++    env = make_env()
++    h0 = env.git_tracked_diff_hash()
++    env.execute("echo 'print(1)' > repro.py")
++    env.git_diff()
++    assert env.git_tracked_diff_hash() == h0
++    env.execute("sed -i 's/a - b/a + b/' app.py")
++    assert env.git_tracked_diff_hash() != h0
++    env.execute("git checkout -- app.py")
++    assert env.git_tracked_diff_hash() == h0
++
++
++def test_output_is_truncated_to_env_limit(make_env):
++    env = make_env()
++    env.max_output_chars = 500
++    out = env.execute("for ((i=0;i<2000;i++)); do echo line$i; done").output
++    assert "elided" in out and len(out) < 600
++
++
++def test_install_commands_puts_them_on_path(make_env, tmp_path_factory):
++    env = make_env()
++    if isinstance(env, LocalEnv):
++        tool = tmp_path_factory.mktemp("tools") / "tool.sh"
++        tool.write_text('#!/bin/bash\necho "rung1 args: $*"\n')
++        tool.chmod(0o755)
++        path = str(tool)
++    else:  # the path must exist inside the container
++        path = "/usr/local/bin/tool.sh"
++        subprocess.run([RUNTIME, "exec", "-u", "0", env.container, "bash", "-c",
++                        f"mkdir -p /usr/local/bin && printf '#!/bin/bash\\necho \"rung1 args: $*\"\\n' > {path} "
++                        f"&& chmod 755 {path}"], check=True, capture_output=True)
++    env.install_commands([CustomCommand("run_rung1", path, "run validation")])
++    assert env.execute("run_rung1 --seeds 10").output.strip() == "rung1 args: --seeds 10"
++    assert env.execute("echo ok").output.strip() == "ok"  # normal commands unaffected
++
++
++def test_install_commands_rejects_missing_path(make_env):
++    env = make_env()
++    with pytest.raises(EnvError):
++        env.install_commands([CustomCommand("run_rung1", "/nonexistent/run_rung1", "x")])
++
++
++def test_close_is_idempotent(make_env):
++    env = make_env()
++    env.close()
++    env.close()
++
++
++# ================================================================ container-only guarantees
++@needs_docker
++def test_docker_original_repo_is_never_modified(repo):
++    before = (repo / "app.py").read_text()
++    with DockerEnv(repo, docker_cfg()) as env:
++        env.execute("sed -i 's/a - b/a + b/' app.py && echo new > extra.txt && rm -rf .git/hooks")
++        assert "+    return a + b" in env.git_diff()
++    assert (repo / "app.py").read_text() == before
++    assert not (repo / "extra.txt").exists()
++    assert subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True).stdout == ""
++
++
++@needs_docker
++def test_docker_has_no_network(repo):
++    with DockerEnv(repo, docker_cfg()) as env:
++        out = env.execute("cat /sys/class/net/*/operstate 2>/dev/null; ls /sys/class/net").output.split()
++        assert set(out) <= {"lo", "unknown", "down"}  # loopback only
++
++
++@needs_docker
++def test_docker_resource_limits_are_applied(repo):
++    with DockerEnv(repo, docker_cfg(cpus=1.5, memory="300m", pids_limit=100)) as env:
++        fmt = "{{.HostConfig.NanoCpus}} {{.HostConfig.Memory}} {{.HostConfig.PidsLimit}} {{.HostConfig.NetworkMode}}"
++        info = subprocess.run([RUNTIME, "inspect", "-f", fmt, env.container], capture_output=True, text=True).stdout.split()
++        assert info == [str(int(1.5e9)), str(300 * 1024 * 1024), "100", "none"]
++        mounts = subprocess.run([RUNTIME, "inspect", "-f", "{{len .Mounts}}", env.container],
++                                capture_output=True, text=True).stdout.strip()
++        assert mounts == "0"  # repo is copied, not mounted
++
++
++@needs_docker
++def test_docker_timeout_kills_escaped_session(repo):
++    """A child that leaves the process group (setsid) is still killed by the exec-id sweep."""
++    with DockerEnv(repo, docker_cfg(), timeout_s=1) as env:
++        obs = env.execute("setsid sleep 300 & sleep 300")
++        assert obs.timed_out
++        time.sleep(0.5)
++        left = env.execute("for d in /proc/[0-9]*; do c=$(tr '\\0' ' ' < $d/cmdline 2>/dev/null); "
++                           "[[ $c == 'sleep 300 ' ]] && echo $c; done; true").output
++        assert "sleep 300" not in left
++
++
++@needs_docker
++def test_docker_container_removed_on_close(repo):
++    env = DockerEnv(repo, docker_cfg())
++    cid = env.container
++    env.close()
++    assert subprocess.run([RUNTIME, "inspect", cid], capture_output=True).returncode != 0
++    assert env.git_diff() == ""  # closed env degrades instead of raising
++
++
++@needs_docker
++def test_docker_runs_as_configured_user(repo):
++    with DockerEnv(repo, docker_cfg(user="nobody")) as env:
++        assert env.execute("id -un").output.strip() == "nobody"
++        assert env.execute("echo x >> app.py").returncode == 0  # repo copy is writable by that user
++        assert "app.py" in env.git_diff()
++
++
++@needs_docker
++def test_docker_bad_image_raises_and_cleans_up(repo):
++    with pytest.raises(EnvError):
++        DockerEnv(repo, docker_cfg(image="hagent-no-such-image:missing"))
++
++
++def test_docker_requires_image(repo):
++    with pytest.raises(EnvError, match="image"):
++        DockerEnv(repo, EnvConfig(backend="docker", image=""))
+diff --git a/tests/test_step1a.py b/tests/test_step1a.py
+new file mode 100644
+index 0000000..33314d9
+--- /dev/null
++++ b/tests/test_step1a.py
+@@ -0,0 +1,292 @@
++"""Step 1A: real token accounting, reviewer pass probability, task templates, custom commands,
++and the env wiring in solve()."""
++
++import json
++import threading
++from http.server import BaseHTTPRequestHandler, HTTPServer
++
++import pytest
++
++from conftest import FIX, SUBMIT
++from hagent import Agent, HybridAgent, LocalEnv, solve
++from hagent.config import CustomCommand, Limits, ModelConfig, Settings, settings_from_dict
++from hagent.exceptions import EnvError
++from hagent.helpers import parse_pass_probability, parse_verdict
++from hagent.models import USAGE_API, USAGE_ESTIMATED, USAGE_PARTIAL, OpenAICompatModel, ScriptedModel, bash, read_usage
++from hagent.prompts import build_system_prompt
++from hagent.task_template import DEFAULT_TEMPLATE, IncidentContext, TaskTemplate, load_task_template
++
++MSGS = [{"role": "user", "content": "y" * 4000}]  # estimate: 1000 input tokens
++
++
++# ================================================================ 1. token accounting
++@pytest.mark.parametrize("usage, expected", [
++    ({"prompt_tokens": 7, "completion_tokens": 3}, (7, 3, USAGE_API)),
++    ({"input_tokens": 7, "output_tokens": 3}, (7, 3, USAGE_API)),
++    ({"prompt_tokens": 7, "total_tokens": 10}, (7, 3, USAGE_API)),
++    ({"completion_tokens": 3, "total_tokens": 10}, (7, 3, USAGE_API)),
++    ({"prompt_tokens": 7}, (7, 100, USAGE_PARTIAL)),
++    ({"prompt_tokens": 0, "completion_tokens": 0}, (1000, 100, USAGE_ESTIMATED)),
++    ({"prompt_tokens": "7", "completion_tokens": None}, (1000, 100, USAGE_ESTIMATED)),
++    (None, (1000, 100, USAGE_ESTIMATED)),
++])
++def test_read_usage(usage, expected):
++    payload = {} if usage is None else {"usage": usage}
++    assert read_usage(payload, MSGS, "x" * 400) == expected
++
++
++class _H(BaseHTTPRequestHandler):
++    payloads: list = []
++
++    def do_POST(self):
++        self.rfile.read(int(self.headers["Content-Length"]))
++        raw = json.dumps(_H.payloads.pop(0) if len(_H.payloads) > 1 else _H.payloads[0]).encode()
++        self.send_response(200)
++        self.send_header("Content-Type", "application/json")
++        self.send_header("Content-Length", str(len(raw)))
++        self.end_headers()
++        self.wfile.write(raw)
++
++    def log_message(self, *a):
++        pass
++
++
++@pytest.fixture
++def api():
++    srv = HTTPServer(("127.0.0.1", 0), _H)
++    threading.Thread(target=srv.serve_forever, daemon=True).start()
++    yield f"http://127.0.0.1:{srv.server_port}/v1"
++    srv.shutdown()
++
++
++def test_cost_cap_uses_provider_token_counts(api, repo, mk_settings):
++    """Tiny messages but a large reported usage: the cap must trip on the reported tokens."""
++    _H.payloads = [{"choices": [{"message": {"content": bash("ls")}}],
++                    "usage": {"prompt_tokens": 400_000, "completion_tokens": 100_000}}]
++    model = OpenAICompatModel(ModelConfig(model="m", base_url=api, api_key_env="",
++                                          price_in_per_mtok=1.0, price_out_per_mtok=2.0))
++    # each call: 0.4 + 0.2 = $0.60 -> cap of $1.00 stops the run after the 2nd call
++    result = Agent(model, LocalEnv(repo), mk_settings(max_cost=1.0, max_total_tokens=0)).run("x")
++    assert result.exit_status == "LimitsExceeded" and "cost" in result.detail
++    u = result.usage["small"]
++    assert u.calls == 2 and u.input_tokens == 800_000 and u.output_tokens == 200_000 and u.estimated_calls == 0
++    assert result.total_cost == pytest.approx(1.2)
++
++
++def test_estimated_calls_are_counted(api, repo, mk_settings):
++    _H.payloads = [{"choices": [{"message": {"content": FIX}}]},
++                   {"choices": [{"message": {"content": SUBMIT}}], "usage": {"prompt_tokens": 5, "completion_tokens": 5}}]
++    model = OpenAICompatModel(ModelConfig(model="m", base_url=api, api_key_env=""))
++    result = Agent(model, LocalEnv(repo), mk_settings()).run("x")
++    assert result.submitted and result.usage["small"].estimated_calls == 1
++
++
++def test_scripted_model_can_report_api_tokens():
++    r = ScriptedModel(["a"], tokens_per_call=(11, 22)).query([{"role": "user", "content": "x"}])
++    assert (r.input_tokens, r.output_tokens, r.usage_source) == (11, 22, USAGE_API)
++    assert ScriptedModel(["a"]).query([{"role": "user", "content": "x"}]).usage_source == USAGE_ESTIMATED
++
++
++# ================================================================ 3. reviewer pass probability
++@pytest.mark.parametrize("text, prob", [
++    ("APPROVE\nPASS_PROBABILITY: 0.8", 0.8),
++    ("APPROVE\npass probability = 75%", 0.75),
++    ("REJECT\nPASS_PROBABILITY: 42", 0.42),
++    ("APPROVE\nPASS_PROBABILITY: 7", 0.07),
++    ("APPROVE\nPASS_PROBABILITY: 250", 1.0),
++    ("APPROVE\nPASS_PROBABILITY: high", None),
++    ("APPROVE", None),
++    ("", None),
++])
++def test_parse_pass_probability(text, prob):
++    got = parse_pass_probability(text)
++    assert got == (pytest.approx(prob) if prob is not None else None)
++
++
++def test_pass_probability_never_changes_the_verdict():
++    v = parse_verdict("REJECT: wrong file\nPASS_PROBABILITY: 0.99\nfix utils.py")
++    assert not v.ok and v.pass_probability == pytest.approx(0.99)
++    assert "PASS_PROBABILITY" not in v.feedback and "wrong file" in v.feedback and "utils.py" in v.feedback
++    v = parse_verdict("APPROVE\nPASS_PROBABILITY: 0.0")
++    assert v.ok and v.pass_probability == 0.0
++    v = parse_verdict("PASS_PROBABILITY: 0.1\nREJECT")  # unparseable first line still fails open
++    assert v.ok and v.pass_probability == pytest.approx(0.1)
++    assert parse_verdict("garbage reply").ok
++
++
++def _reviewer(*replies):
++    it = iter(replies)
++    return ScriptedModel([lambda m: next(it)] * len(replies))
++
++
++def test_hybrid_logs_pass_probability_in_result_usage_and_trajectory(repo, mk_settings, tmp_path):
++    path = tmp_path / "t.json"
++    small = ScriptedModel([FIX, SUBMIT, SUBMIT])
++    big = _reviewer("REJECT\nPASS_PROBABILITY: 0.9\nadd a test", "APPROVE\nPASS_PROBABILITY: 0.3")
++    result = HybridAgent(small, big, LocalEnv(repo), mk_settings(final_review=True),
++                         trajectory_path=path).run("x")
++    assert result.submitted  # outcome follows APPROVE/REJECT, not the probabilities
++    assert [r["verdict"] for r in result.reviews] == ["REJECT", "APPROVE"]
++    assert [r["pass_probability"] for r in result.reviews] == [0.9, 0.3]
++    assert result.usage["big"].pass_probabilities == [0.9, 0.3]
++    data = json.loads(path.read_text())
++    assert [r["pass_probability"] for r in data["reviews"]] == [0.9, 0.3]
++    assert data["usage"]["big"]["pass_probabilities"] == [0.9, 0.3]
++
++
++def test_unparseable_review_with_probability_still_approves(repo, mk_settings):
++    big = _reviewer("I think it is fine?? PASS_PROBABILITY: n/a")
++    result = HybridAgent(ScriptedModel([FIX, SUBMIT]), big, LocalEnv(repo), mk_settings(final_review=True)).run("x")
++    assert result.submitted and result.reviews[0]["pass_probability"] is None
++
++
++def test_review_cap_still_holds_with_probabilities(repo, mk_settings):
++    big = ScriptedModel(["REJECT\nPASS_PROBABILITY: 0.01\nno"], repeat_last=True)
++    small = ScriptedModel([FIX] + [SUBMIT] * 5)
++    result = HybridAgent(small, big, LocalEnv(repo), mk_settings(final_review=True, max_review_rejections=2)).run("x")
++    assert result.submitted and len(result.reviews) == 2
++
++
++def test_reviewer_prompt_asks_for_probability():
++    from hagent.prompts import REVIEWER_SYSTEM
++    assert "PASS_PROBABILITY" in REVIEWER_SYSTEM and REVIEWER_SYSTEM.index("APPROVE") < REVIEWER_SYSTEM.index("PASS_")
++
++
++# ================================================================ 4. task template
++def test_default_template_frames_verdict_as_hypothesis():
++    text = load_task_template().render(IncidentContext(task="Gripper never closes.", router_verdict="code bug"))
++    assert text.startswith("Gripper never closes.")
++    assert "hypothesis" in text.lower() and "verify" in text.lower() and "code bug" in text
++    assert "(not provided)" in text  # empty fields are explicit, not silently blank
++
++
++def test_template_file_roundtrip(tmp_path):
++    f = tmp_path / "t.md"
++    f.write_text("T: <<TASK>>\nV: <<ROUTER_VERDICT>>\nE: <<LOCATION_EVIDENCE>>\nR: <<REPRO_COMMAND>>\n"
++                 "S: <<ROLLOUT_SUMMARY>>\nP: <<REPO_PATH>>\n")
++    ctx = IncidentContext("fail", "code bug", "wrapper.py:40", "run_rung1 --seeds 10", "12% success", "/repo/ctrl")
++    assert load_task_template(f).render(ctx) == (
++        "T: fail\nV: code bug\nE: wrapper.py:40\nR: run_rung1 --seeds 10\nS: 12% success\nP: /repo/ctrl\n")
++
++
++def test_template_values_are_not_resubstituted():
++    out = TaskTemplate("<<TASK>> | <<REPO_PATH>>").render(IncidentContext("log says <<REPO_PATH>>", repo_path="/r"))
++    assert out == "log says <<REPO_PATH>> | /r\n"
++
++
++@pytest.mark.parametrize("text, msg", [("<<TASK>> <<SECRET_ANSWER>>", "unknown"), ("no task here", "TASK")])
++def test_template_validation(text, msg):
++    with pytest.raises(ValueError, match=msg):
++        TaskTemplate(text)
++
++
++def test_template_requires_task():
++    with pytest.raises(ValueError):
++        TaskTemplate(DEFAULT_TEMPLATE).render(IncidentContext(task="  "))
++
++
++def test_example_template_file_is_valid():
++    from pathlib import Path
++    path = Path(__file__).resolve().parent.parent / "examples" / "task_template.md"
++    assert load_task_template(path).text == DEFAULT_TEMPLATE
++
++
++# ================================================================ 5. custom commands
++CMD = CustomCommand("run_rung1", "/opt/run_rung1", "Run staged validation. Usage: run_rung1 --seeds N", 5000)
++
++
++def test_commands_config_parsing():
++    s = settings_from_dict({"commands": [{"name": "run_rung1", "path": "/x", "description": "d", "max_output_chars": 9}]})
++    assert s.commands == [CustomCommand("run_rung1", "/x", "d", 9)]
++    with pytest.raises(ValueError, match="duplicate"):
++        settings_from_dict({"commands": [{"name": "a", "path": "/x", "description": "d"}] * 2})
++    for bad in ({"name": "bad name", "path": "/x", "description": "d"},
++                {"name": "a", "path": "", "description": "d"},
++                {"name": "a", "path": "/x", "description": " "},
++                {"name": "a", "path": "/x", "description": "d", "max_output_chars": -1},
++                {"name": "a", "path": "/x", "description": "d", "oops": 1}):
++        with pytest.raises((ValueError, TypeError)):
++            settings_from_dict({"commands": [bad]})
++    with pytest.raises(ValueError, match="backend"):
++        settings_from_dict({"env": {"backend": "vm"}})
++
++
++def test_system_prompt_lists_commands_and_is_unchanged_without_them():
++    assert build_system_prompt("/r", commands=()) == build_system_prompt("/r")
++    assert "Extra commands" not in build_system_prompt("/r")
++    p = build_system_prompt("/r", commands=[CMD])
++    assert "`run_rung1`: Run staged validation. Usage: run_rung1 --seeds N" in p
++
++
++def test_agent_system_prompt_includes_commands(repo):
++    s = Settings(commands=[CMD])
++    assert "run_rung1" in Agent(ScriptedModel([]), LocalEnv(repo), s).system_prompt
++    assert "run_rung1" in HybridAgent(ScriptedModel([]), ScriptedModel([]), LocalEnv(repo), s).system_prompt
++
++
++@pytest.mark.parametrize("command, limit", [
++    ("run_rung1 --seeds 10", 5000),
++    ("cd /x && run_rung1 | tail -5", 5000),
++    ("echo run_rung1_extra", 3000),
++    ("grep -rn foo .", 3000),
++])
++def test_observation_limit_per_command(repo, command, limit):
++    s = Settings(limits=Limits(obs_max_chars=3000), commands=[CMD, CustomCommand("other", "/y", "d", 0)])
++    assert Agent(ScriptedModel([]), LocalEnv(repo), s).observation_limit(command) == limit
++
++
++def test_custom_command_runs_with_its_own_truncation(repo, mk_settings, tmp_path_factory):
++    tool = tmp_path_factory.mktemp("tools") / "rung1"
++    tool.write_text("#!/bin/bash\nfor ((i=0;i<400;i++)); do echo \"seed $i ok\"; done\necho PASS_RATE=0.9\n")
++    tool.chmod(0o755)
++    s = mk_settings(obs_max_chars=200)
++    s.commands = [CustomCommand("run_rung1", str(tool), "validate", 8000)]
++    small = ScriptedModel([bash("run_rung1 --seeds 400"), bash("cat app.py; for ((i=0;i<400;i++)); do echo x; done"),
++                           FIX, SUBMIT])
++    result = solve("x", repo, s, "small", small=small)
++    assert result.submitted
++    rung_obs, plain_obs = small.calls[1][-1]["content"], small.calls[2][-1]["content"]
++    assert "PASS_RATE=0.9" in rung_obs and "seed 0 ok" in rung_obs and "elided" not in rung_obs
++    assert len(plain_obs) < 400  # ordinary commands keep obs_max_chars
++
++
++def test_solve_rejects_missing_command_path(repo, mk_settings):
++    s = mk_settings()
++    s.commands = [CustomCommand("run_rung1", "/nonexistent/rung1", "x")]
++    with pytest.raises(EnvError):
++        solve("x", repo, s, "small", small=ScriptedModel([SUBMIT]))
++
++
++# ================================================================ env wiring in solve()
++def test_solve_uses_injected_env_and_leaves_it_open(repo, mk_settings):
++    class Spy(LocalEnv):
++        closed = False
++
++        def close(self):
++            Spy.closed = True
++            super().close()
++
++    env = Spy(repo)
++    result = solve("x", "/ignored", mk_settings(), "small", small=ScriptedModel([FIX, SUBMIT]), env=env)
++    assert result.submitted and "a + b" in result.patch and not Spy.closed
++
++
++def test_solve_docker_backend_without_image_fails_cleanly(repo, mk_settings):
++    s = mk_settings()
++    s.env.backend = "docker"
++    with pytest.raises(EnvError, match="image"):
++        solve("x", repo, s, "small", small=ScriptedModel([SUBMIT]))
++
++
++def test_solve_end_to_end_in_docker(repo, mk_settings):
++    from test_env_parity import DOCKER_OK, IMAGE, RUNTIME
++    if not DOCKER_OK:
++        pytest.skip("docker or test image not available")
++    s = mk_settings()
++    s.env.backend, s.env.image, s.env.runtime, s.env.cpus, s.env.memory = "docker", IMAGE, RUNTIME, 1.0, "512m"
++    big = ScriptedModel(["APPROVE\nPASS_PROBABILITY: 0.7"], repeat_last=True)
++    s.limits.final_review = True
++    result = solve("fix add", repo, s, "hybrid", small=ScriptedModel([FIX, SUBMIT]), big=big)
++    assert result.submitted and "+    return a + b" in result.patch
++    assert (repo / "app.py").read_text() == "def add(a, b):\n    return a - b\n"  # original untouched
++    assert result.reviews[0]["pass_probability"] == 0.7
+-- 
+2.43.0
+
