@@ -51,13 +51,18 @@ excludes files, diff options or hooks on the host cannot change a name.
 Readers that only need to look at the files (the mock backend's file rules, the synthetic trace
 sources) use ``view(code_ref)``: one cached working copy per name, never to be written to.
 
-TODO(F2b): ``extend`` copies ``eval_config`` from the code it started from (ISSUES #2 is open);
-it will come from the patched working copy through a config loader.
+The eval config of a ``CodeRef`` is read from the files, never carried over from the code it was
+built from (ISSUES #2): ``code_ref_of``, ``adopt``, ``extend`` and ``base_ref`` (unless given an
+explicit config) call a config loader on the working copy, so a config edit by a repair agent is
+what the patched ``CodeRef`` says. ``file_config_loader(path)`` is the loader for a YAML / JSON file
+in the repo (YAML needs the optional ``yaml`` extra; the format is TODO(verify)); ``WorkspaceManager(config_loader=...)`` replaces it. A missing or unreadable file is a
+``WorkspaceError``, not an empty config.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -66,7 +71,7 @@ import tempfile
 import weakref
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Optional, Union
+from typing import Any, Callable, Mapping, Optional, Union
 
 from router.schemas import CodeRef
 
@@ -87,7 +92,46 @@ Diff = Union[str, bytes]
 
 
 class WorkspaceError(RuntimeError):
-    """Code that cannot be built: unknown or old-recipe name, changed base checkout, corrupt store."""
+    """Code that cannot be built: unknown or old-recipe name, changed base checkout, corrupt store,
+    an eval config that cannot be read."""
+
+
+ConfigLoader = Callable[[Path], Mapping[str, Any]]
+EVAL_CONFIG_PATH = "config/eval.yaml"        # TODO(verify): where the controller repo keeps its eval config
+
+
+def file_config_loader(path: str = EVAL_CONFIG_PATH) -> ConfigLoader:
+    """A loader that reads the eval config from ``path`` (relative to the working copy): JSON for
+    ``.json``, YAML otherwise. The file must exist and hold a mapping (an empty YAML file is ``{}``)."""
+    def load(workdir: Path) -> Mapping[str, Any]:
+        f = Path(workdir) / path
+        if not f.is_file():
+            raise WorkspaceError(f"no eval config at {path!r} in {workdir}; pass a config_loader that reads "
+                                 f"this repo's config")
+        try:
+            text = f.read_text(encoding="utf-8")
+            if f.suffix == ".json":
+                data = json.loads(text)
+            else:
+                try:
+                    import yaml
+                except ImportError:
+                    raise WorkspaceError(f"reading {path!r} needs pyyaml (pip install 'vla-repair-ladder[yaml]'), "
+                                         f"or use a .json config or a custom config_loader") from None
+                data = yaml.safe_load(text)
+        except WorkspaceError:
+            raise
+        except Exception as e:                       # unreadable file, bad JSON / YAML
+            raise WorkspaceError(f"cannot read the eval config {path!r}: {e}") from e
+        if data is None:
+            return {}
+        if not isinstance(data, Mapping):
+            raise WorkspaceError(f"eval config {path!r} is not a mapping")
+        return data
+    return load
+
+
+load_eval_config: ConfigLoader = file_config_loader()
 
 
 class UnrebuildablePatch(WorkspaceError):
@@ -217,9 +261,10 @@ def _named(workdir: Path) -> tuple[str, bytes]:
     return code_name(base, diff), diff
 
 
-def code_ref_of(workdir: str | Path, eval_config: Optional[Mapping] = None) -> CodeRef:
-    """The name of the code in a working copy made by ``materialize``, edits included."""
-    return CodeRef(_named(Path(workdir))[0], dict(eval_config or {}))
+def code_ref_of(workdir: str | Path, config_loader: ConfigLoader = load_eval_config) -> CodeRef:
+    """The code in a working copy made by ``materialize``, edits included: its name, and the eval
+    config ``config_loader`` reads from the copy's files."""
+    return CodeRef(_named(Path(workdir))[0], dict(config_loader(Path(workdir))))
 
 
 # --------------------------------------------------------------------------- #
@@ -356,9 +401,11 @@ class PatchStore:
 class WorkspaceManager:
     """``bases``: label -> checkout directory (read only). ``store``: the patch store directory
     (created if missing; always written). Name a checkout's current content with
-    ``base_ref(label)``."""
+    ``base_ref(label)``. ``config_loader``: working copy -> eval config (default: ``config/eval.yaml``)."""
 
-    def __init__(self, store: str | Path, bases: Mapping[str, str | Path]):
+    def __init__(self, store: str | Path, bases: Mapping[str, str | Path],
+                 config_loader: ConfigLoader = load_eval_config):
+        self.config_loader = config_loader
         self.store = PatchStore(store)
         self.bases = {label: Path(p).resolve() for label, p in bases.items()}
         for label, p in self.bases.items():
@@ -381,12 +428,14 @@ class WorkspaceManager:
         return b"" if self._parts(code_hash)[2] is None else self.store.get(code_hash)
 
     def base_ref(self, label: str, eval_config: Optional[Mapping] = None) -> CodeRef:
-        """The name of the checkout ``label`` as it is now: ``label@<tree12>``."""
+        """The checkout ``label`` as it is now: ``label@<tree12>``, with ``eval_config`` if given,
+        else the config the loader reads from the checkout."""
         if label not in self.bases:
             raise WorkspaceError(f"unknown base {label!r}; registered: {sorted(self.bases)}")
         with tempfile.TemporaryDirectory(prefix="ws-base-") as td:
             tree = self._snapshot(label, Path(td) / "repo")
-        return CodeRef(f"{label}@{tree[:12]}", dict(eval_config or {}))
+            config = dict(self.config_loader(Path(td) / "repo") if eval_config is None else eval_config)
+        return CodeRef(f"{label}@{tree[:12]}", config)
 
     def base_name(self, code_ref: CodeRef) -> str:
         """The base (``label@tree12``) that ``code_ref`` is built on."""
@@ -494,12 +543,13 @@ class WorkspaceManager:
         with tempfile.TemporaryDirectory(prefix="ws-extend-") as td:
             work = self.materialize(code_ref, Path(td) / "repo")
             self._apply(work, data)
-            return self.adopt(work, code_ref.eval_config)
+            return self.adopt(work)
 
-    def adopt(self, workdir: str | Path, eval_config: Optional[Mapping] = None) -> CodeRef:
-        """Name the code in a working copy (edits included) and store its cumulative diff."""
+    def adopt(self, workdir: str | Path) -> CodeRef:
+        """Name the code in a working copy (edits included), read its eval config from the copy,
+        and store its cumulative diff."""
         name, diff = _named(Path(workdir))
-        return self.register(CodeRef(name, dict(eval_config or {})), diff)
+        return self.register(CodeRef(name, dict(self.config_loader(Path(workdir)))), diff)
 
     def view(self, code_ref: CodeRef) -> Path:
         """A cached working copy of ``code_ref`` for readers. Do not write to it. A failed build
@@ -514,5 +564,6 @@ class WorkspaceManager:
         return self._views[name]
 
 
-__all__ = ["BASE_REF", "FileContains", "PatchStore", "UnrebuildablePatch", "WorkspaceError", "WorkspaceManager",
-           "as_bytes", "as_text", "base_of", "code_name", "code_ref_of", "cumulative_diff", "split_code_name"]
+__all__ = ["BASE_REF", "ConfigLoader", "EVAL_CONFIG_PATH", "FileContains", "PatchStore", "UnrebuildablePatch", "WorkspaceError", "WorkspaceManager",
+           "as_bytes", "as_text", "base_of", "code_name", "code_ref_of", "cumulative_diff", "file_config_loader", "load_eval_config",
+           "split_code_name"]

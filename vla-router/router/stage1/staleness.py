@@ -96,7 +96,7 @@ class StalenessProbe(Check):
     def run(self, incident: Incident) -> list[Evidence]:
         return self.run_partial(incident)[0]
 
-    def run_partial(self, incident: Incident) -> tuple[list[Evidence], list[str]]:
+    def run_partial(self, incident: Incident) -> tuple[list[Evidence], list[V.PartialSkip]]:
         """The clean half is required (``TraceUnavailable``). The incident half
         is needed only when the incident was observed in incident mode; if its
         traces are missing, ``staleness_variable`` was not checked, and that is
@@ -122,12 +122,12 @@ class StalenessProbe(Check):
             except TraceUnavailable as exc:
                 why = f"incident-mode traces unavailable ({exc}); server staleness ({V.SIG_STALENESS_VARIABLE}) not checked"
                 log.warning("staleness: %s", why)
-                return out, [why]
+                return out, [V.PartialSkip(why, {V.SIG_STALENESS_VARIABLE})]
             if not episode_mean_delays(inc):
                 why = (f"incident-mode traces have no (observation step, applied step) pairs; "
                        f"server staleness ({V.SIG_STALENESS_VARIABLE}) not checked")
                 log.warning("staleness: %s", why)
-                return out, [why]
+                return out, [V.PartialSkip(why, {V.SIG_STALENESS_VARIABLE})]
             gap = mode_gap(clean, inc)
             d = self.nominal.deviation(M_MODE_GAP, gap, "high", self.fire_z)
             if d.fires:

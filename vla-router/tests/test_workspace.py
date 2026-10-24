@@ -181,3 +181,16 @@ def test_file_predicates_round_trip_and_stay_inside_the_code_root():
     for bad in ("/etc/passwd", "../outside.py"):
         with pytest.raises(ValueError):
             FileContains(bad, "x")
+
+
+def test_the_eval_config_loader_works_without_pyyaml_for_json_and_says_so_for_yaml(tmp_path, monkeypatch):
+    import sys
+    from ladder.workspace import WorkspaceError, file_config_loader
+    (tmp_path / "e.json").write_text('{"render": {"preset": "x"}}')
+    (tmp_path / "e.yaml").write_text("render:\n  preset: x\n")
+    monkeypatch.setitem(sys.modules, "yaml", None)                       # import yaml -> ImportError
+    assert file_config_loader("e.json")(tmp_path) == {"render": {"preset": "x"}}
+    with pytest.raises(WorkspaceError, match="needs pyyaml"):
+        file_config_loader("e.yaml")(tmp_path)
+    monkeypatch.undo()
+    assert file_config_loader("e.yaml")(tmp_path) == {"render": {"preset": "x"}}

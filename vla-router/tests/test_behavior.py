@@ -199,3 +199,22 @@ def test_records_round_trip():
 def test_metrics_empty_without_grasps():
     assert behavior_metrics(make_behavior_traces(3, faults=BehaviorFaults(no_grasp=True))) == {}
     assert set(behavior_metrics(make_behavior_traces(3))) >= {M_BIAS}
+
+
+def test_a_part_that_was_not_judged_names_its_unchecked_signals():
+    """ISSUES #59: each "not judged" note is also a PartialSkip with the signals it leaves unchecked."""
+    from router import vocab as V
+    from router.behavior_synthetic import BehaviorFaults, make_behavior_nominal, make_behavior_traces
+    from router.behavior import analyze_behavior
+    nominal = make_behavior_nominal()
+    a = analyze_behavior(make_behavior_traces(6, faults=BehaviorFaults(no_grasp=True)), nominal)
+    by_note = {p.reason: p.signals for p in a.partial}
+    assert len(a.partial) == len(a.notes) == 2
+    assert next(s for r, s in by_note.items() if r.startswith("implied target")) == {
+        V.SIG_IMPLIED_TARGET_OFFSET, V.SIG_IMPLIED_TARGET_OK, V.SIG_IMPLIED_TARGET_WRONG}
+    assert next(s for r, s in by_note.items() if r.startswith("failure phase")) == {
+        V.failure_phase(p) for p in V.PHASES}
+    done = analyze_behavior(make_behavior_traces(6, faults=BehaviorFaults(fail_phase="grasp")), nominal)
+    assert done.partial == () and done.evidence
+    empty = analyze_behavior(make_behavior_traces(6, success=True), nominal)
+    assert [p.signals for p in empty.partial] == [V.SIGNALS_BY_SOURCE["behavior"]]

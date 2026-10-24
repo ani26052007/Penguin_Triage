@@ -13,8 +13,9 @@ Nothing reads as "checked, nothing found" unless it was checked:
 * ``skipped``      (source, reason) for a check that could not read its inputs
                    (``TraceUnavailable``) and for a registered source with no
                    check configured;
-* ``partial``      (source, reason) for a check that ran but could not look at
-                   part of its inputs (``Check.run_partial``).
+* ``partial``      (source, PartialSkip) for a check that ran but could not look
+                   at part of its inputs (``Check.run_partial``); the skip names the
+                   signals that part would have emitted.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from typing import Sequence
 
 from router.prereq.trace import TraceUnavailable
 from router.schemas import Evidence, Incident
+from router.vocab import PartialSkip
 from router.stage1.base import Check, log
 
 EVIDENCE_SOURCES = ("contract_cfg", "contract_obs", "contract_action", "staleness", "sanity")
@@ -36,7 +38,7 @@ NOT_CONFIGURED = "no check configured for this source"
 class Stage1Result:
     evidence: tuple[Evidence, ...]
     skipped: tuple[tuple[str, str], ...] = ()     # (source, reason): did not run
-    partial: tuple[tuple[str, str], ...] = ()     # (source, reason): ran, but part of it was not checked
+    partial: tuple[tuple[str, PartialSkip], ...] = ()   # ran, but part of it was not checked
     sources_run: tuple[str, ...] = ()             # ran (fully or partly), in registry order
 
 
@@ -50,7 +52,7 @@ def run_stage1(incident: Incident, checks: Sequence[Check]) -> Stage1Result:
 
     evidence: list[Evidence] = []
     skipped: list[tuple[str, str]] = []
-    partial: list[tuple[str, str]] = []
+    partial: list[tuple[str, PartialSkip]] = []
     ran: set[str] = set()
     for check in checks:
         try:
@@ -64,7 +66,7 @@ def run_stage1(incident: Incident, checks: Sequence[Check]) -> Stage1Result:
             raise ValueError(f"check {check.source!r} emitted evidence from another source: {wrong}")
         ran.add(check.source)
         evidence += found
-        partial += [(check.source, why) for why in blind]
+        partial += [(check.source, skip) for skip in blind]
     skipped += [(s, NOT_CONFIGURED) for s in EVIDENCE_SOURCES if s not in sources]
 
     ids = [e.id for e in evidence]

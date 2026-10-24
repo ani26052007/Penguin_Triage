@@ -56,7 +56,8 @@ NORM_SRC = '''def normalize_inputs(obs, stats=None):
     stats = stats or {}
     return {k: (v - stats.get(k, (0.0, 1.0))[0]) / stats.get(k, (0.0, 1.0))[1] for k, v in obs.items()}
 '''
-BASE_FILES = {WRAPPER: WRAPPER_SRC, "controller/norm.py": NORM_SRC, "controller/__init__.py": "",
+EVAL_CONFIG = "config/eval.yaml"
+BASE_FILES = {EVAL_CONFIG: "render:\n  preset: eval_fast\n", WRAPPER: WRAPPER_SRC, "controller/norm.py": NORM_SRC, "controller/__init__.py": "",
               "README.md": "controller repo\n", ".gitignore": "secrets.txt\n__pycache__/\n"}
 BLOB = "assets/blob.bin"
 

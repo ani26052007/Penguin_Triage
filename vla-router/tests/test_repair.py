@@ -12,13 +12,14 @@ import pytest
 
 from hagent.config import EnvConfig
 from hagent.models import ScriptedModel, bash
+from ladder.workspace import load_eval_config
 from ladder.repair import HagentRepairer, RepairKind, RepairRequest
 from router.report import verdict_text
 from router.router import route
 from router.schemas import CodeRef
 from tests.ladder_cases import CASES
 from tests.router_cases import default_config
-from tests.workspace_cases import (BLOB, BUG_LINE, FIXED_LINE, STEP_A_LINE, SUBMIT, WRAPPER, hagent_settings,
+from tests.workspace_cases import (BLOB, BUG_LINE, EVAL_CONFIG, FIXED_LINE, STEP_A_LINE, SUBMIT, WRAPPER, hagent_settings,
                                    make_checkout, manager, recording, replace_line, snapshot)
 
 FIX = replace_line(BUG_LINE, FIXED_LINE)
@@ -58,7 +59,7 @@ def test_repair_returns_a_rebuildable_code_ref_and_leaves_the_original_checkout_
     r = HagentRepairer(mgr, hagent_settings(), mode="small", small=ScriptedModel([FIX, SUBMIT]))
     out = r.repair(request(code=c0))
     assert out.code_ref.code_hash.startswith(c0.code_hash + "+") and out.code_ref.key() != c0.key()
-    assert out.code_ref.eval_config == c0.eval_config            # TODO(F2b): from the patched copy (ISSUES #2)
+    assert out.code_ref.eval_config == load_eval_config(mgr.materialize(out.code_ref))   # read from the patched files
     assert FIXED_LINE in out.diff and out.code_diff == mgr.diff_of(out.code_ref) and "Submitted" in out.notes
     assert (mgr.materialize(out.code_ref) / WRAPPER).read_text().count(FIXED_LINE) == 1
     assert snapshot(checkout) == before and r.calls == 1
@@ -160,3 +161,25 @@ def test_a_binary_edit_is_reported_as_unrebuildable(mgr, c0):
     binary = bash(f"printf 'changed\\000' > {BLOB}", "Editing the blob.")
     out = HagentRepairer(mgr, hagent_settings(), mode="small", small=ScriptedModel([binary, SUBMIT])).repair(request(code=c0))
     assert out.code_ref == c0 and out.rebuild_error and "Binary files" in out.diff
+
+
+def test_a_config_edit_shows_up_in_the_patched_eval_config(mgr, c0):
+    """ISSUES #2: the patched CodeRef's eval config is what the patched file says, not the base's."""
+    assert c0.eval_config == {"render": {"preset": "eval_fast"}}
+    edit = bash(f"sed -i 's/eval_fast/train_like/' {EVAL_CONFIG}", "Fixing the render preset.")
+    out = HagentRepairer(mgr, hagent_settings(), mode="small", small=ScriptedModel([edit, SUBMIT])
+                         ).repair(request(RepairKind.CONFIG, code=c0))
+    assert out.code_ref.eval_config == {"render": {"preset": "train_like"}} != c0.eval_config
+    assert out.code_ref.key() != c0.key() and mgr.diff_of(out.code_ref)
+
+
+def test_an_agent_that_commits_its_fix_still_yields_the_patch(mgr, c0):
+    """ISSUES #56: hagent diffs against the commit it started at, so `git commit` does not hide the
+    change (it used to give an empty patch, or a `mismatch` refusal)."""
+    commit = bash("git -c user.name=agent -c user.email=agent@example.invalid commit -qam 'fix wrapper'",
+                  "Committing the fix.")
+    out = HagentRepairer(mgr, hagent_settings(), mode="small", small=ScriptedModel([FIX, commit, SUBMIT])
+                         ).repair(request(code=c0))
+    assert not out.rebuild_error, out.rebuild_error
+    assert FIXED_LINE in out.diff and out.code_ref.key() != c0.key()
+    assert (mgr.materialize(out.code_ref) / WRAPPER).read_text().count(FIXED_LINE) == 1

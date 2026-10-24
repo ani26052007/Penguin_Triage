@@ -30,7 +30,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Mapping, Optional, Sequence
 
-from router.prereq.trace import TraceUnavailable
+from router.prereq.trace import TraceUnavailable, verify_code_key
 from router.schemas import Incident, Mode
 
 PHASES = ("reach", "grasp", "lift", "place")
@@ -98,6 +98,7 @@ class BehaviorTrace:
     success: bool
     grasp: Optional[GraspRecord] = None
     subtasks: tuple[SubtaskProgress, ...] = ()
+    code_key: Optional[str] = None       # ``CodeRef.key()`` the episode ran with (see ``BehaviorSource.load``)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "mode", Mode(self.mode))
@@ -122,21 +123,30 @@ class BehaviorTrace:
     def to_dict(self) -> dict:
         return {"seed": self.seed, "mode": self.mode.value, "success": self.success,
                 "grasp": self.grasp.to_dict() if self.grasp else None,
-                "subtasks": [s.to_dict() for s in self.subtasks]}
+                "subtasks": [s.to_dict() for s in self.subtasks], "code_key": self.code_key}
 
     @classmethod
     def from_dict(cls, d: Mapping) -> "BehaviorTrace":
         return cls(int(d["seed"]), Mode(d["mode"]), bool(d["success"]),
                    GraspRecord.from_dict(d["grasp"]) if d.get("grasp") else None,
-                   tuple(SubtaskProgress.from_dict(s) for s in d.get("subtasks", ())))
+                   tuple(SubtaskProgress.from_dict(s) for s in d.get("subtasks", ())), d.get("code_key"))
 
 
 class BehaviorSource(ABC):
-    """Resolves an incident's log references into behavior traces."""
+    """Resolves an incident's log references into behavior traces. Template method, like
+    ``TraceSource``: ``load`` checks the code key, subclasses implement ``_load``."""
+
+    def load(self, incident: Incident, mode: Mode) -> list[BehaviorTrace]:
+        """Behavior traces of the incident's episodes logged in ``mode``, all logged with
+        ``incident.code_ref``. Raises ``TraceUnavailable`` if there are none or they belong to
+        other code."""
+        traces = self._load(incident, mode)
+        verify_code_key(traces, incident, f"{Mode(mode).value}-mode behavior traces")
+        return traces
 
     @abstractmethod
-    def load(self, incident: Incident, mode: Mode) -> list[BehaviorTrace]:
-        """Behavior traces of the incident's episodes logged in ``mode``.
+    def _load(self, incident: Incident, mode: Mode) -> list[BehaviorTrace]:
+        """The stored behavior traces for ``incident`` in ``mode``, each with its ``code_key``.
 
         Raises ``TraceUnavailable`` if there are none.
         TODO(verify): the real reference format and where the real backend
@@ -151,7 +161,7 @@ class InMemoryBehaviorSource(BehaviorSource):
     def __init__(self, by_ref: Mapping[str, Sequence[BehaviorTrace]]) -> None:
         self._by_ref = {k: list(v) for k, v in by_ref.items()}
 
-    def load(self, incident: Incident, mode: Mode) -> list[BehaviorTrace]:
+    def _load(self, incident: Incident, mode: Mode) -> list[BehaviorTrace]:
         mode = Mode(mode)
         ref = incident.log_refs.get(mode.value)
         if ref is None:

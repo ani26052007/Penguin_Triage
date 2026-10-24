@@ -17,6 +17,7 @@ from abc import ABC, abstractmethod
 from typing import ClassVar, Optional, Sequence
 
 from router.schemas import Evidence, Incident
+from router import vocab as V
 
 log = logging.getLogger("router.stage1")
 
@@ -31,11 +32,11 @@ class Check(ABC):
     def run(self, incident: Incident) -> list[Evidence]:
         ...
 
-    def run_partial(self, incident: Incident) -> tuple[list[Evidence], list[str]]:
+    def run_partial(self, incident: Incident) -> tuple[list[Evidence], list[V.PartialSkip]]:
         """``run`` plus the parts the check could not look at although it ran:
-        (evidence, reasons). ``run_stage1`` records each reason as a partial
-        skip, so a half-blind check never reads as "checked, nothing found".
-        Checks that can be partly blind override this."""
+        (evidence, skips). ``run_stage1`` records each as a partial skip whose
+        signals are unchecked, so a half-blind check never reads as "checked,
+        nothing found". Checks that can be partly blind override this."""
         return self.run(incident), []
 
 

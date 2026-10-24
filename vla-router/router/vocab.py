@@ -33,6 +33,8 @@ by the caller with ``ladder.stats`` (anchors: failure rate, nominal band):
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 # --- evidence signals ------------------------------------------------------ #
 SIG_CONTRACT_VIOLATION = "contract_violation"        # cfg / obs / action contract, not render settings
 SIG_RENDER_SETTINGS_DIFFER = "render_settings_differ"  # eval render != training render (gates C_render)
@@ -78,6 +80,22 @@ ALL_SIGNALS: frozenset[str] = frozenset({
     SIG_CONTRACT_VIOLATION, SIG_RENDER_SETTINGS_DIFFER, SIG_RENDER_PHYSICS_BROKEN, SIG_REFERENCE_UNQUALIFIED,
     SIG_STALENESS_VARIABLE, SIG_STALENESS_CONSTANT, SIG_IMPLIED_TARGET_OFFSET, SIG_IMPLIED_TARGET_OK,
     SIG_IMPLIED_TARGET_WRONG, *(failure_phase(p) for p in PHASES)})
+
+@dataclass(frozen=True)
+class PartialSkip:
+    """A check that ran but could not look at part of its inputs: ``reason`` for the notes,
+    ``signals`` the unlooked-at part would have emitted. Only those signals become unchecked
+    (a skipped sub-check is not a skipped source), so absence of them is not "checked, nothing
+    found" while the rest of the check still counts."""
+    reason: str
+    signals: frozenset[str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "signals", frozenset(self.signals))
+        unknown = self.signals - ALL_SIGNALS
+        if unknown or not self.signals:
+            raise ValueError(f"PartialSkip needs known signals, got {sorted(self.signals)}")
+
 
 SIGNALS_BY_SOURCE: dict[str, frozenset[str]] = {
     "contract_cfg": frozenset({SIG_CONTRACT_VIOLATION, SIG_RENDER_SETTINGS_DIFFER}),

@@ -47,7 +47,8 @@ from enum import Enum
 from typing import Mapping, Optional, Sequence
 
 from ladder.backend import IsaacBackend, MockBackend, MockRule, RolloutBackend
-from ladder.workspace import FileContains, WorkspaceError, WorkspaceManager, code_ref_of
+from ladder.workspace import (FileContains, WorkspaceError, WorkspaceManager, code_ref_of, file_config_loader,
+                              load_eval_config)
 from ladder.stats import (Comparison, Proportion, StageDecision, StagedPlan, classify_outcome, compare,
                           staged_decision, wilson_interval)
 from router.prereq.rollout_cache import CachedBackend, RolloutCache
@@ -300,10 +301,12 @@ def load_config(path: str, seeds: int, cwd: str) -> tuple[RolloutBackend, Incide
         {"incident": <Incident.to_dict()>, "branch": "G" | "G_degraded" | "C",
          "after": <CodeRef dict>,                   # optional: default = the code in the working directory
                                                     #   (ladder.workspace.code_ref_of: same recipe as the repairer)
-         "workspace": {"store": DIR, "bases": {label: DIR}},  # optional: needed by "files" rules; the
+         "workspace": {"store": DIR, "bases": {label: DIR},  # optional: needed by "files" rules; the
                                                     #   default "after" is then also stored so it can be built,
                                                     #   and the incident's code must be a workspace name
-                                                    #   (<label>@<tree12>[+<diff12>])
+                                                    #   (<label>@<tree12>[+<diff12>]); optional
+                                                    #   "eval_config_path": the repo file the eval
+                                                    #   config is read from (default config/eval.yaml)
          "thresholds": {"failure_rate": .., "nominal_band": [lo, hi], "agreement": .., "min_agreement": ..,
                         "n_a": 10, "alpha_total": 0.05, "stage_a_fraction": 0.5},    # last three optional
          "backend": {"kind": "mock", "default_rate": .., "rules": [<rule dict>...], "salt": "x"}
@@ -318,14 +321,15 @@ def load_config(path: str, seeds: int, cwd: str) -> tuple[RolloutBackend, Incide
     cfg = Rung1Config(plan, float(th["failure_rate"]), tuple(th["nominal_band"]), float(th["agreement"]),
                       float(th["min_agreement"]))
     ws = raw.get("workspace")
-    workspaces = WorkspaceManager(ws["store"], ws["bases"]) if ws else None
-    # TODO(F2b): the eval config of "after" comes from the working copy, not from the incident (ISSUES #2).
+    loader = file_config_loader(ws["eval_config_path"]) if ws and ws.get("eval_config_path") else load_eval_config
+    workspaces = WorkspaceManager(ws["store"], ws["bases"], loader) if ws else None
+    # the eval config of "after" is read from the working copy, not taken from the incident (ISSUES #2)
     if raw.get("after"):
         after = CodeRef.from_dict(raw["after"])
     elif workspaces is not None:
-        after = workspaces.adopt(cwd, incident.code_ref.eval_config)
+        after = workspaces.adopt(cwd)
     else:
-        after = code_ref_of(cwd, incident.code_ref.eval_config)
+        after = code_ref_of(cwd, loader)
     b = raw["backend"]
     if b["kind"] == "mock":
         backend: RolloutBackend = MockBackend([rule_from_dict(r) for r in b.get("rules", [])],

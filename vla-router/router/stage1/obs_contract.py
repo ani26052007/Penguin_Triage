@@ -209,22 +209,29 @@ class ObservationContractCheck(Check):
         self._vectors = {n: nominal.vector(n) for n in required_vectors(self.cameras)}
 
     def run(self, incident: Incident) -> list[Evidence]:
+        return self.run_partial(incident)[0]
+
+    def run_partial(self, incident: Incident) -> tuple[list[Evidence], list[V.PartialSkip]]:
+        """A metric with no logged values is a partial skip on ``contract_violation``."""
         traces = self.traces.load(incident, self.mode)
         spec = incident.training_spec
         vals = observation_metrics(traces, self.cameras, self._vectors)
+        skips: list[V.PartialSkip] = []
         out = self._resolution(spec, traces)
         for cam in self.cameras:
-            out += self._range(cam, vals) + self._channels(cam, spec, traces, vals) \
-                + self._orientation(cam, traces, vals)
+            out += self._range(cam, vals, skips) + self._channels(cam, spec, traces, vals, skips) \
+                + self._orientation(cam, traces, vals, skips)
         if self.probe is not None:
             out += self._open_loop(incident)
-        return out
+        return out, skips
 
     # -- sub-checks ----------------------------------------------------------
-    def _dev(self, name: str, vals: Mapping[str, Sequence[float]], side: str):
+    def _dev(self, name: str, vals: Mapping[str, Sequence[float]], side: str, skips: list[V.PartialSkip]):
         xs = vals.get(name)
         if not xs:
-            log.warning("obs contract: no logged values for %s; not checked", name)
+            msg = f"obs contract: no logged values for {name}; not checked"
+            log.warning("%s", msg)
+            skips.append(V.PartialSkip(msg, {V.SIG_CONTRACT_VIOLATION}))
             return None
         return self.nominal.deviation(name, median(xs), side, self.fire_z)
 
@@ -248,9 +255,9 @@ class ObservationContractCheck(Check):
                     f"logged frames; the training spec says {spec.channel_order!r}"))
         return out
 
-    def _range(self, cam: str, vals) -> list[Evidence]:
-        devs = [d for d in (self._dev(metric(cam, "value_min"), vals, "both"),
-                            self._dev(metric(cam, "value_max"), vals, "both")) if d]
+    def _range(self, cam: str, vals, skips: list[V.PartialSkip]) -> list[Evidence]:
+        devs = [d for d in (self._dev(metric(cam, "value_min"), vals, "both", skips),
+                            self._dev(metric(cam, "value_max"), vals, "both", skips)) if d]
         hit = [d for d in devs if d.fires]
         if not hit:
             return []
@@ -261,8 +268,8 @@ class ObservationContractCheck(Check):
                          f"camera {cam}: policy-input value range [{lo:.4g}, {hi:.4g}] vs nominal "
                          f"[{n_lo:.4g}, {n_hi:.4g}] (normalisation)")]
 
-    def _channels(self, cam: str, spec, traces, vals) -> list[Evidence]:
-        d = self._dev(metric(cam, "opp_dist"), vals, "high")
+    def _channels(self, cam: str, spec, traces, vals, skips: list[V.PartialSkip]) -> list[Evidence]:
+        d = self._dev(metric(cam, "opp_dist"), vals, "high", skips)
         if d is None or not d.fires:
             return []
         ref = self._vectors[metric(cam, "opp")]
@@ -279,9 +286,9 @@ class ObservationContractCheck(Check):
                          f"camera {cam}: {why} (opponent-vector distance {d.value:.3g}, nominal "
                          f"{self.nominal.metric(d.metric).mean:.3g})")]
 
-    def _orientation(self, cam: str, traces, vals) -> list[Evidence]:
-        devs = [d for d in (self._dev(metric(cam, "row_corr"), vals, "low"),
-                            self._dev(metric(cam, "col_corr"), vals, "low")) if d]
+    def _orientation(self, cam: str, traces, vals, skips: list[V.PartialSkip]) -> list[Evidence]:
+        devs = [d for d in (self._dev(metric(cam, "row_corr"), vals, "low", skips),
+                            self._dev(metric(cam, "col_corr"), vals, "low", skips)) if d]
         hit = [d for d in devs if d.fires]
         if not hit:
             return []

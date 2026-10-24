@@ -8,21 +8,27 @@ name hagent's patch gets, a patch that adds the normalisation is what fixes the 
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
 from hagent.models import ScriptedModel, bash
+from ladder.backend import MockRule
 from ladder.loop import LoopStatus
 from ladder.repair import HagentRepairer
 from ladder.rung1 import Rung1Outcome
-from ladder.workspace import WorkspaceManager
+from ladder.workspace import FileContains, WorkspaceManager
 from router.schemas import CodeRef
+from scripts.confusion_matrix import LIGHT, _REF_OK
 from tests.ladder_cases import loop_config, make_loop
+from tests.router_cases import TRAIN_RENDER, router_cases
 from tests.test_ladder_loop import reply, rung2_fn
-from tests.workspace_cases import (BLOB, BUG_LINE, FIXED_LINE, STEP_A_LINE, SUBMIT, WRAPPER, files_combined_case,
+from tests.workspace_cases import (BLOB, BUG_LINE, EVAL_CONFIG, FIXED_LINE, STEP_A_LINE, SUBMIT, WRAPPER, files_combined_case,
                                    fixed_files, hagent_settings, make_checkout, manager, recording, replace_line,
                                    snapshot)
 
+
+CASES = {c.name: c for c in router_cases()}
 
 
 @pytest.fixture
@@ -108,3 +114,23 @@ def test_an_unrebuildable_binary_patch_gets_its_own_result_and_feedback(mgr, c0)
     task = next(m["content"] for m in seen[0] if m["role"] == "user")
     assert "could not be rebuilt" in task and "Do not edit or add binary files" in task
     assert res.status is LoopStatus.DATA_HANDOFF
+
+
+def test_a_config_fix_by_the_real_repairer_closes_the_incident(mgr, c0):
+    """ISSUES #2: with the fixture gone, the patched code's eval config comes from the patched file, so
+    render_settings_differ disappears and the incident closes on the first repair, not at the repair cap."""
+    base = CASES["rendering_mismatch"]
+    case = replace(base, name="rendering_files", code_ref=c0,
+                   rules=_REF_OK + (MockRule(0.9, code=CodeRef(c0.code_hash, {"render": TRAIN_RENDER})),
+                                    MockRule(0.9, files=FileContains(EVAL_CONFIG, "train_like")),
+                                    MockRule(0.15, factors_present=(LIGHT,))))
+    edit = bash(f"sed -i 's/eval_fast/train_like/' {EVAL_CONFIG}", "Fixing the render preset.")
+    rep, _ = hagent(mgr, edit, SUBMIT)
+    loop, _ = make_loop(case, rep, workspaces=mgr)
+    res = loop.run(case.incident())
+
+    assert [(p.label, p.row, p.destination) for p in res.passes] == [
+        ("rendering_mismatch", 5, "config_fix"), ("no_significant_failure", 1, "stop")]
+    assert res.status is LoopStatus.CLOSED and len(res.repairs) == 1 and rep.calls == 1
+    assert res.repairs[0].rung1.outcome is Rung1Outcome.PASS
+    assert res.final_code.eval_config == {"render": TRAIN_RENDER}

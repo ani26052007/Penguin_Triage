@@ -75,7 +75,7 @@ def test_sources_run_lists_only_the_checks_that_ran():
 def test_staleness_partial_skip_is_recorded_and_the_source_still_counts_as_run():
     src = InMemoryTraceSource({"clean": make_source().load(make_incident(), Mode.CLEAN)})
     res = run_stage1(make_incident(), all_checks(src))
-    assert [s for s, _ in res.partial] == ["staleness"] and "staleness_variable" in res.partial[0][1]
+    assert [s for s, _ in res.partial] == ["staleness"] and res.partial[0][1].signals == {"staleness_variable"}
     assert "staleness" in res.sources_run and res.skipped == ()
 
 
@@ -125,14 +125,14 @@ def test_instruction_template_bug_found_by_stage1_routes_to_code_at_that_locatio
     cfg = make_eval_config()
     cfg["env"]["instruction"] = "grab the mug"
     incident = make_incident(eval_config=cfg, scene=scene)
-    stage1 = run_stage1(incident, all_checks(make_source()))
+    stage1 = run_stage1(incident, all_checks(make_source(code_key=incident.code_ref.key())))
     assert [e.id for e in stage1.evidence] == ["s1.cfg.instruction_templates"]
 
     # without Stage 1 the replays alone point at the factor; with the checks unconfigured that is row 10
     base = route(incident, _backend("a"), CONFIG)
     assert base.verdict.row == 10 and "row 4 undecided: not checked: contract_violation" in base.verdict.notes
 
-    res = route(incident, _backend("a"), CONFIG, RouterInputs(tuple(all_checks(make_source()))))
+    res = route(incident, _backend("a"), CONFIG, RouterInputs(tuple(all_checks(make_source(code_key=incident.code_ref.key())))))
     assert [e.id for e in res.stage1_evidence] == ["s1.cfg.instruction_templates"]
     assert res.verdict.label is VerdictLabel.CODE
     assert res.verdict.location == "eval_config.env.instruction"

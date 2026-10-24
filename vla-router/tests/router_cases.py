@@ -37,7 +37,7 @@ from router.stage1.cfg_contract import ConfigContractCheck, ConfigMapping
 from router.stage1.obs_contract import ObservationContractCheck
 from router.stage1.sanity import SanityCheck
 from router.stage1.staleness import StalenessProbe
-from router.stage1.synthetic import CAMERAS, CodeKeyedTraceSource, Faults, make_nominal
+from router.stage1.synthetic import CAMERAS, CodeKeyedTraceSource, Faults, make_nominal, make_training_spec
 from scripts.confusion_matrix import (FAILURE_RATE, LIGHT, NOMINAL_BAND, POLICY, _REF_OK,
                                       build_cases)
 
@@ -93,7 +93,7 @@ class RouterCase:
     def incident(self, log_modes: tuple[str, ...] = LOG_REFS) -> Incident:
         """``log_modes``: the inference modes whose logs exist (``()``: no logs at all)."""
         spec = TrainingSpec("mock_policy", render_settings=self.render_settings,
-                            instruction_templates=self.instruction_templates)
+                            instruction_templates=self.instruction_templates, **ACTION_SPEC)
         return Incident(self.name, self.scene, spec, self.code_ref, POLICY, self.failing_seeds, Mode.INCIDENT,
                         log_refs=log_refs(self.name, log_modes), nominal_scene=self.nominal_scene)
 
@@ -111,6 +111,13 @@ class RouterCase:
                                        file_faults=self.behavior_file_faults,
                                        workspaces=workspaces if self.behavior_file_faults else None)
         return RouterInputs(checks, bsrc, BEHAVIOR_NOMINAL)
+
+
+# The action layout and limits the synthetic logs follow. Without them the action contract checks
+# none of dimensions / range / gripper sign (a partial skip of contract_violation), and row 4 could
+# never be ruled out.
+ACTION_SPEC = dict(norm_stats={"action": make_training_spec().norm_stats["action"]},
+                   action_layout=make_training_spec().action_layout)
 
 
 def log_refs(name: str, modes: tuple[str, ...] = LOG_REFS) -> dict[str, str]:

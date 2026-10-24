@@ -20,7 +20,7 @@ The plan says Stage 1 runs “on every incident”, and the prompts never ask fo
 
 ### 2. Fixing the code doesn’t make the evidence go away; the fixture does (cross-file).
 
-(Still open after F2a: a patched CodeRef still copies the base eval_config. F2b.)
+(FIXED in F2b: the patched CodeRef's eval_config is read from the patched working copy by a config loader, never copied from the base.)
 
 Today, evidence vanishes after a patch only because the fixture returns () for any new CodeRef. With real checks, a config fix is still a problem. patched_code_ref keeps the base eval_config (repair.py:70-71), while the config contract reads incident.code_ref.eval_config. So a render-settings fix made by hagent in a file would keep firing render_settings_differ.
 
@@ -179,7 +179,7 @@ Row 3 depends entirely on Stage 1 evidence, which combines badly with issue 1. (
 
 ### 30. PARTLY FIXED in F1: Every trace check reads CLEAN-mode traces by default, but nothing ensures clean traces are logged for each incident.
 
-BehaviorConfig.mode also defaults to CLEAN, with no reason given. (Defaults kept and justified in DECISIONS.md; a missing log is now a recorded skip that makes its rows undecided. The production source serving Stage 0's clean logs is TODO(verify).) (F2a review: only partly fixed until #52 (F2b): nothing checks that the logs belong to the code under test, so after a patch a source can still serve the original code's logs.)
+BehaviorConfig.mode also defaults to CLEAN, with no reason given. (Defaults kept and justified in DECISIONS.md; a missing log is now a recorded skip that makes its rows undecided. The production source serving Stage 0's clean logs is TODO(verify).) (F2a review: only partly fixed until #52. Closed in F2b: sources now check that the logs belong to the code under test.)
 
 ### 31. Nominal statistics must be per scene condition, which means no-fault runs for every shifted condition.
 
@@ -257,13 +257,15 @@ Its signals are not reported as unchecked.
 
 ### 51. Issue 2 is now live: with the fixture gone, a config fix that hagent makes in a file keeps firing render_settings_differ / the instruction violation, because patched_code_ref keeps the base eval_config.
 
-(duplicate of #2; still open after F2a)
+(duplicate of #2; FIXED in F2b)
 
 The loop tests avoid this only because ScriptedRepairer returns a CodeRef with the fixed eval_config.
 
-### 52. Nothing checks that the logs a TraceSource returns belong to incident.code_ref (EpisodeTrace has no code key).
+### 52. FIXED in F2b: Nothing checks that the logs a TraceSource returns belong to incident.code_ref (EpisodeTrace has no code key).
 
 After a patch, a source that returns the original incident's logs would keep reporting the fixed fault.
+
+(F2b: `EpisodeTrace` / `BehaviorTrace` carry `code_key`; `load()` is a template method that refuses other or unkeyed code with `TraceUnavailable`; sources implement `_load`; a structural test forbids overriding `load`.)
 
 ### 53. When route() stops at Stage 0 because row 1 is undecided, the verdict notes also list rows 2-9 as undecided for missing replays.
 
@@ -279,7 +281,9 @@ The notes are correct but noisy; the row-1 reason comes first.
 
 The loop records such an attempt as `unrebuildable_patch` and tells the agent not to edit binary files. Fix: use `git diff --binary` in hagent (`GitHelpers.git_diff`).
 
-### 56. hagent's patch depends on the host and on what the agent did with git.
+### 56. PARTLY FIXED in F2b: hagent's patch depends on the host and on what the agent did with git.
+
+(F2b: the patch is now diffed against the recorded starting commit, so a committed change is kept. The host git-config half (`diff.noprefix`) is still open.)
 
 It runs with the user's git config (e.g. `diff.noprefix` makes the patch fail to apply), and it is `git diff HEAD`, so a change the agent commits in the working copy is not in the patch. The workspace's own recipe (`ladder.workspace.cumulative_diff`) is immune to both, but `extend()` starts from hagent's patch.
 
@@ -293,7 +297,9 @@ It contains the original checkout's path (`workspace.bases`) and the mock `FileC
 
 That changes what its own `run_rung1` evaluates (`code_ref_of` reads both from the copy), not what the loop accepts (the loop names hagent's patch with `extend` on a fresh copy). The agent can only mislead itself. F5.
 
-### 59. Checks that only partly ran still count as clean (top item for F2b).
+### 59. FIXED in F2b: Checks that only partly ran still count as clean.
+
+(F2b: `vocab.PartialSkip(reason, signals)`; C_behavior "not judged" and the action / observation contract sub-check skips mark their signals unchecked; the `"staleness"` special case in `router.unchecked_signals` is gone.)
 
 - C_behavior "not judged" (too few grasp records, an inconsistent offset, a phase tie, no failing episodes) returns no evidence, and `route()` counts it as run (`router/router.py`, `_run_c_behavior`). Rows 4 (Branch C), 8 and 9 then evaluate FALSE instead of UNKNOWN, so a code bug located only by an implied-target offset can read as row 6, a vision gap, and money goes to data.
 - The action contract's "dimensions / range / gripper sign not checked" (`router/stage1/action_contract.py`, no layout or limits in the training spec) and the observation contract's "no logged values for <x>; not checked" (`router/stage1/obs_contract.py`) only go to the log. Every router case runs with the action contract checking none of those three.
@@ -302,6 +308,6 @@ Same pattern as #50 (config contract). Fix with F2b's `PartialSkip`.
 
 ### 60. Remaining untested branches and hard-coded values from the review (F6).
 
-- Untested: `RouterInputs` with only one of behavior source / nominal (`ValueError`); `PatchStore.put` collision; a base path that is not a directory; `FileContains.from_dict` with an unknown kind; `file_faults` without workspaces; `code_ref_of` outside a working copy (Rung 1 CLI exit 2); an invalid base label; a non-staleness partial skip in `router.unchecked_signals`.
-- Hard-coded: the 12-hex digests (diff and tree); the truncation lengths 200 / 300 / 500 / 1000 in workspace, repair and loop messages; the fixed commit date; the `"staleness"` source special-cased in `router.unchecked_signals`; the rebuild-feedback texts in `ladder/loop.py`.
+- Untested: `RouterInputs` with only one of behavior source / nominal (`ValueError`); `PatchStore.put` collision; a base path that is not a directory; `FileContains.from_dict` with an unknown kind; `file_faults` without workspaces; `code_ref_of` outside a working copy (Rung 1 CLI exit 2); an invalid base label; a non-staleness partial skip in `router.unchecked_signals` (covered since F2b).
+- Hard-coded: the 12-hex digests (diff and tree); the truncation lengths 200 / 300 / 500 / 1000 in workspace, repair and loop messages; the fixed commit date; the rebuild-feedback texts in `ladder/loop.py`.
 

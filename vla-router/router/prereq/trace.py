@@ -185,6 +185,8 @@ class EpisodeTrace:
     raw_actions:        the policy's raw output vector at each applied action.
     joint_cmd/joint_pos: commanded vs tracked joint positions, one row per step.
     gripper_cmd_width/gripper_width: commanded vs actual gripper width per step.
+    code_key:           ``CodeRef.key()`` of the code (and eval config) the episode ran with.
+                        ``TraceSource.load`` refuses traces whose key is not the code under test.
     """
     seed: int
     mode: Mode
@@ -196,6 +198,7 @@ class EpisodeTrace:
     gripper_cmd_width: tuple[float, ...] = ()
     gripper_width: tuple[float, ...] = ()
     sim: Optional[SimHealth] = None
+    code_key: Optional[str] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "mode", Mode(self.mode))
@@ -218,7 +221,7 @@ class EpisodeTrace:
                 "raw_actions": [list(r) for r in self.raw_actions],
                 "joint_cmd": [list(r) for r in self.joint_cmd], "joint_pos": [list(r) for r in self.joint_pos],
                 "gripper_cmd_width": list(self.gripper_cmd_width), "gripper_width": list(self.gripper_width),
-                "sim": self.sim.to_dict() if self.sim else None}
+                "sim": self.sim.to_dict() if self.sim else None, "code_key": self.code_key}
 
     @classmethod
     def from_dict(cls, d: Mapping) -> "EpisodeTrace":
@@ -228,7 +231,7 @@ class EpisodeTrace:
                    raw_actions=d.get("raw_actions", ()), joint_cmd=d.get("joint_cmd", ()),
                    joint_pos=d.get("joint_pos", ()), gripper_cmd_width=d.get("gripper_cmd_width", ()),
                    gripper_width=d.get("gripper_width", ()),
-                   sim=SimHealth.from_dict(d["sim"]) if d.get("sim") else None)
+                   sim=SimHealth.from_dict(d["sim"]) if d.get("sim") else None, code_key=d.get("code_key"))
 
 
 # --------------------------------------------------------------------------- #
@@ -240,14 +243,39 @@ class TraceUnavailable(RuntimeError):
     found": a missing log must never read as a clean result."""
 
 
+def verify_code_key(traces: Sequence, incident: Incident, what: str) -> None:
+    """Raise ``TraceUnavailable`` unless every trace was logged with the code under test
+    (``incident.code_ref.key()``). Logs of other code, or logs that do not say which code they
+    come from, cannot stand for this incident: after a patch they would keep reporting the fault
+    that was fixed (ISSUES #52)."""
+    want = incident.code_ref.key()
+    keys = {t.code_key for t in traces}
+    if keys == {want}:
+        return
+    if None in keys:
+        raise TraceUnavailable(f"{what} carry no code key, so they cannot be tied to the code under test ({want})")
+    raise TraceUnavailable(f"{what} were logged for code {sorted(keys)}, not for the code under test ({want})")
+
+
 class TraceSource(ABC):
-    """Resolves an incident's log references into typed traces."""
+    """Resolves an incident's log references into typed traces.
+
+    Template method: ``load`` is the public call and checks the code key of what ``_load``
+    returns; a subclass implements ``_load`` and never overrides ``load`` (a structural test
+    enforces it)."""
+
+    def load(self, incident: Incident, mode: Mode) -> list[EpisodeTrace]:
+        """Traces of the incident's episodes logged in ``mode``, all logged with
+        ``incident.code_ref``. Raises ``TraceUnavailable`` if there are none or they belong to
+        other code."""
+        traces = self._load(incident, mode)
+        verify_code_key(traces, incident, f"{Mode(mode).value}-mode traces")
+        return traces
 
     @abstractmethod
-    def load(self, incident: Incident, mode: Mode) -> list[EpisodeTrace]:
-        """Traces of the incident's episodes logged in ``mode``.
-
-        Raises ``TraceUnavailable`` if there are none.
+    def _load(self, incident: Incident, mode: Mode) -> list[EpisodeTrace]:
+        """The stored traces for ``incident`` in ``mode``. Raises ``TraceUnavailable`` if there
+        are none. Each trace carries its ``code_key``.
         TODO(verify): the real reference format (path, URI, cache key) and
         reading it back from ``EpisodeResult.logs`` or the log store.
         """
@@ -260,7 +288,7 @@ class InMemoryTraceSource(TraceSource):
     def __init__(self, by_ref: Mapping[str, Sequence[EpisodeTrace]]) -> None:
         self._by_ref = {k: list(v) for k, v in by_ref.items()}
 
-    def load(self, incident: Incident, mode: Mode) -> list[EpisodeTrace]:
+    def _load(self, incident: Incident, mode: Mode) -> list[EpisodeTrace]:
         mode = Mode(mode)
         ref = incident.log_refs.get(mode.value)
         if ref is None:

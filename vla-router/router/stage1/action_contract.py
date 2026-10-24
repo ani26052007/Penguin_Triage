@@ -152,9 +152,20 @@ class ActionContractCheck(Check):
         self.stats_key, self.gripper_name = stats_key, gripper_name
 
     def run(self, incident: Incident) -> list[Evidence]:
+        return self.run_partial(incident)[0]
+
+    def run_partial(self, incident: Incident) -> tuple[list[Evidence], list[V.PartialSkip]]:
+        """A sub-check the training spec cannot support is a partial skip on
+        ``contract_violation``: the check ran, but not all of it."""
         traces = self.traces.load(incident, self.mode)
         sp = action_space(incident.training_spec, self.stats_key, self.gripper_name)
         out: list[Evidence] = []
+        skips: list[V.PartialSkip] = []
+
+        def not_checked(what: str, why: str) -> None:
+            msg = f"action contract: {why}; {what} not checked"
+            log.warning("%s", msg)
+            skips.append(V.PartialSkip(msg, {V.SIG_CONTRACT_VIOLATION}))
 
         bad = [t.seed for t in traces if sp.dims is not None and any(len(a) != sp.dims for a in t.raw_actions)]
         if bad:
@@ -163,14 +174,13 @@ class ActionContractCheck(Check):
                                 f"policy raw output has {seen} dimensions in {len(bad)} of {len(traces)} episodes; "
                                 f"the training action space has {sp.dims}"))
         elif sp.dims is None:
-            log.warning("action contract: no action layout in the training spec; dimensions not checked")
+            not_checked("dimensions", "no action layout in the training spec")
 
         vals = action_metrics(traces, sp)
         if sp.train_min is None or sp.train_max is None:
-            log.warning("action contract: no action min/max in the training spec; range not checked")
+            not_checked("range", "no action min/max in the training spec")
         if sp.gripper_index is None:
-            log.warning("action contract: no single-index %r layout in the training spec; gripper sign not checked",
-                        self.gripper_name)
+            not_checked("gripper sign", f"no single-index {self.gripper_name!r} layout in the training spec")
 
         def fire(metric: str, side: str, signal_id: str, location: str, text) -> None:
             xs = vals.get(metric)
@@ -193,4 +203,4 @@ class ActionContractCheck(Check):
         fire(M_JOINT_TRACK, "high", "joint_tracking", "action.joint_tracking",
              lambda v, n: f"tracked joint positions miss the command by {v:.3g} of the command range (nominal {n:.3g}): "
                           f"systematic tracking error, points at controller gains")
-        return out
+        return out, skips

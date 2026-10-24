@@ -106,6 +106,7 @@ class BehaviorAnalysis:
     wrong_fraction: Optional[float] = None
     mean_offset: tuple[float, ...] = ()
     phase_counts: Mapping[str, int] = field(default_factory=dict)
+    partial: tuple[V.PartialSkip, ...] = ()   # a "not judged" part, with the signals it leaves unchecked
 
 
 # --------------------------------------------------------------------------- #
@@ -150,17 +151,27 @@ def analyze_behavior(traces: Sequence[BehaviorTrace], nominal: NominalStats,
     nominal.require(REQUIRED_METRICS)
     pool = [t for t in traces if not t.success] if config.failed_only else list(traces)
     notes: list[str] = []
+    partial: list[V.PartialSkip] = []
     evidence: list[Evidence] = []
+
+    def not_judged(note: str, signals: frozenset[str]) -> None:
+        notes.append(note)
+        partial.append(V.PartialSkip(note, signals))
+
     if not pool:
-        return BehaviorAnalysis((), ("no failing episodes in the logs; nothing to analyse",), 0, 0)
+        why = "no failing episodes in the logs; nothing to analyse"
+        return BehaviorAnalysis((), (why,), 0, 0, partial=(V.PartialSkip(why, V.SIGNALS_BY_SOURCE[SOURCE]),))
 
     # ---- implied target ---------------------------------------------------- #
     with_grasp = [t for t in pool if t.grasp is not None]
+    target_signals = frozenset({V.SIG_IMPLIED_TARGET_OFFSET, V.SIG_IMPLIED_TARGET_OK, V.SIG_IMPLIED_TARGET_WRONG})
+    phase_signals = frozenset(V.failure_phase(p) for p in V.PHASES)
     metrics: dict[str, float] = {}
     mean_offset: tuple[float, ...] = ()
     if len(with_grasp) < config.min_episodes:
-        notes.append(f"implied target not judged: {len(with_grasp)} episode(s) with a grasp record, "
-                     f"need {config.min_episodes} ({len(pool) - len(with_grasp)} never closed the gripper)")
+        not_judged(f"implied target not judged: {len(with_grasp)} episode(s) with a grasp record, "
+                   f"need {config.min_episodes} ({len(pool) - len(with_grasp)} never closed the gripper)",
+                   target_signals)
     else:
         metrics = behavior_metrics(with_grasp)
         mean_offset = _mean_vec([[e - t for e, t in zip(t.grasp.ee_pos, t.grasp.target_pos)] for t in with_grasp])
@@ -193,23 +204,23 @@ def analyze_behavior(traces: Sequence[BehaviorTrace], nominal: NominalStats,
                 "grasp.target", f"end effector closes on the right object, small scatter {stats} "
                                 f"(strength = 1 - largest metric strength)"))
         else:
-            notes.append(f"implied target not judged: bias fires but the offset is only {consistency:.0%} "
-                         f"consistent and scatter is within nominal {stats}")
+            not_judged(f"implied target not judged: bias fires but the offset is only {consistency:.0%} "
+                       f"consistent and scatter is within nominal {stats}", target_signals)
 
     # ---- failure phase ----------------------------------------------------- #
     counts = Counter(p for p in (t.failure_phase() for t in pool) if p)
     if sum(counts.values()) < config.min_episodes:
-        notes.append(f"failure phase not judged: {sum(counts.values())} failing episode(s) with a subtask "
-                     f"log, need {config.min_episodes}")
+        not_judged(f"failure phase not judged: {sum(counts.values())} failing episode(s) with a subtask "
+                   f"log, need {config.min_episodes}", phase_signals)
     else:
         total = sum(counts.values())
         (top, top_n), *rest = counts.most_common()
         share = top_n / total
         if rest and rest[0][1] == top_n:
-            notes.append(f"failure phase not judged: tie between phases {dict(counts)}")
+            not_judged(f"failure phase not judged: tie between phases {dict(counts)}", phase_signals)
         elif share < config.min_phase_share:
-            notes.append(f"failure phase not judged: modal phase {top!r} holds {share:.0%} of "
-                         f"{total} failures, need {config.min_phase_share:.0%}")
+            not_judged(f"failure phase not judged: modal phase {top!r} holds {share:.0%} of "
+                       f"{total} failures, need {config.min_phase_share:.0%}", phase_signals)
         else:
             evidence.append(Evidence(
                 EV_PHASE, SOURCE, V.failure_phase(top), share, f"subtask.{top}",
@@ -219,7 +230,7 @@ def analyze_behavior(traces: Sequence[BehaviorTrace], nominal: NominalStats,
 
     return BehaviorAnalysis(
         tuple(evidence), tuple(notes), len(pool), len(with_grasp), metrics.get(M_BIAS), metrics.get(M_SCATTER),
-        metrics.get(M_WRONG), mean_offset, dict(counts))
+        metrics.get(M_WRONG), mean_offset, dict(counts), tuple(partial))
 
 
 def run_behavior_analysis(incident: Incident, source: BehaviorSource, nominal: NominalStats,

@@ -11,7 +11,10 @@ requires-python = ">=3.11"
 dependencies = ["hybrid-agent"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pyyaml"]
+# The default eval-config loader reads config/eval.yaml; the real format is TODO(verify). Without this extra
+# a .json config or a custom WorkspaceManager(config_loader=...) works and a YAML file is a clear WorkspaceError.
+yaml = ["pyyaml"]
 # Optional cross-check for tests/test_stats.py; the test skips cleanly without it.
 scipy = ["scipy"]
 

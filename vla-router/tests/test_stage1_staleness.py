@@ -88,7 +88,7 @@ def test_missing_incident_traces_are_a_partial_skip_not_just_a_warning():
     src = InMemoryTraceSource({"clean": make_traces(6, Mode.CLEAN, Faults(extra_delay=3))})
     found, blind = StalenessProbe(NOMINAL, src).run_partial(INCIDENT)
     assert ids(found) == ["s1.staleness.constant"]
-    assert len(blind) == 1 and V.SIG_STALENESS_VARIABLE in blind[0] and "incident" in blind[0]
+    assert len(blind) == 1 and blind[0].signals == {V.SIG_STALENESS_VARIABLE} and "incident" in blind[0].reason
     # incident traces present but without step pairs: also partial
     empty = InMemoryTraceSource({"clean": make_traces(6, Mode.CLEAN),
                                  "incident": [replace(t, step_pairs=()) for t in make_traces(6, Mode.INCIDENT)]})

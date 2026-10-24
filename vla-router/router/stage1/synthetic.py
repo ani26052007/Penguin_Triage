@@ -138,7 +138,8 @@ def _grip(t: int, steps: int) -> float:
     return up - down
 
 
-def make_trace(seed: int, mode: Mode = Mode.CLEAN, faults: Faults = Faults(), *, steps: int = STEPS) -> EpisodeTrace:
+def make_trace(seed: int, mode: Mode = Mode.CLEAN, faults: Faults = Faults(), *, steps: int = STEPS,
+               code_key: Optional[str] = None) -> EpisodeTrace:
     mode = Mode(mode)
     rng = random.Random(f"{seed}:{mode.value}")
     f = faults
@@ -180,18 +181,26 @@ def make_trace(seed: int, mode: Mode = Mode.CLEAN, faults: Faults = Faults(), *,
     sim = SimHealth(nan_fraction=0.4 if f.nan_state else 0.0,
                     max_penetration=0.03 if f.interpenetration else 0.001 + abs(rng.gauss(0, 0.0003)),
                     object_initial_pos=start, object_rest_pos=rest)
-    return EpisodeTrace(seed, mode, tuple(frames), tuple(pairs), raw, jcmd, jpos, gcmd, gwid, sim)
+    return EpisodeTrace(seed, mode, tuple(frames), tuple(pairs), raw, jcmd, jpos, gcmd, gwid, sim, code_key)
 
 
-def make_traces(n: int, mode: Mode = Mode.CLEAN, faults: Faults = Faults(), *, base_seed: int = 0) -> list[EpisodeTrace]:
-    return [make_trace(base_seed + i, mode, faults) for i in range(n)]
+def default_code_key() -> str:
+    """The code key of ``make_incident()``'s code: what ``make_traces`` / ``make_source`` stamp by default."""
+    return CodeRef("c0", make_eval_config()).key()
 
 
-def make_source(clean: Faults = Faults(), incident: Optional[Faults] = None, *, n: int = 8) -> InMemoryTraceSource:
+def make_traces(n: int, mode: Mode = Mode.CLEAN, faults: Faults = Faults(), *, base_seed: int = 0,
+                code_key: Optional[str] = None) -> list[EpisodeTrace]:
+    key = default_code_key() if code_key is None else code_key
+    return [make_trace(base_seed + i, mode, faults, code_key=key) for i in range(n)]
+
+
+def make_source(clean: Faults = Faults(), incident: Optional[Faults] = None, *, n: int = 8,
+                code_key: Optional[str] = None) -> InMemoryTraceSource:
     """Traces for one incident under refs ``"clean"`` and ``"incident"``."""
     incident = clean if incident is None else incident
-    return InMemoryTraceSource({"clean": make_traces(n, Mode.CLEAN, clean),
-                                "incident": make_traces(n, Mode.INCIDENT, incident)})
+    return InMemoryTraceSource({"clean": make_traces(n, Mode.CLEAN, clean, code_key=code_key),
+                                "incident": make_traces(n, Mode.INCIDENT, incident, code_key=code_key)})
 
 
 F = TypeVar("F")
@@ -239,7 +248,7 @@ class CodeKeyedTraceSource(TraceSource):
         self.file_faults, self.workspaces = tuple(file_faults), workspaces
         self._made: dict[tuple, list[EpisodeTrace]] = {}
 
-    def load(self, incident: Incident, mode: Mode) -> list[EpisodeTrace]:
+    def _load(self, incident: Incident, mode: Mode) -> list[EpisodeTrace]:
         mode, code = Mode(mode), incident.code_ref.key()
         if mode.value not in incident.log_refs:
             raise TraceUnavailable(f"incident {incident.incident_id} has no log_refs[{mode.value!r}]")
@@ -248,7 +257,7 @@ class CodeKeyedTraceSource(TraceSource):
             raise TraceUnavailable(f"no {mode.value}-mode traces logged for code {code}")
         key = (code, mode, f, incident.failing_seeds)
         if key not in self._made:
-            self._made[key] = [make_trace(s, mode, f) for s in incident.failing_seeds]
+            self._made[key] = [make_trace(s, mode, f, code_key=code) for s in incident.failing_seeds]
         return list(self._made[key])
 
 

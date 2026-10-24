@@ -12,11 +12,13 @@ on each case's synthetic logs; no case carries hand-written evidence.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 
 import pytest
 
 from ladder.backend import MockRule
 from router import vocab as V
+from router.behavior_synthetic import BehaviorFaults
 from router.prereq.rollout_cache import CachedBackend, RolloutCache
 from router.replay import ReplayConfig, ReplayRunner, seed_set
 from router.router import RouterInputs, route
@@ -24,7 +26,7 @@ from router.schemas import (ActionPipeline, ActorKind, ActorRef, CodeRef, Eviden
                             Outcome, SceneSpec, TrainingSpec, VerdictLabel)
 from router.stage2 import Branch
 from scripts.confusion_matrix import FAILURE_RATE, LIGHT, MAT, NOMINAL_BAND, POLICY, _REF_OK
-from tests.router_cases import (CODE_EVAL_RENDER, TRAIN_RENDER, QuotaBackend, RouterCase, default_config,
+from tests.router_cases import (ACTION_SPEC, CODE_EVAL_RENDER, TRAIN_RENDER, QuotaBackend, RouterCase, default_config,
                                 healthy_inputs, log_refs, router_cases)
 
 CASES = {c.name: c for c in router_cases()}
@@ -101,7 +103,8 @@ def test_code_condition_specific_needs_stage1():
 def test_log_only_evidence_routes_without_hand_written_evidence(name, row, location):
     res = run_case(CASES[name])
     assert res.verdict.row == row, res.verdict.notes
-    assert res.external_evidence == () and res.skipped == () and res.partial == ()
+    assert res.external_evidence == () and res.skipped == ()
+    assert {s for s, _ in res.partial} <= {"behavior"}      # a log with no subtask records leaves the phase unjudged
     assert res.evidence == res.stage1_evidence + res.behavior_evidence
     if location:
         assert res.verdict.location == location
@@ -154,7 +157,7 @@ def test_code_condition_specific_needs_no_traces_for_its_contract_hit():
 def test_a_clean_mode_incident_without_logs_can_still_close_at_row_1():
     """staleness_variable does not apply when the incident was seen in clean mode."""
     case = CASES["no_fault"]
-    inc = Incident(case.name, case.scene, TrainingSpec("p"), case.code_ref, POLICY, range(10), Mode.CLEAN,
+    inc = Incident(case.name, case.scene, TrainingSpec("p", **ACTION_SPEC), case.code_ref, POLICY, range(10), Mode.CLEAN,
                    log_refs=log_refs(case.name))
     res = route(inc, case.quota_backend(), CFG, case.inputs())
     assert res.verdict.row == 1 and V.SIG_STALENESS_VARIABLE not in res.unchecked
@@ -164,6 +167,30 @@ def test_positional_evidence_is_rejected_not_taken_for_inputs():
     case = CASES["action_gap"]
     with pytest.raises(TypeError, match="extra_evidence"):
         route(case.incident(), case.quota_backend(), CFG, ())
+
+
+# --------------------------------------------------------------------------- #
+# partial skips (ISSUES #59)
+# --------------------------------------------------------------------------- #
+
+def test_gripper_never_closing_leaves_the_vision_verdict_undecided_not_row_6():
+    """C_behavior cannot judge the implied target (no grasp record) or the phase: those signals are
+    unchecked, so rows 4, 8 and 9 are UNKNOWN instead of FALSE and the case is row 10, not a vision gap."""
+    case = replace(CASES["vision_glossy"], behavior_default=BehaviorFaults(no_grasp=True))
+    assert run_case(CASES["vision_glossy"]).verdict.row == 6
+    res = run_case(case)
+    assert res.verdict.row == 10 and res.verdict.label is VerdictLabel.UNDETERMINED, res.verdict.notes
+    assert {V.SIG_IMPLIED_TARGET_OFFSET, V.SIG_IMPLIED_TARGET_OK, V.SIG_IMPLIED_TARGET_WRONG} <= set(res.unchecked)
+    assert "behavior" in res.sources_run and res.skipped == ()
+    assert {s for s, _ in res.partial} == {"behavior"} and "implied target not judged" in res.verdict.notes
+
+
+def test_action_contract_without_layout_or_limits_marks_contract_violation_unchecked():
+    case = CASES["code_global"]
+    inc = replace(case.incident(), training_spec=TrainingSpec("p"))
+    res = route(inc, case.quota_backend(), CFG, case.inputs())
+    assert {s for s, _ in res.partial} >= {"contract_action"} and V.SIG_CONTRACT_VIOLATION in res.unchecked
+    assert "gripper sign not checked" in res.verdict.notes
 
 
 # --------------------------------------------------------------------------- #
@@ -236,7 +263,7 @@ def test_stage0_clean_pass_with_variable_staleness_continues_to_infra():
 
 
 def _incident(scene, observed_mode=Mode.INCIDENT, render=None, code=CodeRef("c0")):
-    return Incident("t", scene, TrainingSpec("p", render_settings=render), code, POLICY, range(10), observed_mode,
+    return Incident("t", scene, TrainingSpec("p", render_settings=render, **ACTION_SPEC), code, POLICY, range(10), observed_mode,
                     log_refs=log_refs("t"))
 
 
@@ -311,7 +338,7 @@ def test_branch_g_uses_the_right_actors_and_modes():
 
 def test_g1_skipped_when_the_incident_was_observed_in_clean_mode():
     case = CASES["code_global"]
-    inc = Incident(case.name, case.scene, TrainingSpec("p"), case.code_ref, POLICY, range(10), Mode.CLEAN,
+    inc = Incident(case.name, case.scene, TrainingSpec("p", **ACTION_SPEC), case.code_ref, POLICY, range(10), Mode.CLEAN,
                    log_refs=log_refs(case.name))
     res = route(inc, case.quota_backend(), CFG, case.inputs())
     assert V.R_G1 not in _ids(res) and {V.R_G2, V.R_G3} <= set(_ids(res))
@@ -362,7 +389,7 @@ def test_render_evidence_without_training_render_settings_is_noted_and_undetermi
     """Externally supplied render evidence (the config contract cannot fire
     without training render settings)."""
     case = CASES["rendering_mismatch"]
-    inc = Incident(case.name, case.scene, TrainingSpec("p"), CODE_EVAL_RENDER, POLICY, range(10),
+    inc = Incident(case.name, case.scene, TrainingSpec("p", **ACTION_SPEC), CODE_EVAL_RENDER, POLICY, range(10),
                    log_refs=log_refs(case.name))
     ext = (Evidence("ext_render", "external", V.SIG_RENDER_SETTINGS_DIFFER, 0.9, "render", "supplied"),)
     res = route(inc, case.quota_backend(), CFG, case.inputs(), extra_evidence=ext)

@@ -265,3 +265,24 @@
 - No production code builds incidents with `base_ref` yet (ISSUES #45).
 - The F2a review's leakage items (`$RUNG1_CONFIG` contents, agent-rewritable `vla.base` / `refs/vla/base`) are F5 (ISSUES #57, #58).
 
+
+## F2b (partial skips, eval config from the files, trace code key, hagent start commit; ISSUES #59, #2/#51, #52, #56; plan: PLAN_F2b.md)
+
+**What**
+- **`vocab.PartialSkip(reason, signals)`** (#59). A check that ran but could not look at part of its inputs says which signals that part would have emitted. `Check.run_partial` returns `list[PartialSkip]`; `Stage1Result.partial` and `RouterResult.partial` hold `(source, PartialSkip)`; `router.unchecked_signals` unions the skipped sources' signals with each partial skip's own. The `"staleness"` special case is gone (the staleness probe's skip names `staleness_variable`); the only remaining rule is that `staleness_variable` does not apply to an incident observed in clean mode. A `PartialSkip` must name known signals (`ValueError` otherwise).
+- **C_behavior** (`BehaviorAnalysis.partial`): every "not judged" note is also a `PartialSkip`: the implied-target ones mark `implied_target_{offset,ok,wrong}`, the phase ones mark all `failure_phase:*`, "no failing episodes" marks every behavior signal. `route()` adds them to `partial` (source `behavior`) when Branch C ran and recomputes the unchecked set, so rows 4, 8 and 9 go UNKNOWN instead of FALSE. A logged "not judged" is not a failure of the check: `behavior` stays in `sources_run`.
+- **Action / observation contract**: a sub-check that cannot run (no action layout, no action min/max, no single-index gripper layout; a metric with no logged values) is a `PartialSkip` on `contract_violation`. The log warning stays.
+- **Eval config from the files** (#2, #51). `WorkspaceManager(config_loader=...)`, default `file_config_loader("config/eval.yaml")` (YAML, or JSON for `.json`). `extend`, `adopt`, `code_ref_of` (`config_loader` argument) and `base_ref` (when no explicit config is given) read the eval config of the working copy; the patched `CodeRef.eval_config` is never copied from the code it was built from. A missing or unreadable config file is a `WorkspaceError`, not `{}`: an empty config would read as "nothing to compare". `run_rung1` uses the same loader (`workspace.eval_config_path` in its JSON overrides the path). `pyyaml` is an optional extra (`[yaml]`, included in `[dev]`), imported lazily by the default loader only; without it JSON configs and custom `config_loader`s work and a YAML file is a clear `WorkspaceError`. hybrid-agent never uses it. An explicit `base_ref(label, eval_config)` stays the caller's statement; the loader should agree with it.
+- **Trace code key** (#52). `EpisodeTrace.code_key` and `BehaviorTrace.code_key` (`CodeRef.key()`, i.e. code and eval config). `TraceSource.load` / `BehaviorSource.load` are template methods: they call `_load` and then `verify_code_key`; traces of another code, or with no key at all, raise `TraceUnavailable`, so the checks are recorded as skipped. Subclasses implement `_load`; `tests/test_trace_code_key.py` fails if any source in `router/` or `tests/` overrides `load`. The synthetic sources stamp the incident's key; `make_traces`/`make_source`/`make_behavior_source` stamp `make_incident()`'s key by default.
+- **hagent starts from a recorded commit** (#56, hybrid-agent submodule). `GitHelpers.record_start()` (called by `LocalEnv` and `DockerEnv` constructors) stores `HEAD`; `git_diff()` and `git_tracked_diff_hash()` diff against it, so an agent's own `git commit` stays in the patch. A repository without commits keeps the old fallback. The submodule change is uncommitted in `hybrid-agent`.
+- **Test fixtures.** Router cases now give the training spec the synthetic action layout and limits (`tests.router_cases.ACTION_SPEC`); without them every case would run with `contract_violation` unchecked and row 4 could never be ruled out. The test checkout has `config/eval.yaml`.
+
+**Rejected**
+- Treating unkeyed traces as acceptable ("unknown provenance, assume it matches"): that is exactly what lets the old code's logs stand for a patched one. Real log writers must stamp `code_key` (TODO(verify)).
+- Marking the whole `behavior` source unchecked on any "not judged": only the signals of the part that was not judged are unchecked (a phase that is judged still counts).
+- Defaulting a missing config file to `{}`.
+
+**Known limits / TODO**
+- `config/eval.yaml` is a guess at where the controller repo keeps its eval config (`EVAL_CONFIG_PATH`, TODO(verify)); a repo with several config files needs its own loader.
+- #55 (`--binary`) and the host-git-config half of #56 are not done.
+- Row 8/9 become UNKNOWN whenever a log has no subtask records, so a deployment that never logs them reads row 10 for action-gap cases; that is the intended cost of #59.

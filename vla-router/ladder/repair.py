@@ -21,7 +21,8 @@ destinations that edit the system: ``hagent`` (code / config bug) and ``config_f
      that does not rebuild is reported in ``rebuild_error`` with its ``rebuild_cause``
      (``UnrebuildablePatch.CAUSES``). Under the local backend the agent's own working copy is
      also named (``code_ref_of``); if the rebuilt patch gives a different name, the patch lost
-     something (non-UTF-8 bytes: ``encoding``; committed changes: ``mismatch``) and is refused,
+     something (non-UTF-8 bytes: ``encoding``; anything else: ``mismatch``). hagent's patch is
+     taken against the commit it started from, so changes the agent committed are in it and is refused,
      so a lossy patch never silently becomes different code.
 
 The original checkout is never written: only the manager reads it.

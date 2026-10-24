@@ -21,7 +21,7 @@ from router.prereq.behavior_trace import (PHASES, BehaviorSource, BehaviorTrace,
 from router.prereq.trace import TraceUnavailable
 from router.schemas import Incident, Mode
 from router.stage1.nominal import NominalStats
-from router.stage1.synthetic import faults_for
+from router.stage1.synthetic import default_code_key, faults_for
 
 FLOORS: Mapping[str, float] = {M_BIAS: 0.003, M_SCATTER: 0.003, M_WRONG: 0.05}
 GRASP_NOISE = 0.01                       # healthy per-axis scatter of the gripper-close position (m)
@@ -39,7 +39,7 @@ class BehaviorFaults:
 
 
 def make_behavior_trace(seed: int, mode: Mode = Mode.CLEAN, faults: BehaviorFaults = BehaviorFaults(), *,
-                        success: bool = False) -> BehaviorTrace:
+                        success: bool = False, code_key: Optional[str] = None) -> BehaviorTrace:
     rng = random.Random(f"behavior|{seed}|{Mode(mode).value}")
     grasp = None
     if not faults.no_grasp:
@@ -52,20 +52,22 @@ def make_behavior_trace(seed: int, mode: Mode = Mode.CLEAN, faults: BehaviorFaul
     if faults.fail_phase is not None:
         stop = PHASES.index(faults.fail_phase)
         subtasks = tuple(SubtaskProgress(p, success or i < stop) for i, p in enumerate(PHASES))
-    return BehaviorTrace(seed, mode, success, grasp, subtasks)
+    return BehaviorTrace(seed, mode, success, grasp, subtasks, code_key)
 
 
 def make_behavior_traces(n: int, mode: Mode = Mode.CLEAN, faults: BehaviorFaults = BehaviorFaults(), *,
-                         base_seed: int = 0, success: bool = False) -> list[BehaviorTrace]:
-    return [make_behavior_trace(base_seed + i, mode, faults, success=success) for i in range(n)]
+                         base_seed: int = 0, success: bool = False, code_key: Optional[str] = None) -> list[BehaviorTrace]:
+    return [make_behavior_trace(base_seed + i, mode, faults, success=success, code_key=code_key) for i in range(n)]
 
 
 def make_behavior_source(clean: BehaviorFaults = BehaviorFaults(), incident: Optional[BehaviorFaults] = None, *,
-                         n: int = 8) -> InMemoryBehaviorSource:
-    """Failing episodes under refs ``"clean"`` and ``"incident"``."""
+                         n: int = 8, code_key: Optional[str] = None) -> InMemoryBehaviorSource:
+    """Failing episodes under refs ``"clean"`` and ``"incident"``, logged with ``code_key`` (default:
+    the code of ``make_incident()``)."""
     incident = clean if incident is None else incident
-    return InMemoryBehaviorSource({"clean": make_behavior_traces(n, Mode.CLEAN, clean),
-                                   "incident": make_behavior_traces(n, Mode.INCIDENT, incident)})
+    key = default_code_key() if code_key is None else code_key
+    return InMemoryBehaviorSource({"clean": make_behavior_traces(n, Mode.CLEAN, clean, code_key=key),
+                                   "incident": make_behavior_traces(n, Mode.INCIDENT, incident, code_key=key)})
 
 
 class CodeKeyedBehaviorSource(BehaviorSource):
@@ -85,14 +87,14 @@ class CodeKeyedBehaviorSource(BehaviorSource):
         self.faults, self.default = dict(faults), default
         self.file_faults, self.workspaces = tuple(file_faults), workspaces
 
-    def load(self, incident: Incident, mode: Mode) -> list[BehaviorTrace]:
+    def _load(self, incident: Incident, mode: Mode) -> list[BehaviorTrace]:
         mode, code = Mode(mode), incident.code_ref.key()
         if mode.value not in incident.log_refs:
             raise TraceUnavailable(f"incident {incident.incident_id} has no log_refs[{mode.value!r}]")
         f = faults_for(incident, self.faults, self.file_faults, self.workspaces, self.default)
         if f is None:
             raise TraceUnavailable(f"no {mode.value}-mode behavior traces logged for code {code}")
-        return [make_behavior_trace(s, mode, f) for s in incident.failing_seeds]
+        return [make_behavior_trace(s, mode, f, code_key=code) for s in incident.failing_seeds]
 
 
 def make_behavior_nominal(*, group_size: int = 8, n_groups: int = 40, fire_z: float = 4.0) -> NominalStats:

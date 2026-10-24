@@ -210,12 +210,14 @@ def test_a_lossy_patch_that_still_applies_is_caught_not_rebuilt_wrong(tmp_path):
     assert out.code_ref == c0 and out.rebuild_cause == "encoding"
 
 
-def test_committed_changes_are_a_mismatch_not_no_change(mgr):
+def test_committed_changes_are_kept_in_the_patch(mgr):
+    """Was `mismatch` (hagent diffed against HEAD, so the commit hid the change); since F2b (ISSUES #56) the
+    patch is against the starting commit and the committed change rebuilds."""
     c0 = mgr.base_ref("c0")
     commit = bash("git -c user.name=a -c user.email=a@a commit -qam fix", "Committing.")
     out = HagentRepairer(mgr, hagent_settings(), mode="small", small=ScriptedModel([FIX, commit, SUBMIT])).repair(
         request(code=c0))
-    assert out.code_ref == c0 and out.rebuild_cause == "mismatch"
+    assert out.code_ref != c0 and not out.rebuild_cause and FIXED_LINE in out.diff
 
 
 # --------------------------------------------------------------------------- #
@@ -233,7 +235,7 @@ def test_tracked_files_matching_gitignore_are_in_the_snapshot(tmp_path):
     git(co, "add", "-f", "cfg.yaml")
     git(co, "commit", "-q", "-m", "init")
     (co / "local.yaml").write_text("untracked: 1\n")                    # untracked and ignored
-    mgr = WorkspaceManager(tmp_path / "store", {"c0": co})
+    mgr = WorkspaceManager(tmp_path / "store", {"c0": co}, lambda work: {})
     work = mgr.materialize(mgr.base_ref("c0"))
     assert (work / "cfg.yaml").read_text() == "gain: 2\n" and (work / "x.py").exists()
     assert not (work / "local.yaml").exists()

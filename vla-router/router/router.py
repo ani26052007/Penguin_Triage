@@ -111,7 +111,7 @@ class RouterResult:
     external_evidence: tuple[Evidence, ...] = ()   # extra_evidence: supplied by the caller, not by a check
     sources_run: tuple[str, ...] = ()          # Stage 1 sources and "behavior" that ran
     skipped: tuple[tuple[str, str], ...] = ()  # (source, reason): did not run
-    partial: tuple[tuple[str, str], ...] = ()  # (source, reason): ran, part of it not checked
+    partial: tuple[tuple[str, V.PartialSkip], ...] = ()  # ran, part of it not checked
     unchecked: tuple[str, ...] = ()            # signals passed to decide as not checked
 
     def episodes_by_replay(self) -> dict[str, int]:
@@ -122,48 +122,45 @@ class RouterResult:
 
 
 def _with_skip_notes(verdict: Verdict, skipped: Sequence[tuple[str, str]],
-                     partial: Sequence[tuple[str, str]]) -> Verdict:
+                     partial: Sequence[tuple[str, V.PartialSkip]]) -> Verdict:
     """Name every check that did not (fully) run in the verdict notes. Only
     the notes change: row, label and destination are decide's."""
     extra = []
     if skipped:
         extra.append("checks skipped: " + " | ".join(f"{s} ({why})" for s, why in skipped))
     if partial:
-        extra.append("checks partly skipped: " + " | ".join(f"{s} ({why})" for s, why in partial))
+        extra.append("checks partly skipped: " + " | ".join(f"{s} ({skip.reason})" for s, skip in partial))
     if not extra:
         return verdict
     return replace(verdict, notes="; ".join([verdict.notes] + extra) if verdict.notes else "; ".join(extra))
 
 
 def unchecked_signals(incident: Incident, skipped: Sequence[tuple[str, str]],
-                      partial: Sequence[tuple[str, str]]) -> frozenset[str]:
-    """Signals that a skipped (or partly skipped) check would have emitted.
-    ``staleness_variable`` only applies to an incident observed in incident
-    mode; a staleness partial skip is its incident half."""
+                      partial: Sequence[tuple[str, V.PartialSkip]]) -> frozenset[str]:
+    """Signals that a skipped check would have emitted (all of its source's) and
+    the signals each partial skip names. ``staleness_variable`` only applies to
+    an incident observed in incident mode."""
     out = set()
     for source, _ in skipped:
         out |= V.SIGNALS_BY_SOURCE.get(source, frozenset())
-    for source, _ in partial:
-        if source == "staleness":
-            out.add(V.SIG_STALENESS_VARIABLE)
-        else:
-            out |= V.SIGNALS_BY_SOURCE.get(source, frozenset())
+    for _, skip in partial:
+        out |= skip.signals
     if incident.observed_mode is not Mode.INCIDENT:
         out.discard(V.SIG_STALENESS_VARIABLE)
     return frozenset(out)
 
 
 def _run_c_behavior(incident: Incident, inputs: RouterInputs, cfg: BehaviorConfig
-                    ) -> tuple[tuple[Evidence, ...], list[str], Optional[str]]:
-    """(evidence, notes, skip reason or None)."""
+                    ) -> tuple[tuple[Evidence, ...], list[str], Optional[str], tuple[V.PartialSkip, ...]]:
+    """(evidence, notes, skip reason or None, parts that were not judged)."""
     if inputs.behavior_source is None:
-        return (), [], "no behavior source configured"
+        return (), [], "no behavior source configured", ()
     try:
         a = run_behavior_analysis(incident, inputs.behavior_source, inputs.behavior_nominal, cfg)
     except TraceUnavailable as exc:
         log.warning("C_behavior skipped: %s", exc)
-        return (), [], str(exc)
-    return a.evidence, [f"C_behavior: {n}" for n in a.notes], None
+        return (), [], str(exc), ()
+    return a.evidence, [f"C_behavior: {n}" for n in a.notes], None, a.partial
 
 
 def route(incident: Incident, backend: RolloutBackend, config: RouterConfig,
@@ -207,13 +204,14 @@ def route(incident: Incident, backend: RolloutBackend, config: RouterConfig,
         if run_c:
             # C_behavior belongs to Branch C (plan 3.2.7): rows 8-9 need "nothing restores".
             stages.append("C_behavior")
-            behavior_ev, b_notes, b_skip = _run_c_behavior(incident, inputs, config.behavior)
+            behavior_ev, b_notes, b_skip, b_partial = _run_c_behavior(incident, inputs, config.behavior)
             notes += b_notes
             if b_skip is None:
                 sources_run.append(BEHAVIOR_SOURCE)
+                partial += [(BEHAVIOR_SOURCE, skip) for skip in b_partial]
             else:
                 skipped.append((BEHAVIOR_SOURCE, b_skip))
-                unchecked = unchecked_signals(incident, skipped, partial)
+            unchecked = unchecked_signals(incident, skipped, partial)
             evidence += behavior_ev
             stages.append("branch_C")
             _, c_notes = run_branch_c(runner, incident, config.reference_checkpoint, evidence,
