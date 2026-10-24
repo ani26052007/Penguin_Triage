@@ -56,10 +56,13 @@ def user_text(messages) -> str:
 
 def test_repair_returns_a_rebuildable_code_ref_and_leaves_the_original_checkout_alone(mgr, checkout, c0):
     before = snapshot(checkout)
-    r = HagentRepairer(mgr, hagent_settings(), mode="small", small=ScriptedModel([FIX, SUBMIT]))
+    edit_config = bash(f"sed -i 's/eval_fast/train_like/' {EVAL_CONFIG}", "Fixing the render preset too.")
+    r = HagentRepairer(mgr, hagent_settings(), mode="small", small=ScriptedModel([FIX, edit_config, SUBMIT]))
     out = r.repair(request(code=c0))
     assert out.code_ref.code_hash.startswith(c0.code_hash + "+") and out.code_ref.key() != c0.key()
-    assert out.code_ref.eval_config == load_eval_config(mgr.materialize(out.code_ref))   # read from the patched files
+    # read from the patched files, not copied from the base: the patch changed the config
+    assert out.code_ref.eval_config == load_eval_config(mgr.materialize(out.code_ref)) == {"render": {"preset": "train_like"}}
+    assert out.code_ref.eval_config != c0.eval_config == {"render": {"preset": "eval_fast"}}
     assert FIXED_LINE in out.diff and out.code_diff == mgr.diff_of(out.code_ref) and "Submitted" in out.notes
     assert (mgr.materialize(out.code_ref) / WRAPPER).read_text().count(FIXED_LINE) == 1
     assert snapshot(checkout) == before and r.calls == 1

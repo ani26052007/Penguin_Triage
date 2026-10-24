@@ -84,3 +84,45 @@ def test_unusable_training_spec_warns_and_skips_instead_of_guessing(caplog):
         found = ActionContractCheck(NOMINAL, make_source(Faults(action_scale=3.0))).run(make_incident(training_spec=spec))
     assert "s1.action.range" not in ids(found)
     assert "range not checked" in caplog.text
+
+
+# --- partial skips (ISSUES #59, F3 review): nothing is skipped silently ---------------------------
+
+from dataclasses import replace as _replace
+
+
+def partial(traces_edit=None, **kw):
+    src = make_source(Faults())
+    if traces_edit:
+        for traces in src._by_ref.values():
+            traces[:] = [traces_edit(t) for t in traces]
+    return ActionContractCheck(NOMINAL, src, **kw).run_partial(INCIDENT)
+
+
+def contract_skips(skips):
+    assert all(s.signals == {V.SIG_CONTRACT_VIOLATION} for s in skips)
+    return " | ".join(s.reason for s in skips)
+
+
+def test_a_clean_run_has_no_partial_skip():
+    assert partial()[1] == []
+
+
+@pytest.mark.parametrize("metric,what,edit", [
+    ("action/gripper_tracking_err", "gripper tracking", lambda t: _replace(t, gripper_cmd_width=(), gripper_width=())),
+    ("action/joint_tracking_err", "joint tracking", lambda t: _replace(t, joint_cmd=(), joint_pos=())),
+    ("action/range_excess", "range", lambda t: _replace(t, raw_actions=())),
+])
+def test_a_metric_with_no_logged_values_is_a_partial_skip_on_contract_violation(metric, what, edit):
+    """fire() used to return silently when a metric had no values."""
+    found, skips = partial(edit)
+    reasons = contract_skips(skips)
+    assert f"no logged values for {metric}" in reasons and f"{what} not checked" in reasons
+
+
+def test_a_gripper_command_of_the_wrong_length_is_a_partial_skip():
+    """_gripper_sign used to return None for it, and the check said nothing."""
+    found, skips = partial(lambda t: _replace(t, gripper_cmd_width=t.gripper_cmd_width[:-1],
+                                              gripper_width=t.gripper_width[:-1]))
+    assert "gripper sign not checked" in contract_skips(skips)
+    assert "different length than the raw actions" in contract_skips(skips)

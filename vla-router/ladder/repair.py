@@ -22,8 +22,10 @@ destinations that edit the system: ``hagent`` (code / config bug) and ``config_f
      (``UnrebuildablePatch.CAUSES``). Under the local backend the agent's own working copy is
      also named (``code_ref_of``); if the rebuilt patch gives a different name, the patch lost
      something (non-UTF-8 bytes: ``encoding``; anything else: ``mismatch``). hagent's patch is
-     taken against the commit it started from, so changes the agent committed are in it and is refused,
-     so a lossy patch never silently becomes different code.
+     taken against the commit it started from, so changes the agent committed are in it, and a lossy
+     patch is refused rather than silently becoming different code. The copy's eval config is read with the manager's ``config_loader``; one
+     that cannot be read refuses the attempt (``config_unreadable``) instead of skipping the check.
+  5. adds the report model's spend to the attempt's cost (``RepairOutcome.cost``).
 
 The original checkout is never written: only the manager reads it.
 """
@@ -42,7 +44,7 @@ from hagent.runner import solve
 from hagent.task_template import TaskTemplate
 
 from ladder.workspace import UnrebuildablePatch, WorkspaceError, WorkspaceManager, code_ref_of
-from router.report import RepoIndex, ReportContext, build_hagent_prompt, write_report
+from router.report import RepoIndex, Report, ReportContext, build_hagent_prompt, write_report
 from router.schemas import CodeRef, Evidence, Incident, Verdict
 from router.stage2 import Branch
 
@@ -115,6 +117,10 @@ class HagentRepairer:
         return self.settings.env.workdir if self.settings.env.backend == "docker" else str(work)
 
     def build_prompt(self, req: RepairRequest, work: Path) -> str:
+        return self.render(req, work)[0]
+
+    def render(self, req: RepairRequest, work: Path) -> tuple[str, Report]:
+        """The prompt and the report it was built from (whose ``cost`` is part of the attempt's cost)."""
         inc = req.incident
         summary = (f"scene {inc.scene.key()}; failing seeds {list(inc.failing_seeds)}; "
                    f"observed success rate {inc.observed_success_rate}; expected {inc.reference_rate}")
@@ -127,36 +133,58 @@ class HagentRepairer:
         if req.feedback:
             task += "\n\nEarlier attempts on this incident failed validation:\n" + "\n".join(
                 f"- {f}" for f in req.feedback)
-        return build_hagent_prompt(req.verdict, ctx, task, report.localization, req.evidence, self.template)
+        return build_hagent_prompt(req.verdict, ctx, task, report.localization, req.evidence, self.template), report
 
     def _local_name(self, work: Path) -> Optional[str]:
         """The name of the files the agent left in ``work`` (local backend only; under docker the
-        host copy is not the agent's). None when the copy no longer names itself."""
+        host copy is not the agent's). None when the copy no longer names itself. An eval config that
+        the manager's loader cannot read raises ``UnrebuildablePatch``: the attempt is refused, the
+        check is not skipped."""
         if self.settings.env.backend == "docker":
             return None
+
+        def loader(w: Path):
+            try:
+                return self.workspaces.config_loader(w)
+            except UnrebuildablePatch:
+                raise
+            except WorkspaceError as e:
+                raise UnrebuildablePatch("config_unreadable",
+                                         f"the eval config of the files the agent left cannot be read: {e}") from e
         try:
-            return code_ref_of(work).code_hash
+            return code_ref_of(work, loader).code_hash
+        except UnrebuildablePatch:
+            raise
         except WorkspaceError:
             return None
 
     def repair(self, req: RepairRequest) -> RepairOutcome:
         self.calls += 1
         base = req.incident.code_ref
+        unreadable: Optional[UnrebuildablePatch] = None
         with tempfile.TemporaryDirectory(prefix="repair-") as td:
             work = self.workspaces.materialize(base, Path(td) / "repo")
-            prompt = self.build_prompt(req, work)
+            prompt, report = self.render(req, work)
             result = solve(prompt, work, self.settings, self.mode, small=self.small, big=self.big)
-            actual = self._local_name(work) if result.submitted else None
+            actual = None
+            if result.submitted:
+                try:
+                    actual = self._local_name(work)
+                except UnrebuildablePatch as e:
+                    unreadable = e
         big = result.usage.get("big")
         calls = big.calls if big else 0
         reviews = tuple(result.reviews)
         probs = tuple(r.get("pass_probability") for r in reviews)
+        cost = result.total_cost + report.cost
         notes = f"hagent exit status: {result.exit_status}"
         if not result.submitted:
             return RepairOutcome(base, result.patch, f"{notes}; not submitted ({result.detail[:200]})",
-                                 result.total_cost, calls, self.workspaces.diff_of(base),
+                                 cost, calls, self.workspaces.diff_of(base),
                                  reviews=reviews, pass_probabilities=probs)
         try:
+            if unreadable is not None:
+                raise unreadable
             new = self.workspaces.extend(base, result.patch)
             if actual is not None and actual != new.code_hash:
                 cause = "encoding" if "\ufffd" in result.patch else "mismatch"
@@ -164,9 +192,10 @@ class HagentRepairer:
                                                 f"left are {actual}")
         except UnrebuildablePatch as e:
             return RepairOutcome(base, result.patch, f"{notes}; patch could not be rebuilt ({e.cause})",
-                                 result.total_cost, calls, self.workspaces.diff_of(base), rebuild_error=str(e),
+                                 cost, calls, self.workspaces.diff_of(base), rebuild_error=str(e),
                                  rebuild_cause=e.cause, reviews=reviews, pass_probabilities=probs)
-        return RepairOutcome(new, result.patch, notes, result.total_cost, calls, self.workspaces.diff_of(new),
+        return RepairOutcome(new, result.patch, notes, cost, calls, self.workspaces.diff_of(new),
                              reviews=reviews, pass_probabilities=probs)
+
 
 __all__ = ["HagentRepairer", "RepairKind", "RepairOutcome", "RepairRequest", "Repairer"]

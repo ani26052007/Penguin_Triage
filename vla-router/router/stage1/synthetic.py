@@ -263,6 +263,15 @@ class CodeKeyedTraceSource(TraceSource):
 
 # --------------------------------------------------------------------------- #
 # nominal statistics
+class NominalProbe(O.OpenLoopProbe):
+    """An open-loop probe that finds the current preprocessing as good as the reference one (ratio 1.0,
+    the synthetic nominal). The check's absence is a partial skip on ``contract_violation``, so fixtures
+    that expect a clean obs contract pass this."""
+
+    def action_error(self, incident, path):
+        return 0.1
+
+
 # --------------------------------------------------------------------------- #
 
 def reference_vectors(traces: Sequence[EpisodeTrace], cameras: Sequence[str]) -> dict[str, tuple[float, ...]]:

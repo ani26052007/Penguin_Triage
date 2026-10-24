@@ -18,14 +18,14 @@ from router.stage1.registry import EVIDENCE_SOURCES, NOT_CONFIGURED, run_stage1
 from router.stage1.sanity import SanityCheck
 from router.stage1.staleness import StalenessProbe
 from router.stage1.synthetic import (CAMERAS, Faults, make_config_mapping, make_eval_config, make_incident,
-                                     make_nominal, make_source)
+                                     make_nominal, make_source, NominalProbe)
 
 NOMINAL = make_nominal()
 
 
 def all_checks(src, mapping=None):
     return [ConfigContractCheck(mapping or make_config_mapping()),
-            ObservationContractCheck(NOMINAL, src, CAMERAS),
+            ObservationContractCheck(NOMINAL, src, CAMERAS, probe=NominalProbe()),
             ActionContractCheck(NOMINAL, src),
             StalenessProbe(NOMINAL, src),
             SanityCheck(NOMINAL, src)]

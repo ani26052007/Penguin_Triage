@@ -182,6 +182,7 @@ def route(incident: Incident, backend: RolloutBackend, config: RouterConfig,
     skipped, partial, sources_run = list(s1.skipped), list(s1.partial), list(s1.sources_run)
     behavior_ev: tuple[Evidence, ...] = ()
     evidence = s1.evidence + external
+    notes += s1.notes
 
     unchecked = unchecked_signals(incident, skipped, partial)
     if row1_state(evidence, [stage0], config.decide, unchecked) != "false":

@@ -155,6 +155,8 @@ def boom(*a, **kw):
 
 
 def run_with_error(stage, monkeypatch):
+    if stage == "router":
+        monkeypatch.setattr(loop_mod, "route", boom)
     rep = RaisingRepairer([PATCHED]) if stage == "repairer" else ScriptedRepairer([PATCHED])
     kw = {}
     case = combined_case(patched_nominal=0.4) if stage == "rung2" else combined_case()
@@ -168,13 +170,14 @@ def run_with_error(stage, monkeypatch):
     return loop.run(case.incident())
 
 
-@pytest.mark.parametrize("stage", ["repairer", "rung0", "rung1", "rung2"])
+@pytest.mark.parametrize("stage", ["router", "repairer", "rung0", "rung1", "rung2"])
 def test_an_exception_in_a_stage_ends_the_incident_unresolved_with_the_error_recorded(stage, monkeypatch):
     res = run_with_error(stage, monkeypatch)
     assert res.status is LoopStatus.UNRESOLVED
     assert (res.error_stage, res.error_type, res.error_message) == (stage, "Boom", res.error_message)
     assert "exploded" in res.error_message and f"error in {stage}: Boom" in res.reason
-    assert res.passes and res.final is not None                                    # the evidence so far is attached
+    if stage != "router":
+        assert res.passes and res.final is not None                                # the evidence so far is attached
     if stage in ("rung0", "rung1"):
         assert res.repairs[-1].result == f"{stage}_error" and res.repairs[-1].diff   # the attempt is kept
     d = json.loads(json.dumps(res.to_dict()))

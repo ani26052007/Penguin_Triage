@@ -182,9 +182,16 @@ class ActionContractCheck(Check):
         if sp.gripper_index is None:
             not_checked("gripper sign", f"no single-index {self.gripper_name!r} layout in the training spec")
 
+        if sp.gripper_index is not None:
+            short = [t.seed for t in traces if t.raw_actions and len(t.raw_actions) != len(t.gripper_cmd_width)]
+            if short:
+                not_checked("gripper sign", f"the gripper command has a different length than the raw actions in "
+                                            f"{len(short)} of {len(traces)} episodes")
+
         def fire(metric: str, side: str, signal_id: str, location: str, text) -> None:
             xs = vals.get(metric)
             if not xs:
+                not_checked(signal_id.replace("_", " "), f"no logged values for {metric}")
                 return
             d = self.nominal.deviation(metric, median(xs), side, self.fire_z)
             if d.fires:

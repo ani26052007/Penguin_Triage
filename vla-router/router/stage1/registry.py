@@ -40,6 +40,7 @@ class Stage1Result:
     skipped: tuple[tuple[str, str], ...] = ()     # (source, reason): did not run
     partial: tuple[tuple[str, PartialSkip], ...] = ()   # ran, but part of it was not checked
     sources_run: tuple[str, ...] = ()             # ran (fully or partly), in registry order
+    notes: tuple[str, ...] = ()                   # informational, from the checks that ran
 
 
 def run_stage1(incident: Incident, checks: Sequence[Check]) -> Stage1Result:
@@ -54,6 +55,7 @@ def run_stage1(incident: Incident, checks: Sequence[Check]) -> Stage1Result:
     skipped: list[tuple[str, str]] = []
     partial: list[tuple[str, PartialSkip]] = []
     ran: set[str] = set()
+    notes: list[str] = []
     for check in checks:
         try:
             found, blind = check.run_partial(incident)
@@ -67,6 +69,7 @@ def run_stage1(incident: Incident, checks: Sequence[Check]) -> Stage1Result:
         ran.add(check.source)
         evidence += found
         partial += [(check.source, skip) for skip in blind]
+        notes += check.notes(incident)
     skipped += [(s, NOT_CONFIGURED) for s in EVIDENCE_SOURCES if s not in sources]
 
     ids = [e.id for e in evidence]
@@ -74,4 +77,4 @@ def run_stage1(incident: Incident, checks: Sequence[Check]) -> Stage1Result:
     if dup:
         raise ValueError(f"duplicate evidence ids from Stage 1: {dup}")
     return Stage1Result(tuple(evidence), tuple(skipped), tuple(partial),
-                        tuple(s for s in EVIDENCE_SOURCES if s in ran))
+                        tuple(s for s in EVIDENCE_SOURCES if s in ran), tuple(notes))

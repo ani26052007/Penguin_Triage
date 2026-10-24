@@ -131,3 +131,36 @@ def test_reads_the_requested_inference_mode():
     inc = make_incident()
     assert ObservationContractCheck(NOMINAL, src, CAMERAS, mode=Mode.CLEAN).run(inc) == []
     assert ObservationContractCheck(NOMINAL, src, CAMERAS, mode=Mode.INCIDENT).run(inc) != []
+
+
+# --- partial skips (ISSUES #59, F3 review): a sub-check that cannot run says so -------------------
+
+from dataclasses import replace as _replace
+
+
+def run_partial(spec_edit=None, probe=FixedProbe(1.0, 1.0)):
+    incident = INCIDENT if spec_edit is None else _replace(INCIDENT, training_spec=_replace(INCIDENT.training_spec, **spec_edit))
+    return check(probe=probe).run_partial(incident)
+
+
+def test_a_complete_spec_and_a_probe_give_no_partial_skip():
+    assert run_partial()[1] == []
+
+
+@pytest.mark.parametrize("edit,words", [({"image_size": None}, "image size not checked"),
+                                        ({"channel_order": None}, "channel order not checked")])
+def test_a_missing_spec_field_is_a_partial_skip_on_contract_violation(edit, words):
+    found, skips = run_partial(edit)
+    assert [s.signals for s in skips] == [{V.SIG_CONTRACT_VIOLATION}] and words in skips[0].reason
+
+
+def test_no_open_loop_probe_is_a_note_not_a_partial_skip():
+    c = check(probe=None)
+    assert c.run_partial(INCIDENT)[1] == []
+    assert c.notes(INCIDENT) == ["open-loop probe not configured"]
+    assert check(probe=FixedProbe(1.0, 1.0)).notes(INCIDENT) == []
+
+
+def test_no_probe_with_a_missing_image_size_is_still_a_partial_skip():
+    found, skips = run_partial({"image_size": None}, probe=None)
+    assert [s.signals for s in skips] == [{V.SIG_CONTRACT_VIOLATION}] and "image size" in skips[0].reason

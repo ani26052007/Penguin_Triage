@@ -42,11 +42,11 @@ You can already see the cost. In the confusion matrix, action_gap became vision_
 
 ### 4. Model outputs can change routes, despite “models never decide”.
 
-(F3 fixed the Rung 2 part: the router re-run verdict wins. Rows 4/10 use Rung 2's label, rows 6/7 go to the data ladder whatever it says, other rows follow the router and the label is logged only; `Rung2Result.overridden` marks it. Still open: the config mapper `approved` flag and `extra_evidence` provenance.)
+(F3 fixed the Rung 2 part: Rung 2's label decides only on re-run rows 4 and 10. Rows 6/7 go to the data ladder whatever it says, other rows follow the router and the label is logged only; `Rung2Result.overridden` marks it. Still open: the config mapper `approved` flag and `extra_evidence` provenance.)
 
 There are three paths:
 
-- Rung 2 overrides the re-run. After an ambiguous Rung 1, the code and unclear labels are not gated. A row-6 vision re-run can be sent back to hagent, or dropped as UNRESOLVED (01_WHY #1(b), 07 §5.6). Only data_gap is gated.
+- Rung 2 overrides the re-run. After an ambiguous Rung 1, the code and unclear labels are not gated. A row-6 vision re-run can be sent back to hagent, or dropped as UNRESOLVED (01_WHY #1(b), 07 §5.6). Only data_gap is gated. (Fixed in F3: now only re-run rows 4 and 10 use the label.)
 - The config mapper. An unapproved mapping that maps a field to null turned row 4 into row 10 (06 §6.4, C3). approved is never read anywhere.
 - extra_evidence has no provenance check. Anything passed in is trusted.
 
@@ -84,7 +84,7 @@ The Controller/wrapper code: line prints the original path, not the working copy
 
 ### 9. FIXED in F3: Rung 0 isn’t connected.
 
-(F3: `ladder.rung0.rung0_hook(workspaces, settings, cfg, reviewer=)` is the `Rung0Hook`; it runs `run_rung0` in a temp copy built by `materialize(outcome.code_ref)` and the reviewer fail-opens on `ModelError`. Tests: `tests/test_f3.py`.)
+(F3: `ladder.rung0.rung0_hook(workspaces, settings, cfg, reviewer=)` is the `Rung0Hook`; it runs `run_rung0` in a temp copy built by `materialize(outcome.code_ref)` and the reviewer fail-opens on `ModelError`. F3 review fixes: wired into `IncidentLoop` through `LoopConfig.rung0` (default off; README example), and `tests/test_f3_review_fixes.py` rejects a real bad patch from the real `HagentRepairer` before any simulator episode. Other tests: `tests/test_f3.py`.)
 
 - run_rung0(env, cfg) doesn’t match the loop’s Rung0Hook(request, outcome) signature, and no adapter exists.
 - The patched working copy is deleted when repair() returns, so there is nothing for Rung 0 to lint or test. (F2a: the patch is stored and `materialize()` rebuilds any code; the adapter is F3.)
@@ -99,7 +99,7 @@ These all propagate: EnvError (bad command path), ModelError (missing model), Do
 
 ### 11. PARTLY FIXED in F3: Budgets leak.
 
-(F3: `LoopConfig.max_cost` / `max_big_calls` are checked before every repair attempt and before Rung 2, and the pricing warning is raised. Still open: no simulator-episode cap (#61); hagent's own per-run caps still restart on each attempt, so an attempt can overshoot an incident cap by up to one run; the Rung 2 and Rung 0 reviewer models' prices are not checked.)
+(F3: `LoopConfig.max_cost` / `max_big_calls` are checked before every repair attempt and before a Rung 2 call whose label can change the route (re-run rows 4 and 10; on other rows a hit cap skips the call and the router's destination is followed, as for `max_rung2_calls`), and the pricing warning is raised. The report model's spend counts (F3 review). Still open: no simulator-episode cap (#61); hagent's own per-run caps still restart on each attempt, so an attempt can overshoot an incident cap by up to one run; the Rung 2 and Rung 0 reviewer models' prices are not checked.)
 
 - Hagent’s caps reset on every attempt, so one incident can spend 3× the per-run caps.
 - The loop adds up cost and big_calls but never checks them against a limit.
@@ -334,3 +334,11 @@ When the repairer raises, its spend so far is not in `LoopResult.cost` (the exce
 ### 63. Rung 0's `expected_files` are not set from the router's located files.
 
 `rung0_hook` uses one `Rung0Config` for every incident; "did the patch touch the right file" would need `expected_files` per request (from `verdict.location` / the evidence).
+
+### 64. With Rung 2 not configured, a row-4 re-run after an ambiguous Rung 1 ends UNRESOLVED.
+
+`IncidentLoop(rung2=None)` makes Rung 2 answer the fallback "unclear" (`Rung2Result.source == "fallback"`, reason "Rung 2 not configured"). If the router re-run after an ambiguous Rung 1 is row 4 (or 10), the label decides, so the incident ends UNRESOLVED ("Rung 2 unclear: Rung 2 not configured") instead of going back to hagent. The same holds when `max_rung2_calls` is exhausted or the cap on spend is hit. This is the specified behaviour for now; whether an unconfigured Rung 2 should leave row 4 to the router is open.
+
+### 65. The open-loop probe is a stub, so the observation contract always reports a partial skip.
+
+Fixed. A missing `OpenLoopProbe` (`probe=None`) is an optional extra check not run, so it is no longer a `PartialSkip` on `contract_violation`; it is recorded as the note "open-loop probe not configured" in `RouterResult.notes` (via `Check.notes` and `Stage1Result.notes`). Sub-checks that cannot run because a log or spec field is missing (image size, channel order, value range, orientation) are still partial skips, so row 4 stays undecided for those. `decide()` is unchanged. `PolicyOpenLoopProbe` is still a stub (TODO(verify)). Tests: `test_router.py` (`test_no_open_loop_probe_does_not_leave_row_4_undecided`, `test_a_missing_image_size_spec_still_leaves_row_4_undecided_without_a_probe`), `test_stage1_obs_contract.py`.

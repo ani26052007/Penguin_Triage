@@ -39,6 +39,11 @@ class Check(ABC):
         nothing found". Checks that can be partly blind override this."""
         return self.run(incident), []
 
+    def notes(self, incident: Incident) -> list[str]:
+        """Informational remarks for the router result, e.g. an optional extra
+        check that is not configured. Never a skip: they leave signals checked."""
+        return []
+
 
 def saturating(ratio: float) -> float:
     """Map a ratio ``deviation / threshold`` to [0, 1): 0 at 0, 0.5 at 1, ->1.

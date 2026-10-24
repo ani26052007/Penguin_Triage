@@ -24,6 +24,7 @@ from router.replay import ReplayConfig, ReplayRunner, seed_set
 from router.router import RouterInputs, route
 from router.schemas import (ActionPipeline, ActorKind, ActorRef, CodeRef, Evidence, Factor, Incident, Mode,
                             Outcome, SceneSpec, TrainingSpec, VerdictLabel)
+from router.stage1.obs_contract import ObservationContractCheck
 from router.stage2 import Branch
 from scripts.confusion_matrix import FAILURE_RATE, LIGHT, MAT, NOMINAL_BAND, POLICY, _REF_OK
 from tests.router_cases import (ACTION_SPEC, CODE_EVAL_RENDER, TRAIN_RENDER, QuotaBackend, RouterCase, default_config,
@@ -104,7 +105,10 @@ def test_log_only_evidence_routes_without_hand_written_evidence(name, row, locat
     res = run_case(CASES[name])
     assert res.verdict.row == row, res.verdict.notes
     assert res.external_evidence == () and res.skipped == ()
-    assert {s for s, _ in res.partial} <= {"behavior"}      # a log with no subtask records leaves the phase unjudged
+    # nothing is silently skipped. The one justified partial skip: a case whose log has no subtask records
+    # leaves the failure phase unjudged (exactly these signals, from C_behavior); action_gap has the records.
+    phase = {"failure_phase:reach", "failure_phase:grasp", "failure_phase:lift", "failure_phase:place"}
+    assert [(src, set(p.signals)) for src, p in res.partial] == ([] if name == "action_gap" else [("behavior", phase)])
     assert res.evidence == res.stage1_evidence + res.behavior_evidence
     if location:
         assert res.verdict.location == location
@@ -429,3 +433,28 @@ def test_replay_config_validation():
     runner.run(V.R_STAGE0, SceneSpec("x"), CodeRef("c"), POLICY)
     with pytest.raises(ValueError):
         runner.run(V.R_STAGE0, SceneSpec("x"), CodeRef("c"), POLICY)
+
+
+def _without_probe(inputs: RouterInputs) -> RouterInputs:
+    checks = tuple(ObservationContractCheck(c.nominal, c.traces, c.cameras, mode=c.mode, probe=None)
+                   if isinstance(c, ObservationContractCheck) else c for c in inputs.stage1_checks)
+    return replace(inputs, stage1_checks=checks)
+
+
+def test_no_open_loop_probe_does_not_leave_row_4_undecided():
+    """ISSUES #65: the probe is optional; a note, not a skip."""
+    case = CASES["vision_glossy"]
+    res = route(case.incident(), case.quota_backend(), CFG, _without_probe(case.inputs()))
+    assert res.verdict.row == 6 and "row 4 undecided" not in res.verdict.notes
+    assert "contract_obs" in res.sources_run and "contract_obs" not in [s for s, _ in res.partial]
+    assert V.SIG_CONTRACT_VIOLATION not in res.unchecked
+    assert "open-loop probe not configured" in res.notes
+
+
+def test_a_missing_image_size_spec_still_leaves_row_4_undecided_without_a_probe():
+    case = CASES["vision_glossy"]
+    inc = case.incident()
+    inc = replace(inc, training_spec=replace(inc.training_spec, image_size=None))
+    res = route(inc, case.quota_backend(), CFG, _without_probe(case.inputs()))
+    assert res.verdict.row == 10 and "row 4 undecided" in res.verdict.notes
+    assert V.SIG_CONTRACT_VIOLATION in res.unchecked

@@ -37,7 +37,7 @@ from router.stage1.cfg_contract import ConfigContractCheck, ConfigMapping
 from router.stage1.obs_contract import ObservationContractCheck
 from router.stage1.sanity import SanityCheck
 from router.stage1.staleness import StalenessProbe
-from router.stage1.synthetic import CAMERAS, CodeKeyedTraceSource, Faults, make_nominal, make_training_spec
+from router.stage1.synthetic import CAMERAS, CodeKeyedTraceSource, Faults, NominalProbe, make_nominal, make_training_spec
 from scripts.confusion_matrix import (FAILURE_RATE, LIGHT, NOMINAL_BAND, POLICY, _REF_OK,
                                       build_cases)
 
@@ -102,7 +102,7 @@ class RouterCase:
         synthetic logs; ``stage1=False`` / ``behavior=False`` leave them out."""
         src = CodeKeyedTraceSource(self.trace_faults, self.trace_default, file_faults=self.trace_file_faults,
                                    workspaces=workspaces if self.trace_file_faults else None)
-        checks = (ConfigContractCheck(CONFIG_MAPPING), ObservationContractCheck(STAGE1_NOMINAL, src, CAMERAS),
+        checks = (ConfigContractCheck(CONFIG_MAPPING), ObservationContractCheck(STAGE1_NOMINAL, src, CAMERAS, probe=NominalProbe()),
                   ActionContractCheck(STAGE1_NOMINAL, src), StalenessProbe(STAGE1_NOMINAL, src),
                   SanityCheck(STAGE1_NOMINAL, src)) if stage1 else ()
         if not behavior:
@@ -113,11 +113,12 @@ class RouterCase:
         return RouterInputs(checks, bsrc, BEHAVIOR_NOMINAL)
 
 
-# The action layout and limits the synthetic logs follow. Without them the action contract checks
-# none of dimensions / range / gripper sign (a partial skip of contract_violation), and row 4 could
-# never be ruled out.
+# The action layout and limits, and the image size and channel order, that the synthetic logs follow.
+# Without them the contract checks skip those sub-checks (a partial skip of contract_violation), and
+# row 4 could never be ruled out.
 ACTION_SPEC = dict(norm_stats={"action": make_training_spec().norm_stats["action"]},
-                   action_layout=make_training_spec().action_layout)
+                   action_layout=make_training_spec().action_layout,
+                   image_size=make_training_spec().image_size, channel_order=make_training_spec().channel_order)
 
 
 def log_refs(name: str, modes: tuple[str, ...] = LOG_REFS) -> dict[str, str]:

@@ -212,12 +212,13 @@ class ObservationContractCheck(Check):
         return self.run_partial(incident)[0]
 
     def run_partial(self, incident: Incident) -> tuple[list[Evidence], list[V.PartialSkip]]:
-        """A metric with no logged values is a partial skip on ``contract_violation``."""
+        """A metric with no logged values, or a missing spec field, is a partial
+        skip on ``contract_violation``. A missing open-loop probe is not (see ``notes``)."""
         traces = self.traces.load(incident, self.mode)
         spec = incident.training_spec
         vals = observation_metrics(traces, self.cameras, self._vectors)
         skips: list[V.PartialSkip] = []
-        out = self._resolution(spec, traces)
+        out = self._resolution(spec, traces, skips)
         for cam in self.cameras:
             out += self._range(cam, vals, skips) + self._channels(cam, spec, traces, vals, skips) \
                 + self._orientation(cam, traces, vals, skips)
@@ -225,17 +226,26 @@ class ObservationContractCheck(Check):
             out += self._open_loop(incident)
         return out, skips
 
+    def notes(self, incident: Incident) -> list[str]:
+        """The probe is an optional extra check: not having one is a note, not
+        a skip (ISSUES #65). A missing log or spec field is still a skip."""
+        return [] if self.probe is not None else ["open-loop probe not configured"]
+
     # -- sub-checks ----------------------------------------------------------
+    @staticmethod
+    def _not_checked(what: str, why: str, skips: list[V.PartialSkip]) -> None:
+        msg = f"obs contract: {why}; {what} not checked"
+        log.warning("%s", msg)
+        skips.append(V.PartialSkip(msg, {V.SIG_CONTRACT_VIOLATION}))
+
     def _dev(self, name: str, vals: Mapping[str, Sequence[float]], side: str, skips: list[V.PartialSkip]):
         xs = vals.get(name)
         if not xs:
-            msg = f"obs contract: no logged values for {name}; not checked"
-            log.warning("%s", msg)
-            skips.append(V.PartialSkip(msg, {V.SIG_CONTRACT_VIOLATION}))
+            self._not_checked(name, f"no logged values for {name}", skips)
             return None
         return self.nominal.deviation(name, median(xs), side, self.fire_z)
 
-    def _resolution(self, spec, traces: Sequence[EpisodeTrace]) -> list[Evidence]:
+    def _resolution(self, spec, traces: Sequence[EpisodeTrace], skips: list[V.PartialSkip]) -> list[Evidence]:
         out = []
         frames = [fs for t in traces for fs in t.frames]
         if spec.image_size is not None:
@@ -246,6 +256,8 @@ class ObservationContractCheck(Check):
                     "s1.obs.image_size", self.source, V.SIG_CONTRACT_VIOLATION, 1.0, "obs.image_size",
                     f"policy input is {seen} (height, width) in {len(bad)} of {len(frames)} logged frames; "
                     f"the training spec says {tuple(spec.image_size)}"))
+        else:
+            self._not_checked("image size", "no image_size in the training spec", skips)
         if spec.channel_order is not None:
             bad = [fs for fs in frames if fs.policy_input.shape[2] != len(spec.channel_order)]
             if bad:
@@ -253,6 +265,8 @@ class ObservationContractCheck(Check):
                     "s1.obs.channels", self.source, V.SIG_CONTRACT_VIOLATION, 1.0, "obs.image_size",
                     f"policy input has {bad[0].policy_input.shape[2]} channels in {len(bad)} of {len(frames)} "
                     f"logged frames; the training spec says {spec.channel_order!r}"))
+        else:
+            self._not_checked("channel order", "no channel_order in the training spec", skips)
         return out
 
     def _range(self, cam: str, vals, skips: list[V.PartialSkip]) -> list[Evidence]:

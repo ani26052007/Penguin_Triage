@@ -28,7 +28,9 @@ Stand-ins (all behind interfaces, none a model in the routing path):
                             find it in that code's logs.
   * ``DataLadder``          stub; the real pipeline is Section 5.
   * Rung 0 / Rung 2 hooks   optional callables; ``None`` skips Rung 0 and makes Rung 2 answer
-                            "unclear".
+                            "unclear". Rung 0 can also be switched on with ``LoopConfig.rung0``
+                            (a ``Rung0Config``): the loop then builds ``ladder.rung0.rung0_hook`` from the
+                            repairer's ``workspaces`` and ``settings``.
 """
 
 from __future__ import annotations
@@ -40,7 +42,7 @@ from typing import Callable, Optional, Protocol
 
 from ladder.backend import RolloutBackend
 from ladder.repair import RepairKind, RepairOutcome, RepairRequest, Repairer
-from ladder.rung0 import Rung0Result
+from ladder.rung0 import Rung0Config, Rung0Result, rung0_hook
 from ladder.rung1 import Rung1Config, Rung1Outcome, Rung1Result, run_rung1
 from ladder.rung2 import Rung2Input, Rung2Label, Rung2Result
 from router.prereq.rollout_cache import CachedBackend, RolloutCache
@@ -73,6 +75,7 @@ class LoopConfig:
     max_rung2_calls: int = 1       # plan: one big-model call per incident
     max_cost: float = 0.0          # total cost of the incident (repairs, reviews, Rung 2); 0 = off
     max_big_calls: int = 0         # hagent's big calls and reviews + Rung 0 reviews + Rung 2; 0 = off
+    rung0: Optional[Rung0Config] = None   # None: no Rung 0 (unless a hook is passed); else the loop builds the hook
 
     def __post_init__(self) -> None:
         if self.max_passes < 1 or self.max_repairs < 1 or self.max_rung2_calls < 0:
@@ -174,7 +177,7 @@ class LoopResult:
     cost: float
     final_diff: str = ""
     base: str = ""                                # base name (label@tree12) of the incident code
-    error_stage: str = ""                         # router | repairer | rung0 | rung1 | rung2, when an exception ended it
+    error_stage: str = ""                         # setup | router | repairer | rung0 | rung1 | rung2 | handoff, when an exception ended it
     error_type: str = ""
     error_message: str = ""
     rung2_pending: bool = False                   # the pass cap hit while a Rung 2 call was still due
@@ -216,6 +219,8 @@ _REBUILD_ADVICE = {
                       "change git settings or history.",
     "mismatch": "it does not give the files you left in the working copy (for example because changes were "
                 "committed). Do not commit, stash or reset; leave your changes uncommitted.",
+    "config_unreadable": "the eval config of the patched files cannot be read (deleted, or no longer valid "
+                         "YAML/JSON). Leave config/eval.yaml readable: keep it a valid mapping.",
 }
 
 
@@ -230,15 +235,28 @@ class IncidentLoop:
     """``workspaces`` (a ``ladder.workspace.WorkspaceManager``; default: the repairer's
     ``workspaces``, if it has one) names the incident code's base and gives its cumulative diff, so
     ``LoopResult.base`` / ``final_diff`` rebuild the final code even when the incident started on
-    patched code. Without one both stay "" (scripted repairers whose codes are not workspace names)."""
+    patched code. Without one both stay "" (scripted repairers whose codes are not workspace names).
+
+    Rung 0: pass a ``rung0`` hook, or set ``cfg.rung0`` and the loop builds the hook
+    (``ladder.rung0.rung0_hook``) from ``workspaces`` and ``settings`` (default: the repairer's own,
+    which ``HagentRepairer`` has), with ``rung0_reviewer`` as the reviewer model. Both is an error."""
 
     def __init__(self, backend: RolloutBackend, cfg: LoopConfig, *, repairer: Repairer,
                  inputs: RouterInputs, data_ladder: DataLadder,
-                 rung0: Optional[Rung0Hook] = None, rung2: Optional[Rung2Fn] = None, workspaces=None):
+                 rung0: Optional[Rung0Hook] = None, rung2: Optional[Rung2Fn] = None, workspaces=None,
+                 settings=None, rung0_reviewer=None):
         self.backend = backend if isinstance(backend, CachedBackend) else CachedBackend(backend, RolloutCache())
         self.cfg, self.repairer, self.inputs = cfg, repairer, inputs
         self.data_ladder, self.rung0, self.rung2 = data_ladder, rung0, rung2
         self.workspaces = workspaces if workspaces is not None else getattr(repairer, "workspaces", None)
+        if cfg.rung0 is not None:
+            if rung0 is not None:
+                raise ValueError("pass either a rung0 hook or LoopConfig.rung0, not both")
+            settings = settings if settings is not None else getattr(repairer, "settings", None)
+            if self.workspaces is None or settings is None:
+                raise ValueError("LoopConfig.rung0 needs workspaces and hagent settings (pass them, or use a "
+                                 "repairer that has them, such as HagentRepairer)")
+            self.rung0 = rung0_hook(self.workspaces, settings, cfg.rung0, reviewer=rung0_reviewer)
         self.warnings: tuple[str, ...] = ()
         warn = getattr(repairer, "pricing_warnings", None)
         if cfg.max_cost > 0 and warn is not None:
@@ -258,9 +276,8 @@ class _Run:
     def __init__(self, loop: IncidentLoop, incident: Incident):
         self.L, self.cfg, self.incident = loop, loop.cfg, incident
         self.code = incident.code_ref
-        ws = loop.workspaces
-        self.base = ws.base_name(incident.code_ref) if ws is not None else ""
-        self.code_diff = ws.diff_of(incident.code_ref) if ws is not None else ""   # whole change of self.code
+        self.base = ""                                  # set in _execute (stage "setup"): needs the workspaces
+        self.code_diff = ""                             # whole change of self.code
         self.passes: list[PassRecord] = []
         self.repairs: list[RepairRecord] = []
         self.rung2s: list[Rung2Result] = []
@@ -268,7 +285,7 @@ class _Run:
         self.pending_rung1: Optional[str] = None      # Rung 1 text when it was ambiguous: Rung 2 reads the next pass
         self.big_calls, self.cost = 0, 0.0
         self.last: Optional[RouterResult] = None
-        self.stage = "router"                          # the stage running now, for an error record
+        self.stage = "setup"                           # the stage running now, for an error record
         self.in_flight: Optional[RepairRecord] = None  # the repair attempt being validated
         self.error: tuple[str, str, str] = ("", "", "")
         self.rung2_pending = False
@@ -302,6 +319,9 @@ class _Run:
             return self.finish(LoopStatus.UNRESOLVED, f"error in {stage}: {type(e).__name__}: {e}")
 
     def _execute(self) -> LoopResult:
+        ws = self.L.workspaces
+        if ws is not None:        # bare or unknown code names, unknown labels, a corrupt store: error_stage "setup"
+            self.base, self.code_diff = ws.base_name(self.incident.code_ref), ws.diff_of(self.incident.code_ref)
         while True:
             if len(self.passes) >= self.cfg.max_passes:
                 if self.pending_rung1 is not None:
@@ -327,14 +347,17 @@ class _Run:
                     rec.action = "close"
                     return self.finish(LoopStatus.CLOSED, "router re-run found no significant failure; "
                                                           "Rung 2 not needed")
-                stop = self.budget_stop()
-                if stop:
-                    rec.action = "budget"
-                    return self.finish(LoopStatus.UNRESOLVED, f"{stop}; Rung 2 not called")
+                if v.row in CODE_OR_UNDETERMINED_ROWS:
+                    # only these rows need the label; the budget decides here (rows 6/7 and the others
+                    # do not wait for it: ``rung2`` returns the "unclear" fallback, as for max_rung2_calls)
+                    stop = self.budget_stop()
+                    if stop:
+                        rec.action = "budget"
+                        return self.finish(LoopStatus.UNRESOLVED, f"{stop}; Rung 2 not called")
                 r2 = self.rung2(cur, rr, text)
-                # The router re-run verdict wins (ISSUES #4, F3): Rung 2's label is used only on rows
-                # 4 and 10; rows 6-7 go to the data ladder whatever it says; any other row follows the
-                # router and the label is logged only. The label stays in the result either way.
+                # The router re-run verdict wins (ISSUES #4, F3): Rung 2's label decides only on re-run
+                # rows 4 and 10; rows 6-7 go to the data ladder whatever it says; any other row follows
+                # the router and the label is logged only. The label stays in the result either way.
                 if v.row in CODE_OR_UNDETERMINED_ROWS:
                     if r2.label is Rung2Label.CODE:
                         rec.action = "rung2:code"
@@ -376,6 +399,7 @@ class _Run:
     # -- destinations ------------------------------------------------------- #
     def handoff(self, cur: Incident, rr: RouterResult, *, via_rung2: bool) -> LoopResult:
         v = rr.verdict
+        self.stage = "handoff"
         h = DataHandoff(cur.incident_id, v.factor or "", cur.scene, nominal_scene(cur), cur.failing_seeds,
                         cur.code_ref, v, partial=v.likely_second_cause, via_rung2=via_rung2)
         status = self.L.data_ladder.handoff(h)
@@ -386,8 +410,11 @@ class _Run:
         self.rung2s[-1] = replace(res, overridden=note)
 
     def rung2(self, cur: Incident, rr: RouterResult, rung1_text: str) -> Rung2Result:
-        if self.L.rung2 is None or len(self.rung2s) >= self.cfg.max_rung2_calls:
-            why = "Rung 2 not configured" if self.L.rung2 is None else "Rung 2 call budget exhausted"
+        stop = self.budget_stop()
+        if self.L.rung2 is None or len(self.rung2s) >= self.cfg.max_rung2_calls or stop:
+            why = ("Rung 2 not configured" if self.L.rung2 is None
+                   else "Rung 2 call budget exhausted" if len(self.rung2s) >= self.cfg.max_rung2_calls
+                   else f"label not obtained: budget ({stop})")
             res = Rung2Result(Rung2Label.UNCLEAR, None, False, why, source="fallback")
         else:
             self.stage = "rung2"

@@ -13,6 +13,6 @@ All five issues checked against the code and still open.
    (router/repairer/rung0/rung1/rung2) gives `LoopResult.error_stage/error_type/error_message`; status UNRESOLVED; all passes/repairs/rung2s kept; the repair record in flight gets `result="<stage>_error"`.
 3. **Budgets (#11)** `LoopConfig.max_cost`, `max_big_calls` (0 = off). Checked before every repair attempt and before Rung 2 (spent >= cap stops). `IncidentLoop.warnings` /
    `LoopResult.warnings` from `HagentRepairer.pricing_warnings(max_cost)` (hagent's `pricing_warnings`). Simulator-episode cap: ISSUES #61.
-4. **Rung 2 override (#4)**: NOT implemented. A test pins the current behaviour (`tests/test_f3_rung2_override_current.py`); proposal sent to the user.
+4. **Rung 2 override (#4)**: implemented after the first pass, as decided by the user: Rung 2's label decides only on re-run rows 4 and 10; rows 6/7 go to the data ladder; every other row follows the router (`tests/test_f3_rung2_override_current.py`).
 5. **Pass probabilities (#14)** `RepairOutcome.reviews/pass_probabilities`, copied to `RepairRecord`, in `to_dict`.
 6. **Pending Rung 2 at the pass cap**: `LoopResult.rung2_pending`, reason text says so.

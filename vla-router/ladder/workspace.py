@@ -139,9 +139,10 @@ class UnrebuildablePatch(WorkspaceError):
     ``cause``: ``binary`` (a binary edit in a diff made without ``--binary``), ``encoding`` (the
     patch text lost bytes that are not valid UTF-8), ``symlink`` (it adds a link that points
     outside the tree), ``does_not_apply`` (anything else ``git apply`` refuses), ``mismatch``
-    (it applies, but does not give the files of the working copy it came from)."""
+    (it applies, but does not give the files of the working copy it came from),
+    ``config_unreadable`` (it applies, but the eval config of the patched files cannot be read)."""
 
-    CAUSES = ("binary", "encoding", "symlink", "does_not_apply", "mismatch")
+    CAUSES = ("binary", "encoding", "symlink", "does_not_apply", "mismatch", "config_unreadable")
 
     def __init__(self, cause: str, message: str):
         if cause not in self.CAUSES:
@@ -536,14 +537,35 @@ class WorkspaceManager:
     def extend(self, code_ref: CodeRef, patch: Diff) -> CodeRef:
         """The code you get by applying ``patch`` (one attempt's diff, written against
         ``code_ref``'s files) to ``code_ref``. The new name comes from diffing the resulting files
-        against the base snapshot. Raises ``UnrebuildablePatch`` if the patch cannot be rebuilt."""
+        against the base snapshot. Raises ``UnrebuildablePatch`` if the patch cannot be rebuilt,
+        including when the patched files' eval config cannot be read (``config_unreadable``).
+
+        The eval config: an explicit one on ``code_ref`` (``base_ref(label, eval_config)``) is kept
+        until a patch changes the config the loader reads versus the base snapshot; from then on
+        the patched files' config is the config."""
         data = as_bytes(patch)
         if not data.strip():
             return code_ref
         with tempfile.TemporaryDirectory(prefix="ws-extend-") as td:
             work = self.materialize(code_ref, Path(td) / "repo")
             self._apply(work, data)
-            return self.adopt(work)
+            try:
+                config = dict(self.config_loader(work))
+                if config == self._base_config(work, Path(td) / "base"):
+                    config = dict(code_ref.eval_config)
+            except WorkspaceError as e:
+                raise UnrebuildablePatch("config_unreadable", f"the patched files' eval config cannot be read: {e}") from e
+            name, diff = _named(work)
+            return self.register(CodeRef(name, config), diff)
+
+    def _base_config(self, work: Path, dest: Path) -> dict:
+        """The eval config of ``work``'s base snapshot (its ``BASE_REF`` commit), read by the loader."""
+        idx = dest.parent / "base.index"
+        env = {"GIT_INDEX_FILE": str(idx)}
+        _git(work, "read-tree", BASE_REF, env=env)
+        _git(work, "checkout-index", "-a", f"--prefix={dest}/", env=env)
+        idx.unlink(missing_ok=True)
+        return dict(self.config_loader(dest))
 
     def adopt(self, workdir: str | Path) -> CodeRef:
         """Name the code in a working copy (edits included), read its eval config from the copy,
