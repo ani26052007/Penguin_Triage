@@ -1,5 +1,7 @@
 """Stage 1 check 4: staleness probe (plan.md 3.2.4)."""
 
+from dataclasses import replace
+
 import pytest
 
 from router import vocab as V
@@ -76,7 +78,23 @@ def test_missing_incident_traces_degrade_to_the_clean_half(caplog):
     src = InMemoryTraceSource({"clean": make_traces(6, Mode.CLEAN, Faults(extra_delay=3))})
     with caplog.at_level("WARNING", logger="router.stage1"):
         found = StalenessProbe(NOMINAL, src).run(INCIDENT)
-    assert ids(found) == ["s1.staleness.constant"] and "server staleness not checked" in caplog.text
+    assert ids(found) == ["s1.staleness.constant"] and "staleness_variable) not checked" in caplog.text
+
+
+def test_missing_incident_traces_are_a_partial_skip_not_just_a_warning():
+    """Tier 5 (Fix F1): the clean half still reports, and the missing incident
+    half is returned as a partial-skip reason."""
+    from router.prereq.trace import InMemoryTraceSource
+    src = InMemoryTraceSource({"clean": make_traces(6, Mode.CLEAN, Faults(extra_delay=3))})
+    found, blind = StalenessProbe(NOMINAL, src).run_partial(INCIDENT)
+    assert ids(found) == ["s1.staleness.constant"]
+    assert len(blind) == 1 and V.SIG_STALENESS_VARIABLE in blind[0] and "incident" in blind[0]
+    # incident traces present but without step pairs: also partial
+    empty = InMemoryTraceSource({"clean": make_traces(6, Mode.CLEAN),
+                                 "incident": [replace(t, step_pairs=()) for t in make_traces(6, Mode.INCIDENT)]})
+    assert StalenessProbe(NOMINAL, empty).run_partial(INCIDENT)[1]
+    # observed in clean mode: the incident half does not apply, nothing is skipped
+    assert StalenessProbe(NOMINAL, src).run_partial(make_incident(observed_mode=Mode.CLEAN))[1] == []
 
 
 def test_missing_clean_traces_raise():

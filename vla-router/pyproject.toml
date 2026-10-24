@@ -1,7 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "vla-repair-ladder"
 version = "0.0.1"
 requires-python = ">=3.11"
+# hagent is a sibling path package, not on PyPI: install it first or in the same
+# pip command (see README.md). The name below is satisfied by that local install.
+dependencies = ["hybrid-agent"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+# Optional cross-check for tests/test_stats.py; the test skips cleanly without it.
+scipy = ["scipy"]
+
+[tool.setuptools.packages.find]
+include = ["ladder*", "router*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

@@ -73,7 +73,13 @@ class BehaviorConfig:
     ``min_consistency``:  bias / RMS offset needed to call a shift "consistent"
                           (1 = every episode off by the same vector).
     ``min_phase_share``:  share of failing episodes the modal phase needs.
-    ``fire_z``:           overrides ``NominalStats.fire_z`` when set."""
+    ``fire_z``:           overrides ``NominalStats.fire_z`` when set.
+    ``mode``:             which logged episodes to read. CLEAN: Stage 0 always
+                          produces clean-mode episodes of the failing seeds on
+                          the code under test (also on a re-run after a fix),
+                          and stale server actions cannot smear the grasp
+                          position into a false "perception failed"
+                          (DECISIONS.md, Fix F1)."""
     mode: Mode = Mode.CLEAN
     failed_only: bool = True
     min_episodes: int = 3
@@ -216,9 +222,15 @@ def analyze_behavior(traces: Sequence[BehaviorTrace], nominal: NominalStats,
         metrics.get(M_WRONG), mean_offset, dict(counts))
 
 
+def run_behavior_analysis(incident: Incident, source: BehaviorSource, nominal: NominalStats,
+                          config: BehaviorConfig = BehaviorConfig()) -> BehaviorAnalysis:
+    """C_behavior for one incident, with its notes ("not judged" reasons).
+    ``router.route`` calls this on Branch C; it is not a Stage 1 source.
+    Raises ``TraceUnavailable`` when the logs are missing."""
+    return analyze_behavior(source.load(incident, config.mode), nominal, config)
+
+
 def run_behavior(incident: Incident, source: BehaviorSource, nominal: NominalStats,
                  config: BehaviorConfig = BehaviorConfig()) -> list[Evidence]:
-    """C_behavior for one incident. The result goes to
-    ``route(..., extra_evidence=...)``; it is not a Stage 1 source.
-    Raises ``TraceUnavailable`` when the logs are missing."""
-    return list(analyze_behavior(source.load(incident, config.mode), nominal, config).evidence)
+    """The evidence of ``run_behavior_analysis``."""
+    return list(run_behavior_analysis(incident, source, nominal, config).evidence)

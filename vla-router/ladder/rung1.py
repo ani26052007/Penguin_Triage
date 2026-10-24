@@ -38,10 +38,8 @@ No simulator is assumed: the backend is a ``RolloutBackend``; the CLI builds a
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
-import subprocess
 import sys
 from collections import Counter
 from dataclasses import dataclass
@@ -49,6 +47,7 @@ from enum import Enum
 from typing import Mapping, Optional, Sequence
 
 from ladder.backend import IsaacBackend, MockBackend, MockRule, RolloutBackend
+from ladder.workspace import FileContains, WorkspaceError, WorkspaceManager, code_ref_of
 from ladder.stats import (Comparison, Proportion, StageDecision, StagedPlan, classify_outcome, compare,
                           staged_decision, wilson_interval)
 from router.prereq.rollout_cache import CachedBackend, RolloutCache
@@ -291,23 +290,18 @@ def rule_from_dict(d: Mapping) -> MockRule:
                     factors_present=tuple(d.get("factors_present", ())),
                     code=CodeRef.from_dict(d["code"]) if d.get("code") else None,
                     actor=ActorRef.from_dict(d["actor"]) if d.get("actor") else None,
-                    mode=Mode(d["mode"]) if d.get("mode") else None)
-
-
-def git_diff_hash(cwd: str) -> str:
-    """Same recipe as hagent's ``git_diff_hash``: sha1 of ``git diff HEAD`` (new files included), 12 hex."""
-    def git(*args: str) -> str:
-        p = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, errors="replace")
-        return p.stdout if p.returncode == 0 else ""
-    git("add", "-A", "-N")
-    return hashlib.sha1((git("diff", "HEAD")).encode("utf-8", "replace")).hexdigest()[:12]
+                    mode=Mode(d["mode"]) if d.get("mode") else None,
+                    files=FileContains.from_dict(d["files"]) if d.get("files") else None)
 
 
 def load_config(path: str, seeds: int, cwd: str) -> tuple[RolloutBackend, Incident, CodeRef, Branch, Rung1Config]:
     """JSON config (all keys required unless marked optional):
 
         {"incident": <Incident.to_dict()>, "branch": "G" | "G_degraded" | "C",
-         "after": <CodeRef dict>,                   # optional: default = incident code + hash of the working-tree diff
+         "after": <CodeRef dict>,                   # optional: default = the code in the working directory
+                                                    #   (ladder.workspace.code_ref_of: same recipe as the repairer)
+         "workspace": {"store": DIR, "bases": {name: DIR}},   # optional: needed by "files" rules; the
+                                                    #   default "after" is then also stored so it can be built
          "thresholds": {"failure_rate": .., "nominal_band": [lo, hi], "agreement": .., "min_agreement": ..,
                         "n_a": 10, "alpha_total": 0.05, "stage_a_fraction": 0.5},    # last three optional
          "backend": {"kind": "mock", "default_rate": .., "rules": [<rule dict>...], "salt": "x"}
@@ -321,12 +315,20 @@ def load_config(path: str, seeds: int, cwd: str) -> tuple[RolloutBackend, Incide
                            stage_a_fraction=float(th.get("stage_a_fraction", 0.5)))
     cfg = Rung1Config(plan, float(th["failure_rate"]), tuple(th["nominal_band"]), float(th["agreement"]),
                       float(th["min_agreement"]))
-    after = (CodeRef.from_dict(raw["after"]) if raw.get("after") else
-             CodeRef(f"{incident.code_ref.code_hash}+{git_diff_hash(cwd)}", incident.code_ref.eval_config))
+    ws = raw.get("workspace")
+    workspaces = WorkspaceManager(ws["store"], ws["bases"]) if ws else None
+    # TODO(F2b): the eval config of "after" comes from the working copy, not from the incident (ISSUES #2).
+    if raw.get("after"):
+        after = CodeRef.from_dict(raw["after"])
+    elif workspaces is not None:
+        after = workspaces.adopt(cwd, incident.code_ref.eval_config)
+    else:
+        after = code_ref_of(cwd, incident.code_ref.eval_config)
     b = raw["backend"]
     if b["kind"] == "mock":
         backend: RolloutBackend = MockBackend([rule_from_dict(r) for r in b.get("rules", [])],
-                                              float(b["default_rate"]), salt=b.get("salt", "mock"))
+                                              float(b["default_rate"]), salt=b.get("salt", "mock"),
+                                              workspaces=workspaces)
     elif b["kind"] == "isaac":
         backend = IsaacBackend()
     else:
@@ -348,7 +350,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         backend, incident, after, branch, cfg = load_config(args.config, args.seeds, os.getcwd())
         result = run_rung1(backend, incident, after, branch, cfg)
-    except (ValueError, KeyError, OSError, NotImplementedError) as e:
+    except (ValueError, KeyError, OSError, NotImplementedError, WorkspaceError) as e:
         print(f"run_rung1: error: {type(e).__name__}: {e}", file=sys.stderr)
         return 2
     print(json.dumps(result.to_dict(), indent=2, sort_keys=True) if args.json else result.compact())

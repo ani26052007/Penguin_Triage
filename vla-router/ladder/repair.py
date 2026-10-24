@@ -5,20 +5,26 @@ destinations that edit the system: ``hagent`` (code / config bug) and ``config_f
 (rendering mismatch: "config edit, hagent task, then Rung 1", 3.2.10). It returns a new
 ``CodeRef``: the patched system. The simulator backend is what makes that ref runnable.
 
-``HagentRepairer`` is the real implementation. It renders the Step 6 prompt (router verdict
-framed as a hypothesis, located evidence, repro command, rollout summary; nothing from the
-bug ledger or a clean commit) and calls hagent's ``solve()`` on a throwaway COPY of the repo,
-so the original checkout is never edited and every attempt starts from the code under repair.
+``HagentRepairer`` is the real implementation. Every attempt (Fix F2a, ISSUES #6-#8):
 
-TODO(verify): the patched ``CodeRef`` is ``<base code hash>+<sha1 of the patch>``. The real
-backend must be able to build the code at that ref (apply ``RepairOutcome.diff`` to the base
-checkout). The mock backend only needs the key.
+  1. builds the code under repair, ``request.incident.code_ref``, in a fresh working copy
+     (``WorkspaceManager.materialize``). That is the last accepted code, never the bare
+     checkout, and a failed attempt's copy is thrown away with it;
+  2. renders the Step 6 prompt (router verdict framed as a hypothesis by the template, located
+     evidence, repro command, rollout summary; nothing from the bug ledger or a clean commit).
+     The repo path in it is the copy the agent works in (the container workdir under docker);
+     the TASK is the report model's validated task, or ``default_task`` (DECISIONS.md, F2a);
+  3. runs hagent's ``solve()`` there. HEAD of the copy is the code under repair, so hagent's
+     patch is this attempt's change only;
+  4. names the result with ``WorkspaceManager.extend``: the patch is applied to a second fresh
+     copy and the new name comes from diffing those files against the base snapshot. A patch
+     that does not rebuild (e.g. a binary edit) is reported in ``rebuild_error``.
+
+The original checkout is never written: only the manager reads it.
 """
 
 from __future__ import annotations
 
-import hashlib
-import shutil
 import tempfile
 from dataclasses import dataclass
 from enum import Enum
@@ -30,7 +36,8 @@ from hagent.models import Model
 from hagent.runner import solve
 from hagent.task_template import TaskTemplate
 
-from router.report import RepoIndex, ReportContext, build_hagent_prompt, default_task, write_report
+from ladder.workspace import UnrebuildablePatch, WorkspaceManager
+from router.report import RepoIndex, ReportContext, build_hagent_prompt, write_report
 from router.schemas import CodeRef, Evidence, Incident, Verdict
 from router.stage2 import Branch
 
@@ -43,7 +50,7 @@ class RepairKind(str, Enum):
 @dataclass(frozen=True)
 class RepairRequest:
     kind: RepairKind
-    incident: Incident                   # its code_ref is the code under repair
+    incident: Incident                   # its code_ref is the code under repair (the last accepted code)
     verdict: Verdict
     evidence: tuple[Evidence, ...]
     branch: Optional[Branch]
@@ -53,44 +60,47 @@ class RepairRequest:
 
 @dataclass(frozen=True)
 class RepairOutcome:
+    """``diff``: this attempt's change, against the code under repair. ``code_diff``: the whole
+    change of ``code_ref`` against its base (what ``WorkspaceManager.materialize`` applies).
+    ``rebuild_error``: set when the attempt's patch could not be rebuilt on a fresh copy;
+    ``code_ref`` is then the input code."""
     code_ref: CodeRef                    # equal to the input code when nothing was changed
     diff: str = ""
     notes: str = ""
     cost: float = 0.0
     big_calls: int = 0
+    code_diff: str = ""
+    rebuild_error: str = ""
 
 
 class Repairer(Protocol):
     def repair(self, request: RepairRequest) -> RepairOutcome: ...
 
 
-def patched_code_ref(base: CodeRef, patch: str) -> CodeRef:
-    if not patch.strip():
-        return base
-    return CodeRef(f"{base.code_hash}+{hashlib.sha1(patch.encode('utf-8', 'replace')).hexdigest()[:12]}",
-                   base.eval_config)
-
-
 class HagentRepairer:
-    """``solve()`` on a copy of ``repo``. ``report_model=None`` renders the prompt from the
-    fallback localization (ranked evidence, no model text)."""
+    """``solve()`` on a working copy from ``workspaces``. ``report_model=None`` renders the prompt
+    from the fallback localization and ``default_task`` (ranked evidence, no model text)."""
 
-    def __init__(self, repo: str | Path, settings: Settings, *, mode: str = "hybrid", small: Optional[Model] = None,
-                 big: Optional[Model] = None, report_model: Optional[Model] = None,
+    def __init__(self, workspaces: WorkspaceManager, settings: Settings, *, mode: str = "hybrid",
+                 small: Optional[Model] = None, big: Optional[Model] = None, report_model: Optional[Model] = None,
                  repro_command: str = "run_rung1 --seeds 50", template: Optional[TaskTemplate] = None):
-        self.repo, self.settings, self.mode = Path(repo), settings, mode
+        self.workspaces, self.settings, self.mode = workspaces, settings, mode
         self.small, self.big, self.report_model = small, big, report_model
         self.repro_command, self.template = repro_command, template
         self.calls = 0
 
-    def build_prompt(self, req: RepairRequest) -> str:
+    def prompt_path(self, work: Path) -> str:
+        """The repo path the agent's commands see: the copy itself, or the container workdir."""
+        return self.settings.env.workdir if self.settings.env.backend == "docker" else str(work)
+
+    def build_prompt(self, req: RepairRequest, work: Path) -> str:
         inc = req.incident
         summary = (f"scene {inc.scene.key()}; failing seeds {list(inc.failing_seeds)}; "
                    f"observed success rate {inc.observed_success_rate}; expected {inc.reference_rate}")
-        ctx = ReportContext(inc.incident_id, inc.scene.key(), self.repro_command, summary, str(self.repo))
-        report = write_report(req.verdict, req.evidence, self.report_model, repo=RepoIndex.from_dir(self.repo),
+        ctx = ReportContext(inc.incident_id, inc.scene.key(), self.repro_command, summary, self.prompt_path(work))
+        report = write_report(req.verdict, req.evidence, self.report_model, repo=RepoIndex.from_dir(work),
                               context=ctx, template=self.template)
-        task = default_task(req.verdict, ctx)
+        task = report.task
         if req.kind is RepairKind.CONFIG:
             task += " The fix is a configuration edit."
         if req.feedback:
@@ -100,21 +110,23 @@ class HagentRepairer:
 
     def repair(self, req: RepairRequest) -> RepairOutcome:
         self.calls += 1
-        prompt = self.build_prompt(req)
         base = req.incident.code_ref
         with tempfile.TemporaryDirectory(prefix="repair-") as td:
-            work: Path | str = self.repo
-            if self.settings.env.backend == "local":       # docker copies the repo itself
-                work = Path(td) / "repo"
-                shutil.copytree(self.repo, work, symlinks=True)
+            work = self.workspaces.materialize(base, Path(td) / "repo")
+            prompt = self.build_prompt(req, work)
             result = solve(prompt, work, self.settings, self.mode, small=self.small, big=self.big)
         big = result.usage.get("big")
+        calls = big.calls if big else 0
         notes = f"hagent exit status: {result.exit_status}"
         if not result.submitted:
             return RepairOutcome(base, result.patch, f"{notes}; not submitted ({result.detail[:200]})",
-                                 result.total_cost, big.calls if big else 0)
-        return RepairOutcome(patched_code_ref(base, result.patch), result.patch, notes, result.total_cost,
-                             big.calls if big else 0)
+                                 result.total_cost, calls, self.workspaces.diff_of(base))
+        try:
+            new = self.workspaces.extend(base, result.patch)
+        except UnrebuildablePatch as e:
+            return RepairOutcome(base, result.patch, f"{notes}; patch could not be rebuilt", result.total_cost,
+                                 calls, self.workspaces.diff_of(base), rebuild_error=str(e))
+        return RepairOutcome(new, result.patch, notes, result.total_cost, calls, self.workspaces.diff_of(new))
 
 
-__all__ = ["HagentRepairer", "RepairKind", "RepairOutcome", "RepairRequest", "Repairer", "patched_code_ref"]
+__all__ = ["HagentRepairer", "RepairKind", "RepairOutcome", "RepairRequest", "Repairer"]

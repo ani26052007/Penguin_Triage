@@ -11,7 +11,7 @@ import pytest
 from hagent.config import CustomCommand
 from hagent.env import LocalEnv
 from ladder.backend import MockRule
-from ladder.rung1 import (Rung1Outcome, git_diff_hash, main, run_rung1, rung1_target, staged_plan_for)
+from ladder.rung1 import (Rung1Outcome, load_config, main, run_rung1, rung1_target, staged_plan_for)
 from ladder.stats import StageDecision
 from router.schemas import CodeRef
 from router.stage2 import Branch
@@ -227,17 +227,38 @@ def test_cli_is_registered_as_a_hagent_custom_command(tmp_path):
     assert obs.output.startswith("RUNG1 PASS") and "top error mode" in obs.output
 
 
-def test_default_after_code_hash_matches_the_repairers_recipe(tmp_path):
-    """No ``after`` in the config: the CLI hashes the working-tree diff like hagent's git_diff_hash."""
-    from ladder.repair import patched_code_ref
-    repo = tmp_path / "r"
-    repo.mkdir()
-    for a in (["init", "-q"], ["config", "user.name", "t"], ["config", "user.email", "t@t"]):
-        subprocess.run(["git", *a], cwd=repo, check=True)
-    (repo / "a.py").write_text("x = 1\n")
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "i"], cwd=repo, check=True)
-    (repo / "a.py").write_text("x = 2\n")
-    env = LocalEnv(repo)
-    patch = env.git_diff()
-    assert patched_code_ref(CodeRef("c0"), patch).code_hash == f"c0+{git_diff_hash(str(repo))}"
+def test_default_after_is_named_by_the_workspace_recipe(tmp_path):
+    """No ``after`` in the config: the CLI names the code in its working directory exactly as the
+    repairer names hagent's patch (``WorkspaceManager.extend``): one recipe (Fix F2a)."""
+    from tests.workspace_cases import BUG_LINE, FIXED_LINE, WRAPPER, make_checkout, manager
+    mgr = manager(tmp_path, make_checkout(tmp_path / "checkout"))
+    base = CodeRef("c0")
+    work = mgr.materialize(base)
+    f = work / WRAPPER
+    f.write_text(f.read_text().replace(BUG_LINE, FIXED_LINE))
+    patch = LocalEnv(work).git_diff()
+    cfg = json.loads(write_config(tmp_path / "c.json", 0.9).read_text())
+    del cfg["after"]
+    (tmp_path / "noafter.json").write_text(json.dumps(cfg))
+    after = load_config(str(tmp_path / "noafter.json"), 20, str(work))[2]
+    assert after == mgr.extend(base, patch) and after.code_hash.startswith("c0+")
+
+
+def test_cli_file_rules_judge_the_code_in_the_working_directory(tmp_path, capsys, monkeypatch):
+    """With ``workspace`` in the config, mock rules can test the files, and the default ``after`` is stored
+    so the backend can build it."""
+    from tests.workspace_cases import BUG_LINE, FIXED, FIXED_LINE, WRAPPER, make_checkout
+    checkout = make_checkout(tmp_path / "checkout")
+    cfg = json.loads(write_config(tmp_path / "c.json", 0.9).read_text())
+    del cfg["after"]
+    cfg["workspace"] = {"store": str(tmp_path / "store"), "bases": {"c0": str(checkout)}}
+    cfg["backend"]["rules"] = [{"rate": 0.97, "files": FIXED.to_dict()}]
+    path = tmp_path / "files.json"
+    path.write_text(json.dumps(cfg))
+    from ladder.workspace import WorkspaceManager
+    work = WorkspaceManager(tmp_path / "store", {"c0": checkout}).materialize(CodeRef("c0"))
+    f = work / WRAPPER
+    f.write_text(f.read_text().replace(BUG_LINE, FIXED_LINE))
+    monkeypatch.chdir(work)
+    assert main(["--seeds", "20", "--config", str(path)]) == 0
+    assert capsys.readouterr().out.startswith("RUNG1 PASS")

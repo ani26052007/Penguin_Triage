@@ -1,94 +1,156 @@
-"""HagentRepairer: the real ``Repairer``, driving hagent's ``solve()`` with scripted models."""
+"""HagentRepairer: the real ``Repairer``, driving hagent's ``solve()`` with scripted models on
+working copies from a ``WorkspaceManager`` (Fix F2a: ISSUES #6, #7, #8, #14)."""
 
 from __future__ import annotations
 
-import subprocess
+import json
+import re
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
-from hagent.config import Limits, Settings
-from hagent.env import SUBMIT_MARKER
+from hagent.config import EnvConfig
 from hagent.models import ScriptedModel, bash
-from ladder.repair import HagentRepairer, RepairKind, RepairRequest, patched_code_ref
-from ladder.rung1 import git_diff_hash
+from ladder.repair import HagentRepairer, RepairKind, RepairRequest
+from router.report import verdict_text
 from router.router import route
 from router.schemas import CodeRef
 from tests.ladder_cases import CASES
 from tests.router_cases import default_config
+from tests.workspace_cases import (BLOB, BUG_LINE, FIXED_LINE, STEP_A_LINE, SUBMIT, WRAPPER, hagent_settings,
+                                   make_checkout, manager, recording, replace_line, snapshot)
 
-SUBMIT = bash(f"echo {SUBMIT_MARKER} && git add -A && git diff --cached", "Done, submitting.")
-FIX = bash("sed -i 's/a - b/a + b/' app.py && git diff --stat", "Fixing the operator.")
+C0 = CodeRef("c0")
+FIX = replace_line(BUG_LINE, FIXED_LINE)
 
 
 @pytest.fixture
-def repo(tmp_path):
-    def git(*a):
-        subprocess.run(["git", *a], cwd=tmp_path, check=True, capture_output=True)
-    git("init", "-q")
-    (tmp_path / "app.py").write_text("def add(a, b):\n    return a - b\n")
-    git("add", "-A")
-    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init")
-    return tmp_path
+def checkout(tmp_path):
+    return make_checkout(tmp_path / "checkout")
 
 
-def settings(**limits) -> Settings:
-    base = dict(max_steps=6, max_cost=0.0, max_wall_s=0, cmd_timeout_s=10, plan_at_step=0, final_review=False,
-                ctx_char_limit=0, enable_explorer=False)
-    base.update(limits)
-    return Settings(limits=Limits(**base))
+@pytest.fixture
+def mgr(tmp_path, checkout):
+    return manager(tmp_path, checkout)
 
 
-def request(kind=RepairKind.CODE, feedback=()) -> RepairRequest:
-    case = CASES["code_global"]
-    rr = route(case.incident(), case.quota_backend(), default_config(), case.evidence)
+def request(kind=RepairKind.CODE, feedback=(), code=C0, case="code_global") -> RepairRequest:
+    case = CASES[case]
+    rr = route(case.incident(), case.quota_backend(), default_config(), case.inputs())
     assert rr.verdict.row == 4
-    return RepairRequest(kind, case.incident(), rr.verdict, rr.evidence, rr.branch, 1, tuple(feedback))
+    return RepairRequest(kind, replace(case.incident(), code_ref=code), rr.verdict, rr.evidence, rr.branch, 1,
+                         tuple(feedback))
 
 
-def test_repair_returns_the_patched_code_ref_and_leaves_the_original_checkout_alone(repo):
-    r = HagentRepairer(repo, settings(), mode="small", small=ScriptedModel([FIX, SUBMIT]))
-    req = request()
-    out = r.repair(req)
-    assert out.code_ref.code_hash.startswith("c0+") and out.code_ref != req.incident.code_ref
-    assert out.code_ref.eval_config == req.incident.code_ref.eval_config
-    assert "return a + b" in out.diff and "Submitted" in out.notes
-    assert (repo / "app.py").read_text().endswith("return a - b\n")           # the copy was edited, not the repo
-    assert r.calls == 1
+def user_text(messages) -> str:
+    return next(m["content"] for m in messages if m["role"] == "user")
 
 
-def test_prompt_frames_the_verdict_as_a_hypothesis_and_carries_the_feedback(repo):
+def test_repair_returns_a_rebuildable_code_ref_and_leaves_the_original_checkout_alone(mgr, checkout):
+    before = snapshot(checkout)
+    r = HagentRepairer(mgr, hagent_settings(), mode="small", small=ScriptedModel([FIX, SUBMIT]))
+    out = r.repair(request())
+    assert out.code_ref.code_hash.startswith("c0+") and out.code_ref.key() != C0.key()
+    assert out.code_ref.eval_config == C0.eval_config            # TODO(F2b): from the patched copy (ISSUES #2)
+    assert FIXED_LINE in out.diff and out.code_diff == mgr.diff_of(out.code_ref) and "Submitted" in out.notes
+    assert (mgr.materialize(out.code_ref) / WRAPPER).read_text().count(FIXED_LINE) == 1
+    assert snapshot(checkout) == before and r.calls == 1
+
+
+def test_each_attempt_starts_from_the_code_it_is_asked_to_repair(mgr):
+    """ISSUES #7: attempt 2 sees attempt 1's accepted patch; asked to repair c0 again (attempt 1 was not
+    accepted), it sees c0, not the rejected patch."""
+    seen: list = []
+    small = ScriptedModel([replace_line(BUG_LINE, STEP_A_LINE), SUBMIT,
+                           bash(f"cat {WRAPPER}"), recording(seen, SUBMIT),
+                           bash(f"cat {WRAPPER}"), recording(seen, SUBMIT)])
+    r = HagentRepairer(mgr, hagent_settings(), mode="small", small=small)
+    a = r.repair(request()).code_ref
+    assert r.repair(request(code=a)).code_ref.key() == a.key()          # looked, changed nothing
+    assert r.repair(request()).code_ref.key() == C0.key()
+    after_accept, after_reject = (m[-1]["content"] for m in seen)       # the `cat` the agent saw
+    assert STEP_A_LINE in after_accept and BUG_LINE not in after_accept
+    assert BUG_LINE in after_reject and STEP_A_LINE not in after_reject
+
+
+def test_the_agent_cannot_write_the_original_checkout_through_the_printed_path(mgr, checkout):
+    """ISSUES #8: the prompt names the working copy, so an agent that writes to the printed path edits
+    the copy; the original path is never printed."""
+    before = snapshot(checkout)
+    seen: list = []
+
+    def write_printed_path(messages):
+        seen.append(messages)
+        path = re.search(r"Controller/wrapper code: (\S+)", user_text(messages)).group(1)
+        return bash(f"echo 'HACKED = True' >> {path}/{WRAPPER}", "Writing where the prompt says.")
+
+    out = HagentRepairer(mgr, hagent_settings(), mode="small", small=ScriptedModel([write_printed_path, SUBMIT])
+                         ).repair(request())
+    assert snapshot(checkout) == before
+    assert str(checkout) not in json.dumps(seen) and str(checkout.resolve()) not in json.dumps(seen)
+    assert "HACKED = True" in out.diff and out.code_ref.key() != C0.key()     # it edited the copy
+
+
+def test_under_docker_the_prompt_names_the_container_workdir(mgr):
+    settings = hagent_settings()
+    settings.env = EnvConfig(backend="docker", image="unused", workdir="/workspace/repo")
+    r = HagentRepairer(mgr, settings, mode="small")
+    assert r.prompt_path(Path("/tmp/somewhere")) == "/workspace/repo"
+    assert HagentRepairer(mgr, hagent_settings()).prompt_path(Path("/tmp/x")) == "/tmp/x"
+
+
+def test_prompt_frames_the_verdict_as_a_hypothesis_and_carries_the_feedback(mgr):
     seen = []
     small = ScriptedModel([lambda m: seen.append(m) or SUBMIT])
-    HagentRepairer(repo, settings(), mode="small", small=small, repro_command="run_rung1 --seeds 50").repair(
+    HagentRepairer(mgr, hagent_settings(), mode="small", small=small, repro_command="run_rung1 --seeds 50").repair(
         request(feedback=("attempt 1: simulator validation failed.", "Rung 2 (big model) says a code problem remains: x")))
-    task = next(m["content"] for m in seen[0] if m["role"] == "user")
+    task = user_text(seen[0])
     assert "Router hypothesis (verify this first" in task and "code (decision-table row 4)" in task
     assert "run_rung1 --seeds 50" in task and "Earlier attempts on this incident failed validation" in task
     assert "simulator validation failed" in task and "Rung 2 (big model)" in task
     assert "clean commit" not in task.lower() and "bug ledger" not in task.lower()
 
 
-def test_config_kind_is_stated_in_the_task(repo):
+def test_the_report_models_task_is_used_and_the_verdict_line_still_comes_from_code(mgr):
+    """ISSUES #14 (DECISIONS F2a): the validated model task is the TASK; it cannot replace the verdict line."""
+    req = request(case="combined_code_plus_light")             # located: the normalisation evidence
+    ev = req.evidence[0]
+    model_task = f"Normalise the policy inputs in {WRAPPER} before they reach the policy."
+    reply = json.dumps({"summary": "inputs are not normalised", "evidence_ids": [ev.id], "task": model_task,
+                        "localization": [{"kind": "file", "name": WRAPPER, "evidence_ids": [ev.id],
+                                          "reason": "builds the policy input"}]})
     seen = []
-    HagentRepairer(repo, settings(), mode="small", small=ScriptedModel([lambda m: seen.append(m) or SUBMIT])).repair(
-        request(RepairKind.CONFIG))
-    assert "configuration edit" in next(m["content"] for m in seen[0] if m["role"] == "user")
+    HagentRepairer(mgr, hagent_settings(), mode="small", small=ScriptedModel([lambda m: seen.append(m) or SUBMIT]),
+                   report_model=ScriptedModel([reply])).repair(req)
+    task = user_text(seen[0])
+    assert f"<task>\n{model_task}" in task
+    assert f"The automatic router classified this failure as: {verdict_text(req.verdict)}" in task
+    assert "Router hypothesis (verify this first" in task
 
 
-def test_unsubmitted_run_keeps_the_code_ref_so_the_loop_sees_no_change(repo):
+def test_without_a_report_model_the_task_is_the_default(mgr):
+    seen = []
+    HagentRepairer(mgr, hagent_settings(), mode="small", small=ScriptedModel([lambda m: seen.append(m) or SUBMIT])
+                   ).repair(request())
+    assert "<task>\nThe VLA policy fails" in user_text(seen[0])
+
+
+def test_config_kind_is_stated_in_the_task(mgr):
+    seen = []
+    HagentRepairer(mgr, hagent_settings(), mode="small", small=ScriptedModel([lambda m: seen.append(m) or SUBMIT])
+                   ).repair(request(RepairKind.CONFIG))
+    assert "configuration edit" in user_text(seen[0])
+
+
+def test_unsubmitted_run_keeps_the_code_ref_so_the_loop_sees_no_change(mgr):
     noop = bash("true", "Thinking.")
-    out = HagentRepairer(repo, settings(max_steps=2), mode="small",
+    out = HagentRepairer(mgr, hagent_settings(max_steps=2), mode="small",
                          small=ScriptedModel([noop], repeat_last=True)).repair(request())
-    assert out.code_ref == request().incident.code_ref and "not submitted" in out.notes
+    assert out.code_ref == C0 and "not submitted" in out.notes and not out.rebuild_error
 
 
-def test_patch_hash_recipe_matches_the_cli_default(tmp_path):
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    (tmp_path / "a.txt").write_text("1\n")
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "i"], cwd=tmp_path, check=True)
-    (tmp_path / "a.txt").write_text("2\n")
-    from hagent.env import LocalEnv
-    patch = LocalEnv(tmp_path).git_diff()
-    assert patched_code_ref(CodeRef("c0"), patch).code_hash == f"c0+{git_diff_hash(str(tmp_path))}"
-    assert patched_code_ref(CodeRef("c0"), "  \n") == CodeRef("c0")
+def test_a_binary_edit_is_reported_as_unrebuildable(mgr):
+    binary = bash(f"printf 'changed\\000' > {BLOB}", "Editing the blob.")
+    out = HagentRepairer(mgr, hagent_settings(), mode="small", small=ScriptedModel([binary, SUBMIT])).repair(request())
+    assert out.code_ref == C0 and out.rebuild_error and "Binary files" in out.diff

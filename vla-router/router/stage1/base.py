@@ -31,6 +31,13 @@ class Check(ABC):
     def run(self, incident: Incident) -> list[Evidence]:
         ...
 
+    def run_partial(self, incident: Incident) -> tuple[list[Evidence], list[str]]:
+        """``run`` plus the parts the check could not look at although it ran:
+        (evidence, reasons). ``run_stage1`` records each reason as a partial
+        skip, so a half-blind check never reads as "checked, nothing found".
+        Checks that can be partly blind override this."""
+        return self.run(incident), []
+
 
 def saturating(ratio: float) -> float:
     """Map a ratio ``deviation / threshold`` to [0, 1): 0 at 0, 0.5 at 1, ->1.

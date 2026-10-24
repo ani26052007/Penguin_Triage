@@ -19,7 +19,9 @@ What fires
   (``staleness/mode_gap``): a delay that disappears in clean mode is the
   server's. It feeds row 3 (infra) together with the clean-mode Stage 0 replay,
   and blocks row 1 (``decide``). Only evaluated when the incident was observed
-  in incident mode; a clean-mode incident has no server to be stale.
+  in incident mode; a clean-mode incident has no server to be stale. If the
+  incident-mode traces are then missing, the probe still reports the clean
+  half and returns a partial skip (``run_partial``), never a silent clean.
 
 Both can fire for one incident (a code delay plus a loaded server); ``decide``
 then sends it to row 4 because clean mode does not restore.
@@ -92,6 +94,13 @@ class StalenessProbe(Check):
         self.nominal, self.traces, self.fire_z = nominal, traces, fire_z
 
     def run(self, incident: Incident) -> list[Evidence]:
+        return self.run_partial(incident)[0]
+
+    def run_partial(self, incident: Incident) -> tuple[list[Evidence], list[str]]:
+        """The clean half is required (``TraceUnavailable``). The incident half
+        is needed only when the incident was observed in incident mode; if its
+        traces are missing, ``staleness_variable`` was not checked, and that is
+        returned as a partial skip."""
         clean = self.traces.load(incident, Mode.CLEAN)           # raises TraceUnavailable: required
         if not episode_mean_delays(clean):
             raise TraceUnavailable("clean-mode traces have no (observation step, applied step) pairs")
@@ -111,15 +120,20 @@ class StalenessProbe(Check):
             try:
                 inc = self.traces.load(incident, Mode.INCIDENT)
             except TraceUnavailable as exc:
-                log.warning("staleness: incident-mode traces unavailable (%s); server staleness not checked", exc)
-                return out
-            if episode_mean_delays(inc):
-                gap = mode_gap(clean, inc)
-                d = self.nominal.deviation(M_MODE_GAP, gap, "high", self.fire_z)
-                if d.fires:
-                    s = delay_summary(inc)
-                    out.append(Evidence(
-                        "s1.staleness.variable", self.source, V.SIG_STALENESS_VARIABLE, d.strength, "policy_server",
-                        f"actions are {gap:.2f} steps staler in incident mode than in clean mode (incident mean "
-                        f"{s.mean:.2f}, std {s.std:.2f}, max {s.max}; clean mean {cs.mean:.2f}): server staleness"))
-        return out
+                why = f"incident-mode traces unavailable ({exc}); server staleness ({V.SIG_STALENESS_VARIABLE}) not checked"
+                log.warning("staleness: %s", why)
+                return out, [why]
+            if not episode_mean_delays(inc):
+                why = (f"incident-mode traces have no (observation step, applied step) pairs; "
+                       f"server staleness ({V.SIG_STALENESS_VARIABLE}) not checked")
+                log.warning("staleness: %s", why)
+                return out, [why]
+            gap = mode_gap(clean, inc)
+            d = self.nominal.deviation(M_MODE_GAP, gap, "high", self.fire_z)
+            if d.fires:
+                s = delay_summary(inc)
+                out.append(Evidence(
+                    "s1.staleness.variable", self.source, V.SIG_STALENESS_VARIABLE, d.strength, "policy_server",
+                    f"actions are {gap:.2f} steps staler in incident mode than in clean mode (incident mean "
+                    f"{s.mean:.2f}, std {s.std:.2f}, max {s.max}; clean mean {cs.mean:.2f}): server staleness"))
+        return out, []

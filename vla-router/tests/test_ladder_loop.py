@@ -20,8 +20,9 @@ from ladder.rung1 import Rung1Outcome
 from ladder.rung2 import Rung2Label, triage
 from router.schemas import CodeRef, Destination, VerdictLabel
 from router.stage2 import Branch
-from tests.ladder_cases import (BAD_PATCH, CASES, PATCHED, ScriptedRepairer, combined_case,
-                                condition_specific_case, evidence_by_code, loop_config, make_loop, rendering_case)
+from router.router import route
+from tests.ladder_cases import (BAD_PATCH, CASES, PATCHED, PATCHED_INSTRUCTION, ScriptedRepairer, combined_case,
+                                condition_specific_case, loop_config, make_loop, rendering_case)
 from tests.router_cases import CODE_TRAIN_RENDER
 
 C2 = CodeRef("c2")
@@ -131,7 +132,7 @@ def reply(label, ids=()):
 def test_ambiguous_patch_goes_to_rung2_and_an_accepted_data_gap_reaches_the_data_ladder():
     case = condition_specific_case(0.4)             # patched glossy scene only partly recovered; nominal fine
     fn, model = rung2_fn(reply("data_gap"))
-    rep = ScriptedRepairer([PATCHED])
+    rep = ScriptedRepairer([PATCHED_INSTRUCTION])
     loop, ladder = make_loop(case, rep, rung2=fn)
     res = loop.run(case.incident())
     assert res.repairs[0].rung1.outcome is Rung1Outcome.AMBIGUOUS and res.repairs[0].rung1.target.which == "incident"
@@ -191,12 +192,12 @@ def test_ambiguous_patch_whose_rerun_is_clean_closes_without_rung2(monkeypatch):
     """The re-run finds nothing wrong at all (row 1): closed, and the big call is not spent."""
     case = condition_specific_case(0.4)
     fn, model = rung2_fn(reply("code"))
-    loop, _ = make_loop(case, ScriptedRepairer([PATCHED]), rung2=fn)
+    loop, _ = make_loop(case, ScriptedRepairer([PATCHED_INSTRUCTION]), rung2=fn)
     real = loop_mod.route
 
-    def clean(inc, backend, cfg, ev):
-        rr = real(inc, backend, cfg, ev)
-        if inc.code_ref == PATCHED:
+    def clean(inc, backend, cfg, inputs):
+        rr = real(inc, backend, cfg, inputs)
+        if inc.code_ref == PATCHED_INSTRUCTION:
             rr = replace(rr, verdict=replace(rr.verdict, label=VerdictLabel.NO_SIGNIFICANT_FAILURE,
                                              destination=Destination.STOP, row=1, factor=None, replays=()))
         return rr
@@ -277,12 +278,12 @@ def test_a_patch_that_changes_nothing_is_not_validated():
 
 def test_pass_cap_ends_the_incident_as_unresolved_with_everything_attached():
     """Evidence that never goes away (a fix that only masks the symptom): each re-run routes to code again."""
-    case = combined_case(extra_codes=[C2, CodeRef("c3")])
+    case = combined_case(extra_codes=[C2, CodeRef("c3")], fault_persists=True)
     loop, _ = make_loop(case, ScriptedRepairer([PATCHED, C2, CodeRef("c3")]), cfg=loop_config(max_passes=2))
-    loop.evidence_provider = lambda inc: case.evidence
     res = loop.run(case.incident())
     assert len(res.passes) == 2 and res.status is LoopStatus.UNRESOLVED and "pass cap (2)" in res.reason
-    assert res.final is not None and res.final.evidence == case.evidence and len(res.repairs) == 2
+    assert res.final is not None and res.final.verdict.location == "obs.normalization" and len(res.repairs) == 2
+    assert res.final.external_evidence == ()                 # found again in the patched code's logs
     assert res.rung2 == ()                                   # the cap came first: no big call was spent
 
 
@@ -290,10 +291,9 @@ def test_code_verdict_on_branch_c_validates_on_the_incident_scene_so_a_lighting_
     """Persistent contract evidence on the re-run makes it Branch C + code: the target is now the lit scene,
     which no code patch can recover. Not a hagent loop: the patch is ambiguous, Rung 2 answers, the
     incident ends unresolved (bounded by the pass and repair caps)."""
-    case = combined_case(extra_codes=[C2])
+    case = combined_case(extra_codes=[C2], fault_persists=True)
     fn, model = rung2_fn(reply("unclear"))
     loop, _ = make_loop(case, ScriptedRepairer([PATCHED, C2]), rung2=fn)
-    loop.evidence_provider = lambda inc: case.evidence
     res = loop.run(case.incident())
     second = res.repairs[1].rung1
     assert res.passes[1].branch == "C" and second.target.which == "incident"
@@ -332,8 +332,19 @@ def test_result_serialises_to_json():
     assert d["repairs"][0]["rung1"]["outcome"] == "pass_with_residual"
 
 
-def test_evidence_fixture_returns_nothing_after_the_fix():
+def test_planted_fault_disappears_from_the_evidence_when_the_patched_code_is_used():
+    """Fix F1 (Tier 6, Step 7 fixture item): no evidence fixture. The router's own Stage 1 finds the fault in the
+    original code's logs and not in the patched code's logs."""
     case = combined_case()
-    prov = evidence_by_code(case)
-    inc = case.incident()
-    assert prov(inc) == case.evidence and prov(replace(inc, code_ref=PATCHED)) == ()
+    inc, cfg = case.incident(), loop_config().router
+    before = route(inc, case.quota_backend(), cfg, case.inputs())
+    after = route(replace(inc, code_ref=PATCHED), case.quota_backend(), cfg, case.inputs())
+    assert before.verdict.location == "obs.normalization" and before.external_evidence == ()
+    assert any(e.location == "obs.normalization" for e in before.stage1_evidence)
+    assert after.stage1_evidence == () and after.skipped == () and after.verdict.row == 6
+
+
+def test_the_loop_no_longer_takes_an_evidence_provider():
+    import inspect
+    params = inspect.signature(loop_mod.IncidentLoop.__init__).parameters
+    assert "evidence_provider" not in params and "inputs" in params

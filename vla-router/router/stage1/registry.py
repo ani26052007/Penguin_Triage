@@ -1,16 +1,20 @@
 """Evidence-source registry and runner for Stage 1 (plan.md 3.2.3, 3.2.4).
 
 Registers the five Stage 1 checks as evidence sources and runs them on an
-incident. Its output is the ``extra_evidence`` that ``router.route`` takes.
-This module does not touch ``route``, the replay stages or ``decide``: the
-signals the checks emit are already in ``router.vocab``.
+incident. ``router.route`` calls it on every incident, right after Stage 0
+(``RouterInputs.stage1_checks``); the signals the checks emit are in
+``router.vocab``.
 
     result = run_stage1(incident, checks)
-    route(incident, backend, config, extra_evidence=result.evidence)
 
-A check that cannot read its inputs (``TraceUnavailable``) is reported in
-``skipped``, not silently dropped: an empty evidence list means "checked,
-nothing found" only for the sources not listed there.
+Nothing reads as "checked, nothing found" unless it was checked:
+
+* ``sources_run``  the sources whose check ran (fully or partly);
+* ``skipped``      (source, reason) for a check that could not read its inputs
+                   (``TraceUnavailable``) and for a registered source with no
+                   check configured;
+* ``partial``      (source, reason) for a check that ran but could not look at
+                   part of its inputs (``Check.run_partial``).
 """
 
 from __future__ import annotations
@@ -25,15 +29,15 @@ from router.stage1.base import Check, log
 EVIDENCE_SOURCES = ("contract_cfg", "contract_obs", "contract_action", "staleness", "sanity")
 
 
+NOT_CONFIGURED = "no check configured for this source"
+
+
 @dataclass(frozen=True)
 class Stage1Result:
     evidence: tuple[Evidence, ...]
-    skipped: tuple[tuple[str, str], ...] = ()     # (source, reason)
-
-    @property
-    def sources_run(self) -> tuple[str, ...]:
-        skipped = {s for s, _ in self.skipped}
-        return tuple(s for s in EVIDENCE_SOURCES if s not in skipped)
+    skipped: tuple[tuple[str, str], ...] = ()     # (source, reason): did not run
+    partial: tuple[tuple[str, str], ...] = ()     # (source, reason): ran, but part of it was not checked
+    sources_run: tuple[str, ...] = ()             # ran (fully or partly), in registry order
 
 
 def run_stage1(incident: Incident, checks: Sequence[Check]) -> Stage1Result:
@@ -46,9 +50,11 @@ def run_stage1(incident: Incident, checks: Sequence[Check]) -> Stage1Result:
 
     evidence: list[Evidence] = []
     skipped: list[tuple[str, str]] = []
+    partial: list[tuple[str, str]] = []
+    ran: set[str] = set()
     for check in checks:
         try:
-            found = check.run(incident)
+            found, blind = check.run_partial(incident)
         except TraceUnavailable as exc:
             log.warning("stage 1: %s skipped: %s", check.source, exc)
             skipped.append((check.source, str(exc)))
@@ -56,10 +62,14 @@ def run_stage1(incident: Incident, checks: Sequence[Check]) -> Stage1Result:
         wrong = [e.id for e in found if e.source != check.source]
         if wrong:
             raise ValueError(f"check {check.source!r} emitted evidence from another source: {wrong}")
+        ran.add(check.source)
         evidence += found
+        partial += [(check.source, why) for why in blind]
+    skipped += [(s, NOT_CONFIGURED) for s in EVIDENCE_SOURCES if s not in sources]
 
     ids = [e.id for e in evidence]
     dup = sorted({i for i in ids if ids.count(i) > 1})
     if dup:
         raise ValueError(f"duplicate evidence ids from Stage 1: {dup}")
-    return Stage1Result(tuple(evidence), tuple(skipped))
+    return Stage1Result(tuple(evidence), tuple(skipped), tuple(partial),
+                        tuple(s for s in EVIDENCE_SOURCES if s in ran))

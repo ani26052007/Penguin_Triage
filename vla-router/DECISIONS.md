@@ -166,4 +166,75 @@
 - Episode-log field names for the failure mode; Rung 2's optional inputs (per-subtask progress, action-trace statistics, key frames) are not wired.
 - Calibrated `agreement` / `min_agreement`; that Rung 1's parallel runs do not share a batching policy server in CLEAN mode.
 - hagent `[[commands]]` path to `run_rung1` inside the container (must be executable there, with `python3` and this package on `PYTHONPATH`).
-- hagent is not a declared dependency of the router `pyproject.toml` (`router/llm.py` and `ladder/rung0.py`, `ladder/repair.py` import it); `pip install -e hybrid-agent` is assumed.
+
+## Fix F0 (packaging)
+- Declared `hybrid-agent` in `dependencies` of vla-router/pyproject.toml; added build-system, `dev` (pytest) and `scipy` extras, and `packages.find` limited to `ladder*`/`router*` (flat layout otherwise fails auto-discovery). README gives one command, `pip install -e "../hybrid-agent[dev]" -e ".[dev]"`, so pip resolves the name from the local path.
+- Pinned by `tests/test_packaging.py` (fails on old pyproject/README). The scipy test already used `importorskip`; unchanged.
+- Rejected: absolute `file://` direct reference (not portable); PyPI name only without the combined command (pip would look on PyPI); vendoring/PYTHONPATH; a README-only fix.
+- NEEDS-REVIEW: the dependency name is bare (`hybrid-agent`), so `pip install -e .` alone fails unless hagent is installed first or in the same command.
+- TODO(verify): scipy-present path of `test_fisher_matches_scipy_when_available` (no network here to install scipy).
+
+## Fix F1 (log-only evidence wired into route(); ISSUES #1, #26 (partly), Tier 5, Tier 6 fixture item)
+
+**What**
+- `route(incident, backend, config, inputs=None, *, extra_evidence=())` runs Stage 1 (`run_stage1`) on every incident, right after the Stage 0 replay and before the Stage 0 stop decision, and C_behavior (`run_behavior_analysis`) whenever Branch C runs (Branch C, degraded, unknown; plan 3.2.7). Stage 1 must precede the stop: `staleness_variable` is what keeps a stale-server incident (clean Stage 0 passes) from closing as row 1.
+- New `RouterInputs` (Stage 1 checks; behavior source + its nominal stats). `RouterConfig` only gains `behavior: BehaviorConfig` (thresholds). Why not inside `RouterConfig`: the config is frozen plain values shared through `LoopConfig`; the inputs are handles to log stores plus per-scene-condition calibration data. `inputs=None` means every source is recorded as skipped, never as clean. A non-`RouterInputs` 4th argument raises `TypeError` (the old 4th positional was evidence).
+- `extra_evidence` stays; `RouterResult` records it separately (`external_evidence`) next to `stage1_evidence` and `behavior_evidence`. `evidence` stays the union `decide` saw, so Rung 2 and repair are unchanged.
+- `RouterResult.skipped` / `partial` ((source, reason)), `sources_run`, `unchecked`; the verdict notes name every skipped or partly skipped check (only the notes change).
+- `Stage1Result.sources_run` is now a field: only checks that ran. Registered sources with no check are listed in `skipped` ("no check configured").
+- `Check.run_partial` (default: `run` + no reasons); `StalenessProbe` overrides it: an incident observed in incident mode with missing (or pair-less) incident-mode traces is a partial skip, `staleness_variable` unchecked.
+- `IncidentLoop(..., inputs=...)` replaces `evidence_provider`; the `evidence_by_code` fixture is gone. Loop and router cases use `CodeKeyedTraceSource` / `CodeKeyedBehaviorSource` (synthetic logs keyed on `CodeRef.key()`), so a fix removes its planted fault from the logs.
+
+**Unchecked signals in `decide` (user decision).** `decide(..., unchecked=())`. Rule: a row may only evaluate FALSE if every check that could make it TRUE ran; if one was skipped, FALSE becomes UNKNOWN, TRUE stays TRUE, and the existing "UNKNOWN higher row -> row 10" rule does the rest. Only an evidence-based result flips; a result fixed by the replays does not.
+- Source -> signals (`vocab.SIGNALS_BY_SOURCE`, used by `route` to build the set): contract_cfg -> contract_violation, render_settings_differ; contract_obs, contract_action -> contract_violation; staleness -> staleness_constant, staleness_variable (partial skip: staleness_variable only); sanity -> render_physics_broken; behavior (only when Branch C ran) -> implied_target_offset/ok/wrong, failure_phase:*. `staleness_variable` is dropped when the incident was observed in clean mode (not applicable, not a skip).
+- Row -> signals (`vocab.ROW_SIGNALS`, the default of `DecideConfig.row_signals`): 1 staleness_variable; 2 render_physics_broken (final FALSE only); 3 staleness_variable (not when Stage 0 is NO_EFFECT); 4 contract_violation, staleness_constant, implied_target_offset (the Branch C FALSE; Branch G elimination is already TRUE); 5 render_settings_differ; 8 implied_target_ok, failure_phase:grasp/lift/place and 9 implied_target_wrong (only when nothing restores). Rows 6, 7: replays only. `reference_unqualified` is not mapped (no producer, ISSUES #5).
+- **Row-1 inverse rule:** `staleness_variable` can only make row 1 FALSE, so when it is unchecked row 1's TRUE becomes UNKNOWN.
+- `decide.row1_state` lets `route` stop after Stage 0 unless row 1 is FALSE (TRUE wins; UNKNOWN blocks everything below). It replaces route's own "Stage 0 inconclusive" check, so route has no row-1 rule of its own (D-4).
+- Relaxing a signal later (e.g. accepting a vision verdict without behavior logs) is a config change: `DecideConfig(row_signals=...)`, not a code change.
+- Intended consequences: with logs missing, vision, rendering, action-gap and Branch C code cases end at row 10; Branch G code cases too (row 2 is undecided without sanity); `no_fault` observed in incident mode ends at row 10, not row 1. A clean-mode incident without logs can still close at row 1. Row 2 proved by a failing reference replay stays row 2.
+
+**Default trace modes.** Staleness reads both modes (by design). Observation, action, sanity and `BehaviorConfig.mode` stay CLEAN: Stage 0 always produces clean-mode episodes of the failing seeds on the code under test, also on a re-run after a fix, while incident-mode logs exist only for the original code; and clean mode keeps server staleness out of tracking, gripper and grasp-position metrics (a stale server would read as a gains bug or as perception scatter). Render/physics health and preprocessing do not depend on the mode. A missing clean log is now a recorded skip with an UNKNOWN row, not a silent clean.
+
+**Cases.** All 11 router cases route from synthetic logs with no hand-written evidence. code_condition_specific stays the wrong-instruction-string bug (the glossy mug's instruction does not match the training template; config contract, location `eval_config.instruction`); combined plants unnormalised policy inputs in `c0` (observation contract, `obs.normalization`); infra plants a load-dependent delay in incident-mode traces; action_gap fails at grasp with the right implied target. The strict xfail is now a passing test. `tests/fixtures/decide_pre_f1.py` is a frozen copy of the pre-F1 `decide`, the oracle for "empty unchecked set = old verdict".
+
+**Rejected**
+- An override in `route()` turning row 1 into row 10 (a second row-1 rule; user decision).
+- Treating "row 6 + skipped note" as the lower-confidence verdict for code_condition_specific without contract checks (user decision: row 10).
+- A blanket "FALSE -> UNKNOWN for any mapped signal" without looking at why the row is FALSE: it would undecide row 3 for every incident whose clean Stage 0 fails, and rows 8-9 whenever a factor restores.
+- Checks inside `RouterConfig`; a default "healthy for any code" log source in the loop cases (the combined case lists every code it logs; others have no logs).
+- Keeping `evidence_provider` alongside `inputs` (two evidence paths).
+- Replacing code_condition_specific with an obs-contract `swap_rb` bug (user decision); the observation contract is covered by the combined case.
+
+**TODO(verify)**
+- The production `TraceSource` / `BehaviorSource` must serve the clean-mode episodes of Stage 0 for `incident.code_ref` (`EpisodeResult.logs`), so a re-run after a fix reads the patched code's logs, not the incident's original ones.
+- Python 3.11 (only 3.12 is installed here).
+- `vla-router/router/decide.py` and `router/vocab.py` are read-only (mode 444) in the checkout; both were edited for this fix with the user's approval and left at 444.
+
+## Fix F2a (code identity, workspaces, attempts, diff storage; ISSUES #6, #7, #8, #13 partly, #14 task, #42 repairer part)
+
+**What**
+- `ladder/workspace.py` is the one place that names and builds code. A name is `<base>` or `<base>+sha1(cumulative diff)[:12]`. The cumulative diff is read off the files against the base snapshot (`cumulative_diff`: `git diff refs/vla/base`, fixed flags, `--binary`, user/system git config off), never concatenated from attempt diffs, so the same files always get the same name and an undone change gets the base name back. `CodeRef` is unchanged.
+- `WorkspaceManager(store, bases)`. The store is always on disk and content-addressed: `patches/<name>.patch` (checked against its own name on read) and `bases/<base>.tree` (the snapshot's git tree; a base checkout that changes later is an error, not a new meaning for its name). Any manager on the same store and bases can rebuild any name; `register(ref, diff)` re-adds a `LoopResult.final_diff` to a fresh store.
+- `materialize(ref)` builds a fresh directory: the base's files (`_copy_base`: no `.git` at any depth, then `git clean -X` drops what the tree's `.gitignore` files ignore), `git init` with ONE snapshot commit (fixed author/date: deterministic commit ids), `refs/vla/base`, then the cumulative diff committed on top, so HEAD is the code under repair and hagent's `git diff HEAD` is one attempt's change. `git config vla.base` lets a working copy name itself (`code_ref_of`, the Rung 1 CLI default "after"). `view(ref)` is a cached copy for readers (mock rules, synthetic logs). The original checkout is only read.
+- `extend(ref, patch)`: apply one attempt's patch to a fresh copy of `ref` and name the result. A patch that does not apply raises `UnrebuildablePatch`.
+- `HagentRepairer(workspaces, settings, ...)`: each attempt materializes `request.incident.code_ref` (the last accepted code; the loop only advances on Rung 1 pass / residual / ambiguous), runs `solve()` there, and returns `extend(...)`. `RepairOutcome` gains `code_diff` and `rebuild_error`. The loop records `unrebuildable_patch` with feedback "do not edit or add binary files" (not `no_change`). `RepairRecord.diff` / `.code_diff` and `LoopResult.final_diff` are in `to_dict`.
+- #8: the prompt's repo path is the working copy, or `settings.env.workdir` under docker; `RepoIndex` is built from the working copy.
+- Backend contract (docstring of `ladder.backend`): a backend gets the files of a `CodeRef` through `WorkspaceManager` (`view` to read, `materialize` to build or run). `MockRule.files` takes a file predicate (`FileContains`, serialisable for the CLI); `MockBackend(workspaces=...)` evaluates each (predicate, name) once. The CLI accepts `"workspace": {"store", "bases"}` for file rules. `IsaacBackend` untouched.
+- Synthetic logs are patch-aware: `CodeKeyedTraceSource` / `CodeKeyedBehaviorSource` take `file_faults` (same predicates, looked up after the code key), so the real repairer's patch gets logs and F1's rule does not make every row undecided after a real repair.
+
+**#14 report task (user decision: use it).** The repair TASK is `Report.task`: the report model's validated `task`, or `default_task` when there is no model, no task or a fallback. The model's text fills only the TASK slot; the verdict line (`verdict_text`), the hypothesis framing (template), repro command, rollout summary and repo path are still filled by code. Why: plan 3.2.12 says the report model writes the task, and `_Validator` already checks it (ids, paths); before F2a it was validated and thrown away. Cost: the validator holes (ISSUES #35) now reach the agent's prompt (F5).
+
+**Rejected**
+- Naming by concatenated attempt diffs or by the chain of attempt hashes (`c0+h1+h2`): two routes to the same files got two names, and the name claimed patches the content did not have.
+- An optional / in-memory store (user decision): the only copy of a fix would die with the process, and F3 needs to rebuild patched code for Rung 0.
+- Copying the original `.git` into working copies (user decision): leaks history (ISSUES #13), and its state (dirty tree, hooks, config) would change names.
+- Naming by git tree id: robust to diff formatting, but the decision was "a hash of the cumulative diff"; the diff recipe pins every flag instead.
+- Using the agent's working directory as the result under the local backend: docker has no host copy, so both paths go through `extend(patch)`.
+- Folding an unrebuildable patch into `no_change` (user decision): the agent would be told it changed nothing when it did.
+
+**Known limits / TODO**
+- ISSUES #2 stays open: a patched `CodeRef` copies the eval config it started from (F2b brings the config loader).
+- hagent's patch is not `--binary` (ISSUES #55) and follows host git config and agent commits (ISSUES #56).
+- Determinism is over file bytes and commit ids, not `.git` internals (index timestamps).
+- TODO(verify): the docker path of the repairer has not been run (no image).
+- `chmod u+w` was applied to vla-router and hybrid-agent by the user; read-only modes are no longer a constraint and were not restored.

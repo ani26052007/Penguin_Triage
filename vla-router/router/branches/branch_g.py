@@ -6,8 +6,8 @@ G1  infra: the policy on the incident scene in INCIDENT mode. The clean side
 G2  simulator: reference controller on the nominal scene, RAW actions.
 G3  pipeline isolation: reference controller on the nominal scene, actions
     through the current WRAPPER and controller.
-G4  contract evidence comes from Stage 1 (not built in this step; passed to
-    the router as extra evidence).
+G4  contract evidence comes from Stage 1, which ``router.route`` runs on every
+    incident.
 """
 
 from __future__ import annotations

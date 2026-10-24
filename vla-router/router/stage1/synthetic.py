@@ -24,10 +24,10 @@ import math
 import random
 from dataclasses import dataclass
 from statistics import fmean
-from typing import Mapping, Optional, Sequence
+from typing import Callable, Mapping, Optional, Sequence, TypeVar
 
 from router.prereq.trace import (EpisodeTrace, FrameSample, FrameStats, InMemoryTraceSource, SimHealth,
-                                 StepPair)
+                                 StepPair, TraceSource, TraceUnavailable)
 from router.schemas import ActorKind, ActorRef, CodeRef, Factor, Incident, Mode, SceneSpec, TrainingSpec
 from router.stage1 import action_contract as A
 from router.stage1 import obs_contract as O
@@ -192,6 +192,64 @@ def make_source(clean: Faults = Faults(), incident: Optional[Faults] = None, *, 
     incident = clean if incident is None else incident
     return InMemoryTraceSource({"clean": make_traces(n, Mode.CLEAN, clean),
                                 "incident": make_traces(n, Mode.INCIDENT, incident)})
+
+
+F = TypeVar("F")
+
+
+def faults_for(incident: Incident, by_key: Mapping[str, F], file_faults: Sequence[tuple[Callable, F]],
+               workspaces, default: Optional[F]) -> Optional[F]:
+    """The planted faults of the code under test: by code key, then by the first file predicate that
+    holds on ``workspaces.view(code_ref)``, then ``default``. Shared with the behavior source."""
+    code = incident.code_ref
+    if code.key() in by_key:
+        return by_key[code.key()]
+    if file_faults:
+        root = workspaces.view(code)
+        for pred, f in file_faults:
+            if pred(root):
+                return f
+    return default
+
+
+class CodeKeyedTraceSource(TraceSource):
+    """Traces that depend on the code under test, so a fix makes its planted
+    fault disappear: the episodes of ``incident.failing_seeds`` are generated
+    with ``faults[incident.code_ref.key()]`` (``default`` for a code not
+    listed). ``Faults.server_delay_max`` only acts in incident mode, so one
+    record covers both modes.
+
+    Patch-aware (Fix F2a): ``file_faults`` is a list of (file predicate,
+    faults), e.g. ``(FileContains("controller/wrapper.py", "normalize"),
+    Faults())``, evaluated on ``workspaces.view(incident.code_ref)`` (the same
+    predicates as ``MockRule.files``), so a patch from the real repair agent,
+    whose name is not known in advance, gets logs. Lookup order: the code key,
+    then the first matching predicate, then ``default``.
+
+    Missing logs raise ``TraceUnavailable``, as in ``InMemoryTraceSource``:
+    the incident has no ``log_refs[mode]``, or the code matches nothing and
+    ``default`` is None.
+    """
+
+    def __init__(self, faults: Mapping[str, Faults], default: Optional[Faults] = Faults(), *,
+                 file_faults: Sequence[tuple[Callable, Faults]] = (), workspaces=None) -> None:
+        if file_faults and workspaces is None:
+            raise ValueError("file_faults need workspaces to look at the code's files")
+        self.faults, self.default = dict(faults), default
+        self.file_faults, self.workspaces = tuple(file_faults), workspaces
+        self._made: dict[tuple, list[EpisodeTrace]] = {}
+
+    def load(self, incident: Incident, mode: Mode) -> list[EpisodeTrace]:
+        mode, code = Mode(mode), incident.code_ref.key()
+        if mode.value not in incident.log_refs:
+            raise TraceUnavailable(f"incident {incident.incident_id} has no log_refs[{mode.value!r}]")
+        f = faults_for(incident, self.faults, self.file_faults, self.workspaces, self.default)
+        if f is None:
+            raise TraceUnavailable(f"no {mode.value}-mode traces logged for code {code}")
+        key = (code, mode, f, incident.failing_seeds)
+        if key not in self._made:
+            self._made[key] = [make_trace(s, mode, f) for s in incident.failing_seeds]
+        return list(self._made[key])
 
 
 # --------------------------------------------------------------------------- #

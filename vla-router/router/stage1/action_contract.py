@@ -139,6 +139,10 @@ def action_metrics(traces: Sequence[EpisodeTrace], sp: ActionSpace) -> dict[str,
 # --------------------------------------------------------------------------- #
 
 class ActionContractCheck(Check):
+    """``mode``: which logged episodes to read. CLEAN by default: a stale
+    server delays actions, which inflates the tracking error and would read as
+    a gains bug (DECISIONS.md, Fix F1)."""
+
     source = "contract_action"
 
     def __init__(self, nominal: NominalStats, traces: TraceSource, *, mode: Mode = Mode.CLEAN,

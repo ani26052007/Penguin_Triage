@@ -12,8 +12,8 @@ C_all       all factors restored, run only when the scene has two or more
 C_render    the shifted scene with the training data's render settings, run
             only when the evidence says the eval render settings differ
             (``render_settings_differ``, a Stage 1 config-contract output).
-C_behavior  logs-only analysis; not built in this step (its evidence is passed
-            to the router as extra evidence).
+C_behavior  logs-only analysis (``router.behavior``); ``router.route`` runs it
+            before these replays whenever Branch C runs.
 """
 
 from __future__ import annotations

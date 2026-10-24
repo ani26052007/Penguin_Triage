@@ -6,13 +6,15 @@ from ladder.backend import MockBackend, MockRule
 from router import vocab as V
 from router.decide import decide
 from router.replay import ReplayConfig
-from router.router import RouterConfig, route
+from router.router import RouterConfig, RouterInputs, route
 from router.schemas import ActionPipeline, ActorKind, ActorRef, Factor, SceneSpec, VerdictLabel
 from router.stage1.action_contract import ActionContractCheck
 from router.stage1.base import Check
 from router.stage1.cfg_contract import ConfigContractCheck
 from router.stage1.obs_contract import ObservationContractCheck
-from router.stage1.registry import EVIDENCE_SOURCES, run_stage1
+from router.prereq.trace import InMemoryTraceSource
+from router.schemas import Mode
+from router.stage1.registry import EVIDENCE_SOURCES, NOT_CONFIGURED, run_stage1
 from router.stage1.sanity import SanityCheck
 from router.stage1.staleness import StalenessProbe
 from router.stage1.synthetic import (CAMERAS, Faults, make_config_mapping, make_eval_config, make_incident,
@@ -59,6 +61,22 @@ def test_missing_traces_skip_the_trace_checks_but_not_the_config_check():
     res = run_stage1(make_incident(log_refs={}), all_checks(make_source()))
     assert res.evidence == () and [s for s, _ in res.skipped] == list(EVIDENCE_SOURCES[1:])
     assert res.sources_run == ("contract_cfg",)           # "nothing found" is not claimed for the skipped ones
+
+
+def test_sources_run_lists_only_the_checks_that_ran():
+    """Tier 5 (Fix F1): it used to list all five sources whatever was passed."""
+    res = run_stage1(make_incident(), [ConfigContractCheck(make_config_mapping()), SanityCheck(NOMINAL, make_source())])
+    assert res.sources_run == ("contract_cfg", "sanity")
+    assert res.skipped == tuple((s, NOT_CONFIGURED) for s in ("contract_obs", "contract_action", "staleness"))
+    empty = run_stage1(make_incident(), [])
+    assert empty.sources_run == () and [s for s, _ in empty.skipped] == list(EVIDENCE_SOURCES)
+
+
+def test_staleness_partial_skip_is_recorded_and_the_source_still_counts_as_run():
+    src = InMemoryTraceSource({"clean": make_source().load(make_incident(), Mode.CLEAN)})
+    res = run_stage1(make_incident(), all_checks(src))
+    assert [s for s, _ in res.partial] == ["staleness"] and "staleness_variable" in res.partial[0][1]
+    assert "staleness" in res.sources_run and res.skipped == ()
 
 
 def test_registry_rejects_bad_check_sets():
@@ -110,11 +128,12 @@ def test_instruction_template_bug_found_by_stage1_routes_to_code_at_that_locatio
     stage1 = run_stage1(incident, all_checks(make_source()))
     assert [e.id for e in stage1.evidence] == ["s1.cfg.instruction_templates"]
 
-    # without Stage 1 this incident reads as a plain vision-factor failure (condition-specific, reference fine)
+    # without Stage 1 the replays alone point at the factor; with the checks unconfigured that is row 10
     base = route(incident, _backend("a"), CONFIG)
-    assert base.verdict.label is VerdictLabel.VISION_FACTOR
+    assert base.verdict.row == 10 and "row 4 undecided: not checked: contract_violation" in base.verdict.notes
 
-    res = route(incident, _backend("a"), CONFIG, extra_evidence=stage1.evidence)
+    res = route(incident, _backend("a"), CONFIG, RouterInputs(tuple(all_checks(make_source()))))
+    assert [e.id for e in res.stage1_evidence] == ["s1.cfg.instruction_templates"]
     assert res.verdict.label is VerdictLabel.CODE
     assert res.verdict.location == "eval_config.env.instruction"
     assert "s1.cfg.instruction_templates" in res.verdict.evidence_ids

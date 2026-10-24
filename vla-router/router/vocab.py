@@ -46,6 +46,7 @@ SIG_IMPLIED_TARGET_WRONG = "implied_target_wrong"    # large scatter or wrong ob
 SIG_FAILURE_PHASE_PREFIX = "failure_phase:"          # failure_phase:reach|grasp|lift|place
 
 PHASES_ACTION_GAP = ("grasp", "lift", "place")
+PHASES = ("reach",) + PHASES_ACTION_GAP
 
 # --- replay ids ------------------------------------------------------------ #
 R_STAGE0 = "stage0"
@@ -65,3 +66,35 @@ def restore_id(factor: str) -> str:
 
 def failure_phase(phase: str) -> str:
     return f"{SIG_FAILURE_PHASE_PREFIX}{phase}"
+
+
+# --- unchecked signals (DECISIONS.md, Fix F1) -------------------------------- #
+# A check that did not run leaves its signals unchecked: absence of the signal
+# then means "not looked at", not "checked, nothing found". ``route`` builds the
+# unchecked set from this map; ``decide`` reads it through ROW_SIGNALS.
+
+SIGNALS_BY_SOURCE: dict[str, frozenset[str]] = {
+    "contract_cfg": frozenset({SIG_CONTRACT_VIOLATION, SIG_RENDER_SETTINGS_DIFFER}),
+    "contract_obs": frozenset({SIG_CONTRACT_VIOLATION}),
+    "contract_action": frozenset({SIG_CONTRACT_VIOLATION}),
+    "staleness": frozenset({SIG_STALENESS_CONSTANT, SIG_STALENESS_VARIABLE}),
+    "sanity": frozenset({SIG_RENDER_PHYSICS_BROKEN}),
+    "behavior": frozenset({SIG_IMPLIED_TARGET_OFFSET, SIG_IMPLIED_TARGET_OK, SIG_IMPLIED_TARGET_WRONG,
+                           *(failure_phase(p) for p in PHASES)}),
+}
+
+# Row -> the signals whose absence that row's result depends on. If one of them
+# is unchecked, the result that rests on its absence becomes UNKNOWN: FALSE for
+# rows 2-9 (the signal could have made the row TRUE), TRUE for row 1 (the
+# signal can only make row 1 FALSE: the inverse rule). Only the evidence-based
+# results flip; a result fixed by the replays stays. The default of
+# ``DecideConfig.row_signals``: relaxing a signal is a config change.
+ROW_SIGNALS: dict[int, frozenset[str]] = {
+    1: frozenset({SIG_STALENESS_VARIABLE}),
+    2: frozenset({SIG_RENDER_PHYSICS_BROKEN}),
+    3: frozenset({SIG_STALENESS_VARIABLE}),
+    4: frozenset({SIG_CONTRACT_VIOLATION, SIG_STALENESS_CONSTANT, SIG_IMPLIED_TARGET_OFFSET}),
+    5: frozenset({SIG_RENDER_SETTINGS_DIFFER}),
+    8: frozenset({SIG_IMPLIED_TARGET_OK, *(failure_phase(p) for p in PHASES_ACTION_GAP)}),
+    9: frozenset({SIG_IMPLIED_TARGET_WRONG}),
+}

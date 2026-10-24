@@ -1,6 +1,6 @@
 """The incident loop (plan.md 3.2.11 and Section 4).
 
-    IncidentLoop(backend, cfg, repairer=..., evidence_provider=..., data_ladder=...).run(incident)
+    IncidentLoop(backend, cfg, repairer=..., inputs=..., data_ladder=...).run(incident)
 
     incident -> router -> destination --+-- hagent / config_fix: Repairer -> Rung 0 -> Rung 1
                   ^                     |        fail                -> Repairer again (feedback)
@@ -22,11 +22,10 @@ fix the second cause from looping the repair agent forever.
 
 Stand-ins (all behind interfaces, none a model in the routing path):
   * ``Repairer``            real one: ``ladder.repair.HagentRepairer``.
-  * ``EvidenceProvider``    ``Incident -> Evidence``. ``route()`` takes Stage 1 / C_behavior
-                            evidence as an argument and Stage 1 is not wired into it, so the loop
-                            asks a provider per pass (after a fix, the contract-violation record
-                            disappears). The mock provider keyed on the CodeRef is a FIXTURE:
-                            remove it when Stage 1 is wired into ``route()`` (build-order step 5).
+  * ``RouterInputs``        the Stage 1 checks and the C_behavior source. ``route()`` runs them
+                            itself on every pass, on the incident with the current code, so
+                            evidence of a fixed fault disappears because the checks no longer
+                            find it in that code's logs.
   * ``DataLadder``          stub; the real pipeline is Section 5.
   * Rung 0 / Rung 2 hooks   optional callables; ``None`` skips Rung 0 and makes Rung 2 answer
                             "unclear".
@@ -37,7 +36,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import Callable, Optional, Protocol, Sequence
+from typing import Callable, Optional, Protocol
 
 from ladder.backend import RolloutBackend
 from ladder.repair import RepairKind, RepairOutcome, RepairRequest, Repairer
@@ -45,13 +44,12 @@ from ladder.rung0 import Rung0Result
 from ladder.rung1 import Rung1Config, Rung1Outcome, Rung1Result, run_rung1
 from ladder.rung2 import Rung2Input, Rung2Label, Rung2Result
 from router.prereq.rollout_cache import CachedBackend, RolloutCache
-from router.router import RouterConfig, RouterResult, route
+from router.router import RouterConfig, RouterInputs, RouterResult, route
 from router.schemas import CodeRef, Destination, Evidence, Incident, SceneSpec, Verdict
 from router.stage2 import Branch, nominal_scene
 
 log = logging.getLogger("ladder.loop")
 
-EvidenceProvider = Callable[[Incident], Sequence[Evidence]]
 Rung0Hook = Callable[[RepairRequest, RepairOutcome], Rung0Result]
 Rung2Fn = Callable[[Rung2Input], Rung2Result]
 
@@ -134,17 +132,24 @@ class PassRecord:
 
 @dataclass
 class RepairRecord:
+    """``diff``: what this attempt changed, against ``code_before``. ``code_diff``: the whole change
+    of ``code_after`` against its base, which ``WorkspaceManager.materialize`` rebuilds."""
     attempt: int
     kind: str
     code_before: str
     code_after: str
-    result: str                                   # no_change | rung0_failed | rung1_fail | rung1_<outcome>
+    result: str          # no_change | unrebuildable_patch | rung0_failed | rung1_fail | rung1_<outcome>
     rung0: Optional[Rung0Result] = None
     rung1: Optional[Rung1Result] = None
+    diff: str = ""
+    code_diff: str = ""
 
 
 @dataclass(frozen=True)
 class LoopResult:
+    """``final_diff`` is the whole change of ``final_code`` against its base ("" when no fix was
+    accepted): ``WorkspaceManager.register(final_code, final_diff)`` then ``materialize(final_code)``
+    rebuilds the fixed files from this record alone."""
     incident_id: str
     status: LoopStatus
     reason: str
@@ -156,6 +161,7 @@ class LoopResult:
     handoff: Optional[DataHandoff]
     big_calls: int
     cost: float
+    final_diff: str = ""
 
     @property
     def destinations(self) -> tuple[str, ...]:
@@ -165,10 +171,12 @@ class LoopResult:
         return {"incident_id": self.incident_id, "status": self.status.value, "reason": self.reason,
                 "passes": [p.__dict__ for p in self.passes],
                 "repairs": [{"attempt": r.attempt, "kind": r.kind, "code_before": r.code_before,
-                             "code_after": r.code_after, "result": r.result,
+                             "code_after": r.code_after, "result": r.result, "diff": r.diff,
+                             "code_diff": r.code_diff,
                              "rung0": r.rung0.to_dict() if r.rung0 else None,
                              "rung1": r.rung1.to_dict() if r.rung1 else None} for r in self.repairs],
                 "rung2": [r.to_dict() for r in self.rung2], "final_code": self.final_code.to_dict(),
+                "final_diff": self.final_diff,
                 "final_verdict": self.final.verdict.to_dict() if self.final else None,
                 "handoff_factor": self.handoff.factor if self.handoff else None,
                 "big_calls": self.big_calls, "cost": self.cost}
@@ -180,10 +188,10 @@ class LoopResult:
 
 class IncidentLoop:
     def __init__(self, backend: RolloutBackend, cfg: LoopConfig, *, repairer: Repairer,
-                 evidence_provider: EvidenceProvider, data_ladder: DataLadder,
+                 inputs: RouterInputs, data_ladder: DataLadder,
                  rung0: Optional[Rung0Hook] = None, rung2: Optional[Rung2Fn] = None):
         self.backend = backend if isinstance(backend, CachedBackend) else CachedBackend(backend, RolloutCache())
-        self.cfg, self.repairer, self.evidence_provider = cfg, repairer, evidence_provider
+        self.cfg, self.repairer, self.inputs = cfg, repairer, inputs
         self.data_ladder, self.rung0, self.rung2 = data_ladder, rung0, rung2
 
     def run(self, incident: Incident) -> LoopResult:
@@ -196,6 +204,7 @@ class _Run:
     def __init__(self, loop: IncidentLoop, incident: Incident):
         self.L, self.cfg, self.incident = loop, loop.cfg, incident
         self.code = incident.code_ref
+        self.code_diff = ""                           # whole change of self.code against its base
         self.passes: list[PassRecord] = []
         self.repairs: list[RepairRecord] = []
         self.rung2s: list[Rung2Result] = []
@@ -209,15 +218,16 @@ class _Run:
         log.info("incident %s: %s (%s) passes=%d repairs=%d", self.incident.incident_id, status.value, reason,
                  len(self.passes), len(self.repairs))
         return LoopResult(self.incident.incident_id, status, reason, tuple(self.passes), tuple(self.repairs),
-                          tuple(self.rung2s), self.code, self.last, handoff, self.big_calls, self.cost)
+                          tuple(self.rung2s), self.code, self.last, handoff, self.big_calls, self.cost,
+                          self.code_diff)
 
     def execute(self) -> LoopResult:
         while True:
             if len(self.passes) >= self.cfg.max_passes:
                 return self.finish(LoopStatus.UNRESOLVED, f"pass cap ({self.cfg.max_passes}) reached")
             cur = replace(self.incident, code_ref=self.code)
-            evidence = tuple(self.L.evidence_provider(cur))
-            rr = route(cur, self.L.backend, self.cfg.router, evidence)
+            rr = route(cur, self.L.backend, self.cfg.router, self.L.inputs)
+            evidence = rr.evidence
             self.last = rr
             v = rr.verdict
             rec = PassRecord(len(self.passes) + 1, self.code.key(), v.label.value, v.row, v.destination.value,
@@ -288,7 +298,11 @@ class _Run:
     def repair(self, kind: RepairKind, cur: Incident, rr: RouterResult, evidence: tuple[Evidence, ...],
                rec: PassRecord) -> Optional[LoopResult]:
         """Repair until Rung 1 lets the patch through (return None: the loop re-runs the router on
-        the patched code) or a cap ends the incident (return the terminal result)."""
+        the patched code) or a cap ends the incident (return the terminal result).
+
+        Every attempt is asked to repair ``cur``, the last accepted code (Rung 1 pass, residual or
+        ambiguous). ``self.code`` only moves on acceptance, so a failed attempt (no_change,
+        unrebuildable_patch, rung0_failed, rung1_fail) never becomes the next attempt's start."""
         if rr.branch not in (Branch.G, Branch.G_DEGRADED, Branch.C):
             return self.finish(LoopStatus.UNRESOLVED, "Stage 2 branch unknown: Rung 1 has no defined target scene")
         while True:
@@ -299,8 +313,16 @@ class _Run:
             out = self.L.repairer.repair(req)
             self.cost += out.cost
             self.big_calls += out.big_calls
-            r = RepairRecord(req.attempt, kind.value, self.code.key(), out.code_ref.key(), "")
+            r = RepairRecord(req.attempt, kind.value, self.code.key(), out.code_ref.key(), "", diff=out.diff,
+                             code_diff=out.code_diff)
             self.repairs.append(r)
+            if out.rebuild_error:
+                r.result = "unrebuildable_patch"
+                self.feedback.append(
+                    f"attempt {req.attempt}: the patch could not be rebuilt on a clean copy of the code, so it was "
+                    f"not validated. Do not edit or add binary files; make text-only changes. "
+                    f"({out.rebuild_error[:300]})")
+                continue
             if out.code_ref.key() == self.code.key():
                 r.result = "no_change"
                 self.feedback.append(f"attempt {req.attempt}: the patch changed nothing. {out.notes}".strip())
@@ -319,12 +341,12 @@ class _Run:
             if r.rung1.outcome is Rung1Outcome.FAIL:
                 self.feedback.append(f"attempt {req.attempt}: simulator validation failed.\n{r.rung1.compact()}")
                 continue
-            self.code = out.code_ref
+            self.code, self.code_diff = out.code_ref, out.code_diff
             self.feedback.clear()
             if r.rung1.outcome is Rung1Outcome.AMBIGUOUS:
                 self.pending_rung1 = r.rung1.compact()
             return None
 
 
-__all__ = ["DataHandoff", "DataLadder", "EvidenceProvider", "IncidentLoop", "LoopConfig", "LoopResult",
+__all__ = ["DataHandoff", "DataLadder", "IncidentLoop", "LoopConfig", "LoopResult",
            "LoopStatus", "PassRecord", "RepairRecord", "StubDataLadder"]

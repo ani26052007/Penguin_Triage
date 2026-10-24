@@ -1,6 +1,6 @@
 """Stage 3: the decision table (plan.md 3.2.8) as a pure function.
 
-    decide(evidence, replays, config) -> Verdict
+    decide(evidence, replays, config, unchecked=()) -> Verdict
 
 No I/O, no randomness, no simulator, no models. The result depends only on the
 *set* of evidence records and the *set* of replays, never on their order
@@ -18,6 +18,16 @@ boundary: extend the seeds, 3.2.9). The verdict is the first TRUE row, except:
   the verdict is row 10 (undetermined) and says which replays need more seeds;
 * if the winning row sees conflicting evidence, the verdict is row 10.
 
+Unchecked signals (optional ``unchecked``): signals whose check did not run
+(``router`` builds the set from Stage 1 / C_behavior skips). A row may only
+evaluate FALSE if every check that could make it TRUE ran: when a signal in
+``config.row_signals[row]`` is unchecked, an evidence-based FALSE becomes
+UNKNOWN. Row 1 is the inverse case: ``staleness_variable`` can only make it
+FALSE, so its absence-based TRUE becomes UNKNOWN. A result fixed by the
+replays (a factor restored, Stage 0 not restored) does not flip, and TRUE never
+becomes UNKNOWN for rows 2-9. The UNKNOWN then blocks lower rows as above. An
+empty set (the default) is the old behaviour.
+
 Confidence (code verdicts): ``by_elimination=False`` when a located cause
 exists (a contract violation, a constant delay, a consistent implied-target
 offset, or G3 failing while G2 passes); ``True`` when the verdict rests on
@@ -31,9 +41,9 @@ it is not flagged). ``multi_cause_flag`` when Stage 2 came back degraded.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Iterable, Mapping, Optional, Sequence, Union
+from typing import AbstractSet, Callable, Iterable, Mapping, Optional, Sequence, Union
 
 from router import vocab as V
 from router.schemas import Destination, Evidence, Outcome, ReplayResult, Verdict, VerdictLabel
@@ -47,8 +57,13 @@ from router.schemas import Destination, Evidence, Outcome, ReplayResult, Verdict
 class DecideConfig:
     """``min_strength``: evidence weaker than this is ignored. Evidence
     strength is already calibrated on no-fault runs (3.2.3); the cut-off is a
-    step-6 calibration output, so it defaults to "use everything"."""
+    step-6 calibration output, so it defaults to "use everything".
+
+    ``row_signals``: row -> signals whose being unchecked makes that row's
+    evidence-based result UNKNOWN (``vocab.ROW_SIGNALS``; DECISIONS.md, Fix F1).
+    Dropping a signal from a row relaxes the rule: a config change."""
     min_strength: float = 0.0
+    row_signals: Mapping[int, AbstractSet[str]] = field(default_factory=lambda: dict(V.ROW_SIGNALS))
 
 
 LABEL_BY_ROW: Mapping[int, VerdictLabel] = {
@@ -126,6 +141,13 @@ def _unknown(note: str) -> _Match:
     return _Match(_Tri.UNKNOWN, note=note)
 
 
+def _false_unless_blind(c: "_Ctx", row: int) -> _Match:
+    """FALSE for lack of evidence, or UNKNOWN if a check that could have
+    produced that evidence did not run."""
+    blind = c.blind(row)
+    return _unknown("not checked: " + ", ".join(blind)) if blind else _FALSE
+
+
 def _normalize(replays: Union[Mapping[str, ReplayResult], Iterable[ReplayResult]]) -> dict[str, ReplayResult]:
     items = list(replays.values()) if isinstance(replays, Mapping) else list(replays)
     out: dict[str, ReplayResult] = {}
@@ -147,7 +169,8 @@ def _ids(evs: Iterable[Evidence]) -> tuple[str, ...]:
 
 
 class _Ctx:
-    def __init__(self, evidence: Sequence[Evidence], replays: dict[str, ReplayResult], cfg: DecideConfig):
+    def __init__(self, evidence: Sequence[Evidence], replays: dict[str, ReplayResult], cfg: DecideConfig,
+                 unchecked: AbstractSet[str] = frozenset()):
         seen: set[str] = set()
         for e in evidence:
             if e.id in seen:
@@ -156,6 +179,12 @@ class _Ctx:
         self.all_evidence = tuple(evidence)
         self.evidence = [e for e in evidence if e.strength >= cfg.min_strength]
         self.replays = replays
+        self.unchecked = frozenset(unchecked)
+        self.row_signals = cfg.row_signals
+
+    def blind(self, row: int) -> tuple[str, ...]:
+        """The signals this row depends on that were not checked."""
+        return tuple(sorted(self.unchecked & set(self.row_signals.get(row, ()))))
 
     def ev(self, signal: str) -> list[Evidence]:
         return sorted((e for e in self.evidence if e.signal == signal), key=lambda e: (-e.strength, e.id))
@@ -200,6 +229,9 @@ def _row1(c: _Ctx) -> _Match:
     if s in (_MISSING, _UNKNOWN):
         return _unknown(f"stage0 {'missing' if s == _MISSING else 'inconclusive'}")
     if s == _RESTORED and not c.ev(V.SIG_STALENESS_VARIABLE):
+        blind = c.blind(1)
+        if blind:          # inverse rule: the missing signal could only have made this row FALSE
+            return _unknown("stage0 passes but not checked: " + ", ".join(blind))
         return _Match(_Tri.TRUE, replay_ids=(V.R_STAGE0,))
     return _FALSE
 
@@ -225,15 +257,16 @@ def _row2(c: _Ctx) -> _Match:
     missing = [rid for rid in need if c.state(rid) == _MISSING]
     if missing:
         return _unknown("reference replay missing: " + ",".join(missing))
-    return _FALSE
+    return _false_unless_blind(c, 2)
 
 
 def _row3(c: _Ctx) -> _Match:
     """Infra: variable staleness, and clean mode restores (fully or partly)."""
     sv = c.ev(V.SIG_STALENESS_VARIABLE)
-    if not sv:
-        return _FALSE
     s = c.state(V.R_STAGE0)
+    if not sv:
+        # a failing clean-mode Stage 0 rules row 3 out whatever staleness says
+        return _FALSE if s == _NONE else _false_unless_blind(c, 3)
     if s in (_MISSING, _UNKNOWN):
         return _unknown(f"stage0 {'missing' if s == _MISSING else 'inconclusive'}; needed for the clean-mode restore")
     if s == _NONE:
@@ -263,14 +296,14 @@ def _row4(c: _Ctx) -> _Match:
         return _unknown("stage2_nominal missing or inconclusive; cannot tell Branch C from G")
     if g3_unknown:
         return _unknown("G3 inconclusive")
-    return _FALSE
+    return _false_unless_blind(c, 4)
 
 
 def _row5(c: _Ctx) -> _Match:
     """Rendering mismatch: eval render settings differ and C_render restores."""
     differ = c.ev(V.SIG_RENDER_SETTINGS_DIFFER)
     if not differ:
-        return _FALSE
+        return _false_unless_blind(c, 5)
     s = c.state(V.R_C_RENDER)
     if s in (_MISSING, _UNKNOWN):
         return _unknown(f"C_render {'missing' if s == _MISSING else 'inconclusive'}")
@@ -369,7 +402,7 @@ def _row8(c: _Ctx) -> _Match:
         phases = sorted(c.phases() & set(V.PHASES_ACTION_GAP))
         return _Match(_Tri.TRUE, evidence_ids=_ids(ok + [e for e in c.evidence if e.signal.startswith(V.SIG_FAILURE_PHASE_PREFIX)]),
                       note="failure at " + ",".join(phases))
-    return _FALSE
+    return _false_unless_blind(c, 8)
 
 
 def _row9(c: _Ctx) -> _Match:
@@ -379,7 +412,7 @@ def _row9(c: _Ctx) -> _Match:
     wrong = c.ev(V.SIG_IMPLIED_TARGET_WRONG)
     if wrong and not c.ev(V.SIG_IMPLIED_TARGET_OK):
         return _Match(_Tri.TRUE, evidence_ids=_ids(wrong))
-    return _FALSE
+    return _false_unless_blind(c, 9)
 
 
 _ROWS: tuple[Callable[[_Ctx], _Match], ...] = (_row1, _row2, _row3, _row4, _row5, _row6, _row7, _row8, _row9)
@@ -389,12 +422,30 @@ _ROWS: tuple[Callable[[_Ctx], _Match], ...] = (_row1, _row2, _row3, _row4, _row5
 # decide
 # --------------------------------------------------------------------------- #
 
+def _unchecked(unchecked: Iterable[str]) -> frozenset[str]:
+    out = frozenset(unchecked)
+    bad = [u for u in out if not isinstance(u, str)]
+    if bad:
+        raise TypeError(f"unchecked must be signal names, got {bad}")
+    return out
+
+
+def row1_state(evidence: Sequence[Evidence],
+               replays: Union[Mapping[str, ReplayResult], Iterable[ReplayResult]],
+               config: Optional[DecideConfig] = None, unchecked: Iterable[str] = frozenset()) -> str:
+    """"true" / "false" / "unknown" for row 1 alone. The router stops after
+    Stage 0 unless this is "false": a TRUE row 1 wins, and an UNKNOWN one makes
+    every lower row row 10, so any further replay would be wasted."""
+    c = _Ctx(tuple(evidence), _normalize(replays), config or DecideConfig(), _unchecked(unchecked))
+    return _row1(c).tri.value
+
+
 def decide(evidence: Sequence[Evidence],
            replays: Union[Mapping[str, ReplayResult], Iterable[ReplayResult]],
-           config: Optional[DecideConfig] = None) -> Verdict:
+           config: Optional[DecideConfig] = None, unchecked: Iterable[str] = frozenset()) -> Verdict:
     cfg = config or DecideConfig()
     table = _normalize(replays)
-    c = _Ctx(tuple(evidence), table, cfg)
+    c = _Ctx(tuple(evidence), table, cfg, _unchecked(unchecked))
     matches = [row(c) for row in _ROWS]
     multi = c.branch is _Branch.G_DEGRADED
 

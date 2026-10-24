@@ -13,13 +13,15 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Mapping, Optional, Sequence
+from typing import Callable, Mapping, Optional, Sequence
 
 from router.behavior import M_BIAS, M_SCATTER, M_WRONG, behavior_metrics
-from router.prereq.behavior_trace import (PHASES, BehaviorTrace, GraspRecord, InMemoryBehaviorSource,
-                                          SubtaskProgress)
-from router.schemas import Mode
+from router.prereq.behavior_trace import (PHASES, BehaviorSource, BehaviorTrace, GraspRecord,
+                                          InMemoryBehaviorSource, SubtaskProgress)
+from router.prereq.trace import TraceUnavailable
+from router.schemas import Incident, Mode
 from router.stage1.nominal import NominalStats
+from router.stage1.synthetic import faults_for
 
 FLOORS: Mapping[str, float] = {M_BIAS: 0.003, M_SCATTER: 0.003, M_WRONG: 0.05}
 GRASP_NOISE = 0.01                       # healthy per-axis scatter of the gripper-close position (m)
@@ -64,6 +66,33 @@ def make_behavior_source(clean: BehaviorFaults = BehaviorFaults(), incident: Opt
     incident = clean if incident is None else incident
     return InMemoryBehaviorSource({"clean": make_behavior_traces(n, Mode.CLEAN, clean),
                                    "incident": make_behavior_traces(n, Mode.INCIDENT, incident)})
+
+
+class CodeKeyedBehaviorSource(BehaviorSource):
+    """Failing episodes of ``incident.failing_seeds`` generated with
+    ``faults[incident.code_ref.key()]`` (``default`` for a code not listed),
+    so a fix makes its planted fault disappear. Missing logs raise
+    ``TraceUnavailable``: no ``log_refs[mode]``, or an unlisted code with
+    ``default`` None. Mirrors ``router.stage1.synthetic.CodeKeyedTraceSource``,
+    including the patch-aware ``file_faults`` (file predicate, faults) looked
+    up on ``workspaces.view(incident.code_ref)``."""
+
+    def __init__(self, faults: Mapping[str, BehaviorFaults],
+                 default: Optional[BehaviorFaults] = BehaviorFaults(), *,
+                 file_faults: Sequence[tuple[Callable, BehaviorFaults]] = (), workspaces=None) -> None:
+        if file_faults and workspaces is None:
+            raise ValueError("file_faults need workspaces to look at the code's files")
+        self.faults, self.default = dict(faults), default
+        self.file_faults, self.workspaces = tuple(file_faults), workspaces
+
+    def load(self, incident: Incident, mode: Mode) -> list[BehaviorTrace]:
+        mode, code = Mode(mode), incident.code_ref.key()
+        if mode.value not in incident.log_refs:
+            raise TraceUnavailable(f"incident {incident.incident_id} has no log_refs[{mode.value!r}]")
+        f = faults_for(incident, self.faults, self.file_faults, self.workspaces, self.default)
+        if f is None:
+            raise TraceUnavailable(f"no {mode.value}-mode behavior traces logged for code {code}")
+        return [make_behavior_trace(s, mode, f) for s in incident.failing_seeds]
 
 
 def make_behavior_nominal(*, group_size: int = 8, n_groups: int = 40, fire_z: float = 4.0) -> NominalStats:

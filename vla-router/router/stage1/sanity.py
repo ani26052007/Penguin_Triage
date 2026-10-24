@@ -80,6 +80,10 @@ def sanity_metrics(traces: Sequence[EpisodeTrace], black_eps: float = 1e-3) -> d
 
 
 class SanityCheck(Check):
+    """``mode``: which logged episodes to read. CLEAN by default, the mode
+    Stage 0 always runs in on the code under test; render and physics health
+    do not depend on the inference mode (DECISIONS.md, Fix F1)."""
+
     source = "sanity"
 
     def __init__(self, nominal: NominalStats, traces: TraceSource, *, mode: Mode = Mode.CLEAN,

@@ -5,8 +5,8 @@ Stage 2, Branch G, Branch C, orchestrator.
 verdict, and episodes per incident are logged. Two views:
   * QuotaBackend: no sampling noise, so routing logic must be exact;
   * MockBackend over 10 salts: sampling noise at 10-30 seeds may cost a repeat.
-code_condition_specific is an expected failure until Stage 1 exists (its only
-signal is a Stage 1 contract violation; user decision).
+Since Fix F1 the evidence comes from ``route()`` running Stage 1 and C_behavior
+on each case's synthetic logs; no case carries hand-written evidence.
 """
 
 from __future__ import annotations
@@ -19,22 +19,22 @@ from ladder.backend import MockRule
 from router import vocab as V
 from router.prereq.rollout_cache import CachedBackend, RolloutCache
 from router.replay import ReplayConfig, ReplayRunner, seed_set
-from router.router import route
-from router.schemas import (ActionPipeline, ActorKind, ActorRef, CodeRef, Factor, Incident, Mode,
+from router.router import RouterInputs, route
+from router.schemas import (ActionPipeline, ActorKind, ActorRef, CodeRef, Evidence, Factor, Incident, Mode,
                             Outcome, SceneSpec, TrainingSpec, VerdictLabel)
 from router.stage2 import Branch
 from scripts.confusion_matrix import FAILURE_RATE, LIGHT, MAT, NOMINAL_BAND, POLICY, _REF_OK
-from tests.router_cases import (CODE_EVAL_RENDER, STAGE1_ONLY, TRAIN_RENDER, QuotaBackend, RouterCase,
-                                default_config, router_cases)
+from tests.router_cases import (CODE_EVAL_RENDER, TRAIN_RENDER, QuotaBackend, RouterCase, default_config,
+                                healthy_inputs, log_refs, router_cases)
 
 CASES = {c.name: c for c in router_cases()}
-ROUTABLE = [n for n in CASES if n not in STAGE1_ONLY]
+ROUTABLE = list(CASES)
 NOISE_FREE = ("vision_glossy", "rendering_mismatch", "sim_asset", "infra_stale_server", "code_global")
 CFG = default_config()
 
 
-def run_case(case: RouterCase, backend=None, cfg=CFG):
-    return route(case.incident(), backend or case.quota_backend(), cfg, case.evidence)
+def run_case(case: RouterCase, backend=None, cfg=CFG, **inputs_kw):
+    return route(case.incident(), backend or case.quota_backend(), cfg, case.inputs(**inputs_kw))
 
 
 def check_flags(case: RouterCase, v) -> list[str]:
@@ -79,17 +79,91 @@ def test_fault_class_routes_under_sampling_noise(name):
         assert len(correct) >= 8, [v.label.value for v in verdicts]
 
 
-@pytest.mark.xfail(strict=True, reason="needs a Stage 1 contract violation; Stage 1 is out of scope in step 4")
 def test_code_condition_specific_needs_stage1():
+    """Was a strict xfail (ISSUES #1): the wrong instruction string for the
+    glossy mug is found by the config contract that route() now runs."""
     case = CASES["code_condition_specific"]
-    assert run_case(case).verdict.label is VerdictLabel.CODE
+    v = run_case(case).verdict
+    assert v.label is VerdictLabel.CODE and v.location == "eval_config.instruction"
+    assert "s1.cfg.instruction_templates" in v.evidence_ids
 
 
-def test_code_condition_specific_currently_reads_as_the_restoring_factor():
-    """Documents the expected failure: without Stage 1 evidence the replays
-    alone point at the factor (plan 3.2.1 #2's channel-swap example)."""
-    v = run_case(CASES["code_condition_specific"]).verdict
-    assert v.label is VerdictLabel.VISION_FACTOR and v.factor == MAT
+# --------------------------------------------------------------------------- #
+# Fix F1 done-when: log-only evidence produced by route() itself
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("name,row,location", [
+    ("infra_stale_server", 3, None),                       # was row 1 (silent stop)
+    ("rendering_mismatch", 5, "eval_config.render"),       # was row 6
+    ("code_condition_specific", 4, "eval_config.instruction"),   # was row 6
+    ("action_gap", 8, None),                               # was row 10
+])
+def test_log_only_evidence_routes_without_hand_written_evidence(name, row, location):
+    res = run_case(CASES[name])
+    assert res.verdict.row == row, res.verdict.notes
+    assert res.external_evidence == () and res.skipped == () and res.partial == ()
+    assert res.evidence == res.stage1_evidence + res.behavior_evidence
+    if location:
+        assert res.verdict.location == location
+
+
+def test_stage1_runs_before_the_stage0_stop_and_behavior_only_on_branch_c():
+    infra = run_case(CASES["infra_stale_server"])
+    assert infra.stages[:2] == ("stage0", "stage1") and "s1.staleness.variable" in infra.verdict.evidence_ids
+    g = run_case(CASES["code_global"])
+    assert g.branch is Branch.G and "C_behavior" not in g.stages and g.behavior_evidence == ()
+    assert "behavior" not in g.sources_run and not any(s == "behavior" for s, _ in g.skipped)
+    c = run_case(CASES["action_gap"])
+    assert "C_behavior" in c.stages and "behavior" in c.sources_run and c.behavior_evidence
+
+
+@pytest.mark.parametrize("name", ROUTABLE)
+def test_removing_the_logs_never_gives_a_silent_row_1(name):
+    """No logs at all: every trace check and C_behavior are skipped, the notes
+    say so, and the verdict is row 10 (or row 2 proved by a replay), never row 1."""
+    res = route(CASES[name].incident(log_modes=()), CASES[name].quota_backend(), CFG, CASES[name].inputs())
+    assert {s for s, _ in res.skipped} >= {"contract_obs", "contract_action", "staleness", "sanity"}
+    assert "checks skipped: " in res.verdict.notes and "staleness (" in res.verdict.notes
+    assert res.verdict.row in (2, 10), (res.verdict.row, res.verdict.notes)
+    if res.verdict.row == 2:
+        assert res.verdict.replays                         # a failing reference controller, not evidence
+
+
+def test_missing_incident_mode_logs_stop_infra_at_row_10_not_row_1():
+    case = CASES["infra_stale_server"]
+    res = route(case.incident(log_modes=(Mode.CLEAN.value,)), case.quota_backend(), CFG, case.inputs())
+    assert [s for s, _ in res.partial] == ["staleness"] and res.unchecked == (V.SIG_STALENESS_VARIABLE,)
+    v = res.verdict
+    assert v.row == 10 and "row 1 undecided" in v.notes and "checks partly skipped: staleness" in v.notes
+    assert res.stages == ("stage0", "stage1")              # row 1 undecided: nothing below it can win
+
+
+def test_code_condition_specific_without_contract_checks_is_row_10_not_a_vision_gap():
+    res = run_case(CASES["code_condition_specific"], stage1=False)
+    assert res.verdict.row == 10 and "row 4 undecided: not checked: contract_violation" in res.verdict.notes
+    assert "contract_cfg (no check configured" in res.verdict.notes
+
+
+def test_code_condition_specific_needs_no_traces_for_its_contract_hit():
+    res = route(CASES["code_condition_specific"].incident(log_modes=()), CASES["code_condition_specific"].quota_backend(),
+                CFG, CASES["code_condition_specific"].inputs())
+    assert "s1.cfg.instruction_templates" in [e.id for e in res.stage1_evidence]
+    assert "contract_cfg" in res.sources_run
+
+
+def test_a_clean_mode_incident_without_logs_can_still_close_at_row_1():
+    """staleness_variable does not apply when the incident was seen in clean mode."""
+    case = CASES["no_fault"]
+    inc = Incident(case.name, case.scene, TrainingSpec("p"), case.code_ref, POLICY, range(10), Mode.CLEAN,
+                   log_refs=log_refs(case.name))
+    res = route(inc, case.quota_backend(), CFG, case.inputs())
+    assert res.verdict.row == 1 and V.SIG_STALENESS_VARIABLE not in res.unchecked
+
+
+def test_positional_evidence_is_rejected_not_taken_for_inputs():
+    case = CASES["action_gap"]
+    with pytest.raises(TypeError, match="extra_evidence"):
+        route(case.incident(), case.quota_backend(), CFG, ())
 
 
 # --------------------------------------------------------------------------- #
@@ -147,7 +221,7 @@ def test_seed_set_keeps_failing_seeds_and_pads():
 
 def test_stage0_no_significant_failure_stops_the_router():
     res = run_case(CASES["no_fault"])
-    assert res.verdict.row == 1 and res.stages == ("stage0",) and res.branch is None
+    assert res.verdict.row == 1 and res.stages == ("stage0", "stage1") and res.branch is None
     assert [r.replay_id for r in res.replays] == [V.R_STAGE0]
     assert res.episodes_used == 10
 
@@ -162,23 +236,24 @@ def test_stage0_clean_pass_with_variable_staleness_continues_to_infra():
 
 
 def _incident(scene, observed_mode=Mode.INCIDENT, render=None, code=CodeRef("c0")):
-    return Incident("t", scene, TrainingSpec("p", render_settings=render), code, POLICY, range(10), observed_mode)
+    return Incident("t", scene, TrainingSpec("p", render_settings=render), code, POLICY, range(10), observed_mode,
+                    log_refs=log_refs("t"))
 
 
 def test_stage0_inconclusive_extends_to_20_and_no_further():
     shifted = SceneSpec("pick_mug", (Factor(MAT, "glossy_02"),))
     backend = QuotaBackend(_REF_OK + (MockRule(0.6, scene=shifted),), 0.9)
-    res = route(_incident(shifted), backend, CFG)
+    res = route(_incident(shifted), backend, CFG, healthy_inputs())
     s0 = res.replay(V.R_STAGE0)
     assert s0.n == 20 and s0.outcome is Outcome.INCONCLUSIVE and V.R_STAGE0 in res.extended
     assert res.verdict.row == 10 and "stage0" in res.verdict.notes
-    assert res.stages == ("stage0",) and res.episodes_used == 20     # nothing else can change row 10
+    assert res.stages == ("stage0", "stage1") and res.episodes_used == 20     # nothing else can change row 10
 
 
 def test_other_replays_extend_to_30():
     shifted = SceneSpec("pick_mug", (Factor(MAT, "glossy_02"),))
     backend = QuotaBackend(_REF_OK + (MockRule(0.15, scene=shifted), MockRule(0.6, scene=shifted.restore(MAT))), 0.9)
-    res = route(_incident(shifted), backend, CFG)
+    res = route(_incident(shifted), backend, CFG, healthy_inputs())
     r = res.replay(V.restore_id(MAT))
     assert r.n == 30 and r.outcome is Outcome.INCONCLUSIVE
     assert res.verdict.row == 10 and "extend seeds" in res.verdict.notes
@@ -216,7 +291,7 @@ def test_degraded_runs_both_branches_and_flags_multi_cause():
 def test_unknown_branch_runs_both_branches():
     shifted = SceneSpec("pick_mug", (Factor(MAT, "glossy_02"),))
     backend = QuotaBackend(_REF_OK + (MockRule(0.15, scene=shifted), MockRule(0.6, scene=SceneSpec("pick_mug"))), 0.9)
-    res = route(_incident(shifted), backend, CFG)
+    res = route(_incident(shifted), backend, CFG, healthy_inputs())
     assert res.branch is Branch.UNKNOWN and {V.R_G2, V.R_G3, V.R_C1} <= set(_ids(res))
     assert res.verdict.row == 10
 
@@ -236,8 +311,9 @@ def test_branch_g_uses_the_right_actors_and_modes():
 
 def test_g1_skipped_when_the_incident_was_observed_in_clean_mode():
     case = CASES["code_global"]
-    inc = Incident(case.name, case.scene, TrainingSpec("p"), case.code_ref, POLICY, range(10), Mode.CLEAN)
-    res = route(inc, case.quota_backend(), CFG)
+    inc = Incident(case.name, case.scene, TrainingSpec("p"), case.code_ref, POLICY, range(10), Mode.CLEAN,
+                   log_refs=log_refs(case.name))
+    res = route(inc, case.quota_backend(), CFG, case.inputs())
     assert V.R_G1 not in _ids(res) and {V.R_G2, V.R_G3} <= set(_ids(res))
     assert res.verdict.label is VerdictLabel.CODE
 
@@ -250,7 +326,7 @@ def test_every_factor_restore_runs_even_after_one_restores():
     """No early stop across hypotheses (3.2.1 #2)."""
     shifted = SceneSpec("pick_mug", (Factor(LIGHT, "dark_01"), Factor(MAT, "glossy_02")))
     backend = QuotaBackend(_REF_OK + (MockRule(0.15, factors_present=(MAT,)),), 0.9)
-    res = route(_incident(shifted), backend, CFG)
+    res = route(_incident(shifted), backend, CFG, healthy_inputs())
     ids = _ids(res)
     assert V.restore_id(LIGHT) in ids and V.restore_id(MAT) in ids and V.R_C1 in ids
     assert V.R_C_ALL not in ids                     # a single factor restored
@@ -278,29 +354,35 @@ def test_render_replay_runs_only_with_render_evidence():
     res = run_case(case)
     cr = res.replay(V.R_C_RENDER)
     assert cr is not None and cr.code_ref.eval_config["render"] == TRAIN_RENDER and cr.scene == case.scene
-    quiet = route(case.incident(), case.quota_backend(), CFG, ())
+    quiet = route(case.incident(), case.quota_backend(), CFG, RouterInputs())
     assert V.R_C_RENDER not in _ids(quiet)
 
 
 def test_render_evidence_without_training_render_settings_is_noted_and_undetermined():
+    """Externally supplied render evidence (the config contract cannot fire
+    without training render settings)."""
     case = CASES["rendering_mismatch"]
-    inc = Incident(case.name, case.scene, TrainingSpec("p"), CODE_EVAL_RENDER, POLICY, range(10))
-    res = route(inc, case.quota_backend(), CFG, case.evidence)
+    inc = Incident(case.name, case.scene, TrainingSpec("p"), CODE_EVAL_RENDER, POLICY, range(10),
+                   log_refs=log_refs(case.name))
+    ext = (Evidence("ext_render", "external", V.SIG_RENDER_SETTINGS_DIFFER, 0.9, "render", "supplied"),)
+    res = route(inc, case.quota_backend(), CFG, case.inputs(), extra_evidence=ext)
     assert V.R_C_RENDER not in _ids(res)
     assert any("C_render not run" in n for n in res.notes)
     assert res.verdict.row == 10 and "C_render" in res.verdict.notes
 
 
-def test_extra_evidence_is_passed_through_to_decide():
-    case = CASES["action_gap"]
-    res = run_case(case)
-    assert res.evidence == case.evidence
-    assert set(res.verdict.evidence_ids) == {e.id for e in case.evidence}
+def test_extra_evidence_is_passed_to_decide_and_recorded_as_external():
+    case = CASES["code_global"]
+    ext = (Evidence("ext_contract", "external", V.SIG_CONTRACT_VIOLATION, 0.9, "wrapper.gains", "supplied"),)
+    res = route(case.incident(), case.quota_backend(), CFG, case.inputs(), extra_evidence=ext)
+    assert res.external_evidence == ext and ext[0] not in res.stage1_evidence + res.behavior_evidence
+    assert res.evidence == res.stage1_evidence + ext       # Branch G: no C_behavior
+    assert "ext_contract" in res.verdict.evidence_ids and res.verdict.location == "wrapper.gains"
 
 
 def test_plain_backend_is_wrapped_in_a_cache():
     case = CASES["vision_glossy"]
-    res = route(case.incident(), case.quota_backend(), CFG, case.evidence)
+    res = route(case.incident(), case.quota_backend(), CFG, case.inputs())
     assert res.episodes_simulated == res.episodes_used - res.cache_hits
 
 

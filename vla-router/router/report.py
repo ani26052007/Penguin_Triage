@@ -235,7 +235,11 @@ class ReportConfig:
 class Report:
     """``source`` is "model" or "fallback". ``hagent_prompt`` is set only when
     the verdict's destination is hagent or config_fix. The ``verdict`` is the
-    one that was passed in, untouched."""
+    one that was passed in, untouched. ``task`` is the repair task: the model's
+    validated ``task``, or ``default_task`` when the model gave none or the
+    report fell back. It is the only model text the repair agent's TASK gets;
+    the verdict line and the hypothesis framing come from code and the
+    template (DECISIONS.md, Fix F2a)."""
     verdict: Verdict
     summary: str
     evidence_ids: tuple[str, ...]
@@ -247,13 +251,14 @@ class Report:
     fallback_reason: str = ""
     cost: float = 0.0
     tokens: int = 0
+    task: str = ""
 
     def to_dict(self) -> dict:
         return {"verdict": self.verdict.to_dict(), "summary": self.summary,
                 "evidence_ids": list(self.evidence_ids),
                 "localization": [i.to_dict() for i in self.localization], "hagent_prompt": self.hagent_prompt,
                 "source": self.source, "attempts": self.attempts, "rejections": list(self.rejections),
-                "fallback_reason": self.fallback_reason, "cost": self.cost, "tokens": self.tokens}
+                "fallback_reason": self.fallback_reason, "cost": self.cost, "tokens": self.tokens, "task": self.task}
 
 
 # --------------------------------------------------------------------------- #
@@ -544,4 +549,4 @@ def write_report(verdict: Verdict, evidence: Sequence[Evidence], model: Optional
     prompt = (build_hagent_prompt(verdict, context, task, localization, evidence, template)
               if verdict.destination in HAGENT_DESTINATIONS else None)
     return Report(verdict, summary, ids, localization, prompt, source, attempts, rejections,
-                  "" if source == "model" else reason, cost, tokens)
+                  "" if source == "model" else reason, cost, tokens, task)
