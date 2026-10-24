@@ -1,0 +1,47 @@
+# User & Project Specific
+study/
+router_models.toml
+# _archive/  # Uncomment if you do not want to track archived files
+
+# Bytecode & Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Testing & quality tools
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+
+# Builds & distributions
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Secrets and local environment files
+.env
+.env.*
+!.env.example
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
