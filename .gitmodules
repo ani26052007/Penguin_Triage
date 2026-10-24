@@ -1,0 +1,3 @@
+[submodule "hybrid-agent"]
+	path = hybrid-agent
+	url = https://github.com/ani26052007/hagent
