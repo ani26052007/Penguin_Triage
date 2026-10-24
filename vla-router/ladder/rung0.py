@@ -20,7 +20,10 @@ model are never spent on a patch that is obviously broken:
 ``env`` is anything with hagent's ``Env`` surface used here: ``execute(cmd, timeout_s)``
 and ``git_diff()``. hagent's own ``final_review`` already runs the same reviewer inside
 ``solve()``; pass ``reviewer=None`` to this rung in that flow, or the big model is called
-twice for one patch.
+twice for one patch. A reviewer ``ModelError`` fails open (the check passes, the error is
+recorded), as hagent's own review does.
+
+``rung0_hook`` adapts this to the loop's ``Rung0Hook(request, outcome)`` (Fix F3, ISSUES #9).
 """
 
 from __future__ import annotations
@@ -28,11 +31,20 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional
+from pathlib import Path
+import tempfile
+from typing import TYPE_CHECKING, Callable, Optional
 
+from hagent.config import Settings
+from hagent.exceptions import ModelError
 from hagent.helpers import review
 from hagent.models import Model
+from hagent.runner import make_env
 from hagent.textutil import truncate_middle
+
+if TYPE_CHECKING:
+    from ladder.repair import RepairOutcome, RepairRequest
+    from ladder.workspace import WorkspaceManager
 
 log = logging.getLogger("rung0")
 
@@ -52,7 +64,7 @@ class Rung0Config:
 @dataclass(frozen=True)
 class CheckResult:
     name: str                                       # diff | lint | tests | smoke | reviewer
-    status: str                                     # pass | fail | skipped
+    status: str                                     # pass | fail | skipped | error (reviewer failed; counts as pass)
     detail: str = ""
 
 
@@ -64,11 +76,12 @@ class Rung0Result:
     pass_probability: Optional[float] = None        # reviewer's estimate; logged only
     reviewer_cost: float = 0.0
     reviewer_calls: int = 0
+    reviewer_error: str = ""                        # set when the reviewer raised ModelError (failed open)
 
     def to_dict(self) -> dict:
         return {"passed": self.passed, "checks": [c.__dict__ for c in self.checks], "feedback": self.feedback,
                 "pass_probability": self.pass_probability, "reviewer_cost": self.reviewer_cost,
-                "reviewer_calls": self.reviewer_calls}
+                "reviewer_calls": self.reviewer_calls, "reviewer_error": self.reviewer_error}
 
 
 _FILE = re.compile(r"^\+\+\+ (?:b/)?(\S+)", re.MULTILINE)
@@ -131,7 +144,13 @@ def run_rung0(env, cfg: Rung0Config, *, task: str = "", reviewer: Optional[Model
     if reviewer is None:
         checks.append(CheckResult("reviewer", "skipped", "no reviewer configured"))
         return done(True)
-    verdict, reply = review(reviewer, task, diff, "\n\n".join(outputs))
+    try:
+        verdict, reply = review(reviewer, task, diff, "\n\n".join(outputs))
+    except ModelError as e:
+        err = f"{type(e).__name__}: {e}"
+        log.warning("rung0 reviewer failed, accepting the patch: %s", err)
+        checks.append(CheckResult("reviewer", "error", f"reviewer failed, patch accepted (fail open): {err}"))
+        return done(True, reviewer_error=err)
     checks.append(CheckResult("reviewer", "pass" if verdict.ok else "fail", verdict.feedback))
     extra = dict(pass_probability=verdict.pass_probability, reviewer_cost=reply.cost, reviewer_calls=1)
     if not verdict.ok:
@@ -139,4 +158,41 @@ def run_rung0(env, cfg: Rung0Config, *, task: str = "", reviewer: Optional[Model
     return done(True, **extra)
 
 
-__all__ = ["CheckResult", "Rung0Config", "Rung0Result", "diff_sanity", "files_in_diff", "run_rung0"]
+class _PatchEnv:
+    """``env`` whose ``git_diff()`` is the attempt's patch. The rebuilt copy's HEAD already is the
+    patched code, so its own diff against HEAD would be empty."""
+
+    def __init__(self, env, diff: str):
+        self._env, self._diff = env, diff
+
+    def execute(self, command: str, timeout_s: Optional[int] = None):
+        return self._env.execute(command, timeout_s)
+
+    def git_diff(self) -> str:
+        return self._diff
+
+
+def rung0_hook(workspaces: "WorkspaceManager", settings: Settings, cfg: Rung0Config, *,
+               reviewer: Optional[Model] = None,
+               task: Callable[["RepairRequest"], str] = lambda req: (
+                   f"Fix the {req.kind.value} problem the router found: {req.verdict.label.value} "
+                   f"(row {req.verdict.row}).")) -> Callable[["RepairRequest", "RepairOutcome"], Rung0Result]:
+    """The loop's ``Rung0Hook`` (Fix F3, ISSUES #9). Builds the patched code from its name
+    (``WorkspaceManager.materialize(outcome.code_ref)``) in a temp copy, runs ``run_rung0`` there
+    (``make_env`` honours ``settings.env``) and deletes the copy: no second copy of the patched files
+    is kept. The reviewer runs only if hagent's own final review did not already approve this patch
+    (``RepairOutcome.final_review_approved``)."""
+
+    def hook(req: "RepairRequest", out: "RepairOutcome") -> Rung0Result:
+        with tempfile.TemporaryDirectory(prefix="rung0-") as td:
+            work = workspaces.materialize(out.code_ref, Path(td) / "repo")
+            env = make_env(work, settings)
+            try:
+                return run_rung0(_PatchEnv(env, out.diff), cfg, task=task(req),
+                                 reviewer=None if out.final_review_approved else reviewer)
+            finally:
+                env.close()
+    return hook
+
+
+__all__ = ["CheckResult", "Rung0Config", "Rung0Result", "diff_sanity", "files_in_diff", "run_rung0", "rung0_hook"]

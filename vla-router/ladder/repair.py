@@ -31,12 +31,12 @@ The original checkout is never written: only the manager reads it.
 from __future__ import annotations
 
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 from typing import Optional, Protocol
 
-from hagent.config import Settings
+from hagent.config import Settings, pricing_warnings
 from hagent.models import Model
 from hagent.runner import solve
 from hagent.task_template import TaskTemplate
@@ -78,6 +78,15 @@ class RepairOutcome:
     code_diff: str = ""
     rebuild_error: str = ""
     rebuild_cause: str = ""
+    reviews: tuple[dict, ...] = ()       # hagent's reviewer log (RunResult.reviews), logged only
+    pass_probabilities: tuple[Optional[float], ...] = ()   # one per hagent review; None: none given
+
+    @property
+    def final_review_approved(self) -> bool:
+        """hagent's last review approved the submission, so a second review of it would be redundant.
+        False when it never ran, failed (ModelError, not logged) or ended on a rejection (the rejection
+        cap lets the submission through unreviewed)."""
+        return bool(self.reviews) and self.reviews[-1].get("verdict") == "APPROVE"
 
 
 class Repairer(Protocol):
@@ -95,6 +104,11 @@ class HagentRepairer:
         self.small, self.big, self.report_model = small, big, report_model
         self.repro_command, self.template = repro_command, template
         self.calls = 0
+
+    def pricing_warnings(self, max_cost: float) -> list[str]:
+        """hagent's ``pricing_warnings`` for an incident-level cost cap of ``max_cost`` (the loop's)."""
+        s = replace(self.settings, limits=replace(self.settings.limits, max_cost=max_cost))
+        return pricing_warnings(s, self.mode)
 
     def prompt_path(self, work: Path) -> str:
         """The repo path the agent's commands see: the copy itself, or the container workdir."""
@@ -135,10 +149,13 @@ class HagentRepairer:
             actual = self._local_name(work) if result.submitted else None
         big = result.usage.get("big")
         calls = big.calls if big else 0
+        reviews = tuple(result.reviews)
+        probs = tuple(r.get("pass_probability") for r in reviews)
         notes = f"hagent exit status: {result.exit_status}"
         if not result.submitted:
             return RepairOutcome(base, result.patch, f"{notes}; not submitted ({result.detail[:200]})",
-                                 result.total_cost, calls, self.workspaces.diff_of(base))
+                                 result.total_cost, calls, self.workspaces.diff_of(base),
+                                 reviews=reviews, pass_probabilities=probs)
         try:
             new = self.workspaces.extend(base, result.patch)
             if actual is not None and actual != new.code_hash:
@@ -148,7 +165,8 @@ class HagentRepairer:
         except UnrebuildablePatch as e:
             return RepairOutcome(base, result.patch, f"{notes}; patch could not be rebuilt ({e.cause})",
                                  result.total_cost, calls, self.workspaces.diff_of(base), rebuild_error=str(e),
-                                 rebuild_cause=e.cause)
-        return RepairOutcome(new, result.patch, notes, result.total_cost, calls, self.workspaces.diff_of(new))
+                                 rebuild_cause=e.cause, reviews=reviews, pass_probabilities=probs)
+        return RepairOutcome(new, result.patch, notes, result.total_cost, calls, self.workspaces.diff_of(new),
+                             reviews=reviews, pass_probabilities=probs)
 
 __all__ = ["HagentRepairer", "RepairKind", "RepairOutcome", "RepairRequest", "Repairer"]

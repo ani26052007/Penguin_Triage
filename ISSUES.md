@@ -42,6 +42,8 @@ You can already see the cost. In the confusion matrix, action_gap became vision_
 
 ### 4. Model outputs can change routes, despite “models never decide”.
 
+(F3 fixed the Rung 2 part: the router re-run verdict wins. Rows 4/10 use Rung 2's label, rows 6/7 go to the data ladder whatever it says, other rows follow the router and the label is logged only; `Rung2Result.overridden` marks it. Still open: the config mapper `approved` flag and `extra_evidence` provenance.)
+
 There are three paths:
 
 - Rung 2 overrides the re-run. After an ambiguous Rung 1, the code and unclear labels are not gated. A row-6 vision re-run can be sent back to hagent, or dropped as UNRESOLVED (01_WHY #1(b), 07 §5.6). Only data_gap is gated.
@@ -80,18 +82,24 @@ HagentRepairer copies self.repo on every attempt. Attempt 2, for example after R
 
 The Controller/wrapper code: line prints the original path, not the working copy. In your run, a scripted agent edited the original checkout and the repairer reported no_change (08 §4). LocalEnv gives no isolation. DockerEnv would block this, but it has never been run, because the test image isn’t built and all 19 tests skip.
 
-### 9. Rung 0 isn’t connected.
+### 9. FIXED in F3: Rung 0 isn’t connected.
+
+(F3: `ladder.rung0.rung0_hook(workspaces, settings, cfg, reviewer=)` is the `Rung0Hook`; it runs `run_rung0` in a temp copy built by `materialize(outcome.code_ref)` and the reviewer fail-opens on `ModelError`. Tests: `tests/test_f3.py`.)
 
 - run_rung0(env, cfg) doesn’t match the loop’s Rung0Hook(request, outcome) signature, and no adapter exists.
 - The patched working copy is deleted when repair() returns, so there is nothing for Rung 0 to lint or test. (F2a: the patch is stored and `materialize()` rebuilds any code; the adapter is F3.)
 - Loop tests use passing_rung0, which always passes.
 - A reviewer ModelError in Rung 0 crashes instead of failing open. Hagent’s own review path does catch it.
 
-### 10. Errors crash the loop instead of ending the incident as UNRESOLVED.
+### 10. FIXED in F3: Errors crash the loop instead of ending the incident as UNRESOLVED.
+
+(F3: any `Exception` ends the incident UNRESOLVED; `LoopResult.error_stage/error_type/error_message`. `KeyboardInterrupt`/`SystemExit` propagate.)
 
 These all propagate: EnvError (bad command path), ModelError (missing model), Docker start-up failures, and the Rung 0 reviewer. Neither HagentRepairer.repair nor IncidentLoop has a try.
 
-### 11. Budgets leak.
+### 11. PARTLY FIXED in F3: Budgets leak.
+
+(F3: `LoopConfig.max_cost` / `max_big_calls` are checked before every repair attempt and before Rung 2, and the pricing warning is raised. Still open: no simulator-episode cap (#61); hagent's own per-run caps still restart on each attempt, so an attempt can overshoot an incident cap by up to one run; the Rung 2 and Rung 0 reviewer models' prices are not checked.)
 
 - Hagent’s caps reset on every attempt, so one incident can spend 3× the per-run caps.
 - The loop adds up cost and big_calls but never checks them against a limit.
@@ -113,7 +121,9 @@ These all propagate: EnvError (bad command path), ModelError (missing model), Do
 - incident_id is printed verbatim.
 - Rung 2’s free-text reason goes into the hagent prompt without validation.
 
-### 14. PARTLY FIXED in F2a: Logged data the plan needs is discarded.
+### 14. FIXED in F3 (F2a: task): Logged data the plan needs is discarded.
+
+(F3: `RepairOutcome` / `RepairRecord` keep hagent's `reviews` and `pass_probabilities` per attempt, in `LoopResult.to_dict`.)
 
 (F2a: the report model's validated task is now the hagent TASK, with `default_task` as the fallback (DECISIONS.md). Reviews and pass probabilities are still dropped.)
 
@@ -311,3 +321,16 @@ Same pattern as #50 (config contract). Fix with F2b's `PartialSkip`.
 - Untested: `RouterInputs` with only one of behavior source / nominal (`ValueError`); `PatchStore.put` collision; a base path that is not a directory; `FileContains.from_dict` with an unknown kind; `file_faults` without workspaces; `code_ref_of` outside a working copy (Rung 1 CLI exit 2); an invalid base label; a non-staleness partial skip in `router.unchecked_signals` (covered since F2b).
 - Hard-coded: the 12-hex digests (diff and tree); the truncation lengths 200 / 300 / 500 / 1000 in workspace, repair and loop messages; the fixed commit date; the rebuild-feedback texts in `ladder/loop.py`.
 
+## Found during F3
+
+### 61. No simulator-episode cap per incident.
+
+`LoopConfig` caps cost and big-model calls (F3) but nothing counts simulator episodes: the router's replays and Rung 1 run as many as their own configs allow, per pass. There is no episode counter across them (`RouterResult.episodes_simulated` is per pass; Rung 1 has none). Add a counter on the cached backend and a `max_episodes` in `LoopConfig`.
+
+### 62. A caught error loses the cost of the call that raised.
+
+When the repairer raises, its spend so far is not in `LoopResult.cost` (the exception carries none). hagent's `solve()` returns a `RunResult` for most failures, so this only affects crashes.
+
+### 63. Rung 0's `expected_files` are not set from the router's located files.
+
+`rung0_hook` uses one `Rung0Config` for every incident; "did the patch touch the right file" would need `expected_files` per request (from `verdict.location` / the evidence).

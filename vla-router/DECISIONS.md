@@ -286,3 +286,32 @@
 - `config/eval.yaml` is a guess at where the controller repo keeps its eval config (`EVAL_CONFIG_PATH`, TODO(verify)); a repo with several config files needs its own loader.
 - #55 (`--binary`) and the host-git-config half of #56 are not done.
 - Row 8/9 become UNKNOWN whenever a log has no subtask records, so a deployment that never logs them reads row 10 for action-gap cases; that is the intended cost of #59.
+
+## Fix F3 (Rung 0 adapter, errors, budgets, pass probabilities; ISSUES #9, #10, #11, #14; plan: PLAN_F3.md)
+
+**What**
+- **Rung 0 adapter** (#9). `ladder.rung0.rung0_hook(workspaces, settings, cfg, reviewer=, task=)`. It builds `outcome.code_ref` with `WorkspaceManager.materialize` into a temp dir, runs `run_rung0` on an env from `hagent.runner.make_env` (so a docker backend is honoured) and deletes the dir. `git_diff()` is `outcome.diff` (this attempt's patch): the rebuilt copy's HEAD already is the patched code. No second copy of the patched files is kept.
+- **Reviewer not run twice.** `RepairOutcome.final_review_approved` is true only when hagent's last logged review is APPROVE. If hagent never reviewed, its review raised (not logged), or it ended on a REJECT (the rejection cap lets the submission through unreviewed), the Rung 0 reviewer runs. `reviewer=None` is passed when it is true.
+- **Reviewer `ModelError` fails open**: check status `error`, the rung passes, `Rung0Result.reviewer_error` holds `Type: message`. Only `ModelError` (what hagent's own review catches); other exceptions end the incident (#10).
+- **Errors** (#10). `_Run.execute` catches `Exception` around the whole run, router included, because "nothing propagates out of `IncidentLoop.run`". `LoopResult.error_stage` (router | repairer | rung0 | rung1 | rung2), `error_type`, `error_message`; status UNRESOLVED, reason `error in <stage>: ...`; passes, repairs and Rung 2 results so far are kept, and the in-flight repair record gets `result = "<stage>_error"`.
+- **Budgets** (#11). `LoopConfig.max_cost`, `max_big_calls`; 0 is off; spent `>=` cap stops. Checked before every repair attempt and before Rung 2 (action `budget`, the Rung 2 call is not made). The spend counted is what the loop already summed: repairer cost and big calls (hagent calls + reviews), Rung 0 reviewer, Rung 2. `IncidentLoop.warnings` / `LoopResult.warnings` come from `HagentRepairer.pricing_warnings(max_cost)`, which runs hagent's `pricing_warnings` on a copy of the settings with the incident cap as `max_cost`; also `log.warning`.
+- **Pass probabilities** (#14): `RepairOutcome.reviews/pass_probabilities` (all of hagent's reviews, in order, including rejected ones) -> `RepairRecord` -> `to_dict`.
+- **Pending Rung 2 at the pass cap**: `LoopResult.rung2_pending` and a reason that says Rung 2 never ran.
+
+**Rejected**
+- Catching only the four named stages: a router bug would still crash a batch run; the error is recorded with its stage either way.
+- Catching `BaseException`: would hide Ctrl-C.
+- Checking caps only between passes: one pass can make three repair attempts.
+- Stopping at `>` the cap: the next attempt would start already over budget.
+- A second copy of the patched files kept for Rung 0 (or a repairer-owned work dir surviving `repair()`): the name is the content.
+- Running the reviewer when hagent's review merely exists: a final REJECT submission still deserves a review.
+- Making the reviewer's `pass_probability` gate anything: still logged only.
+- A simulator-episode cap: no counter exists yet (ISSUES #61).
+
+**Rung 2 override rule** (#4, decided by the user after F3's first pass). The router re-run verdict wins. In the pending-Rung-2 branch of `_Run._execute`, after the Rung 2 call: rows 4 and 10 use the label (`code` -> repair; `unclear`, or a `data_gap` the gate turned into unclear -> UNRESOLVED); rows 6 and 7 -> data ladder whatever the label (`via_rung2` only if the label was `data_gap`); every other row falls through to the router's destination. `Rung2Result.overridden` holds the reason ("overridden by router: ...") when the label did not decide; `model_label` is always kept. The call is still made on every non-STOP row (row 1 closes without it), so the label is logged for rows 2, 3, 5, 8, 9 and the call budget logic is unchanged. A missing or exhausted Rung 2 now hands a row 6/7 re-run to the data ladder instead of UNRESOLVED. `decide()` untouched. Tests: `tests/test_f3_rung2_override_current.py` (rows 4, 10, 6, 7, others x each label; its first two tests used to pin the old behaviour).
+Rejected: skipping the call on rows the router decides alone (loses the logged label); dropping `via_rung2` (it still tells the data ladder the model agreed).
+
+**Known limits**
+- hagent's own caps restart on each attempt, so one attempt can overshoot an incident cap by up to one run.
+- Rung 2's and the Rung 0 reviewer's prices are not checked by the warning (they are not hagent settings).
+

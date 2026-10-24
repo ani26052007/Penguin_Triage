@@ -50,6 +50,9 @@ from router.stage2 import Branch, nominal_scene
 
 log = logging.getLogger("ladder.loop")
 
+CODE_OR_UNDETERMINED_ROWS = (4, 10)   # the rows where a Rung 2 label is used
+RESTORE_ROWS = (6, 7)                 # vision verdicts: the data ladder, whatever Rung 2 says
+
 Rung0Hook = Callable[[RepairRequest, RepairOutcome], Rung0Result]
 Rung2Fn = Callable[[Rung2Input], Rung2Result]
 
@@ -68,10 +71,14 @@ class LoopConfig:
     max_passes: int = 3            # router passes per incident (plan: two or three)
     max_repairs: int = 3           # repair attempts per incident, over all passes
     max_rung2_calls: int = 1       # plan: one big-model call per incident
+    max_cost: float = 0.0          # total cost of the incident (repairs, reviews, Rung 2); 0 = off
+    max_big_calls: int = 0         # hagent's big calls and reviews + Rung 0 reviews + Rung 2; 0 = off
 
     def __post_init__(self) -> None:
         if self.max_passes < 1 or self.max_repairs < 1 or self.max_rung2_calls < 0:
             raise ValueError("max_passes and max_repairs must be >= 1, max_rung2_calls >= 0")
+        if self.max_cost < 0 or self.max_big_calls < 0:
+            raise ValueError("max_cost and max_big_calls must be >= 0 (0 = off)")
 
 
 # --------------------------------------------------------------------------- #
@@ -143,6 +150,8 @@ class RepairRecord:
     rung1: Optional[Rung1Result] = None
     diff: str = ""
     code_diff: str = ""
+    reviews: tuple[dict, ...] = ()                       # hagent's reviewer log for this attempt
+    pass_probabilities: tuple[Optional[float], ...] = ()   # its reviewers' pass probabilities (plan 4.3)
 
 
 @dataclass(frozen=True)
@@ -165,6 +174,11 @@ class LoopResult:
     cost: float
     final_diff: str = ""
     base: str = ""                                # base name (label@tree12) of the incident code
+    error_stage: str = ""                         # router | repairer | rung0 | rung1 | rung2, when an exception ended it
+    error_type: str = ""
+    error_message: str = ""
+    rung2_pending: bool = False                   # the pass cap hit while a Rung 2 call was still due
+    warnings: tuple[str, ...] = ()                # e.g. a cost cap that could never fire (prices are 0)
 
     @property
     def destinations(self) -> tuple[str, ...]:
@@ -175,14 +189,18 @@ class LoopResult:
                 "passes": [p.__dict__ for p in self.passes],
                 "repairs": [{"attempt": r.attempt, "kind": r.kind, "code_before": r.code_before,
                              "code_after": r.code_after, "result": r.result, "diff": r.diff,
-                             "code_diff": r.code_diff,
+                             "code_diff": r.code_diff, "reviews": list(r.reviews),
+                             "pass_probabilities": list(r.pass_probabilities),
                              "rung0": r.rung0.to_dict() if r.rung0 else None,
                              "rung1": r.rung1.to_dict() if r.rung1 else None} for r in self.repairs],
                 "rung2": [r.to_dict() for r in self.rung2], "final_code": self.final_code.to_dict(),
                 "final_diff": self.final_diff, "base": self.base,
                 "final_verdict": self.final.verdict.to_dict() if self.final else None,
                 "handoff_factor": self.handoff.factor if self.handoff else None,
-                "big_calls": self.big_calls, "cost": self.cost}
+                "big_calls": self.big_calls, "cost": self.cost,
+                "error_stage": self.error_stage, "error_type": self.error_type,
+                "error_message": self.error_message, "rung2_pending": self.rung2_pending,
+                "warnings": list(self.warnings)}
 
 
 # --------------------------------------------------------------------------- #
@@ -221,8 +239,16 @@ class IncidentLoop:
         self.cfg, self.repairer, self.inputs = cfg, repairer, inputs
         self.data_ladder, self.rung0, self.rung2 = data_ladder, rung0, rung2
         self.workspaces = workspaces if workspaces is not None else getattr(repairer, "workspaces", None)
+        self.warnings: tuple[str, ...] = ()
+        warn = getattr(repairer, "pricing_warnings", None)
+        if cfg.max_cost > 0 and warn is not None:
+            self.warnings = tuple(warn(cfg.max_cost))
+            for w in self.warnings:
+                log.warning("%s", w)
 
     def run(self, incident: Incident) -> LoopResult:
+        """Never raises for an error in a stage (ISSUES #10): the incident ends UNRESOLVED with the error
+        recorded. ``KeyboardInterrupt`` and ``SystemExit`` propagate."""
         return _Run(self, incident).execute()
 
 
@@ -242,20 +268,49 @@ class _Run:
         self.pending_rung1: Optional[str] = None      # Rung 1 text when it was ambiguous: Rung 2 reads the next pass
         self.big_calls, self.cost = 0, 0.0
         self.last: Optional[RouterResult] = None
+        self.stage = "router"                          # the stage running now, for an error record
+        self.in_flight: Optional[RepairRecord] = None  # the repair attempt being validated
+        self.error: tuple[str, str, str] = ("", "", "")
+        self.rung2_pending = False
 
     # -- helpers ----------------------------------------------------------- #
+    def budget_stop(self) -> str:
+        """Why no further big-model or repair spend is allowed ("" when it is)."""
+        c = self.cfg
+        if c.max_cost > 0 and self.cost >= c.max_cost:
+            return f"cost cap (${c.max_cost}) reached: spent ${self.cost:.4f}"
+        if c.max_big_calls > 0 and self.big_calls >= c.max_big_calls:
+            return f"big-call cap ({c.max_big_calls}) reached: {self.big_calls} calls"
+        return ""
+
     def finish(self, status: LoopStatus, reason: str, handoff: Optional[DataHandoff] = None) -> LoopResult:
         log.info("incident %s: %s (%s) passes=%d repairs=%d", self.incident.incident_id, status.value, reason,
                  len(self.passes), len(self.repairs))
         return LoopResult(self.incident.incident_id, status, reason, tuple(self.passes), tuple(self.repairs),
                           tuple(self.rung2s), self.code, self.last, handoff, self.big_calls, self.cost,
-                          self.code_diff, self.base)
+                          self.code_diff, self.base, *self.error, self.rung2_pending, self.L.warnings)
 
     def execute(self) -> LoopResult:
+        try:
+            return self._execute()
+        except Exception as e:     # not BaseException: KeyboardInterrupt / SystemExit propagate
+            stage = self.stage
+            self.error = (stage, type(e).__name__, str(e))
+            if self.in_flight is not None and not self.in_flight.result:
+                self.in_flight.result = f"{stage}_error"
+            log.exception("incident %s: %s raised", self.incident.incident_id, stage)
+            return self.finish(LoopStatus.UNRESOLVED, f"error in {stage}: {type(e).__name__}: {e}")
+
+    def _execute(self) -> LoopResult:
         while True:
             if len(self.passes) >= self.cfg.max_passes:
+                if self.pending_rung1 is not None:
+                    self.rung2_pending = True
+                    return self.finish(LoopStatus.UNRESOLVED, f"pass cap ({self.cfg.max_passes}) reached while a "
+                                       f"Rung 2 call was pending (Rung 1 was ambiguous): Rung 2 never ran")
                 return self.finish(LoopStatus.UNRESOLVED, f"pass cap ({self.cfg.max_passes}) reached")
             cur = replace(self.incident, code_ref=self.code)
+            self.stage = "router"
             rr = route(cur, self.L.backend, self.cfg.router, self.L.inputs)
             evidence = rr.evidence
             self.last = rr
@@ -272,19 +327,32 @@ class _Run:
                     rec.action = "close"
                     return self.finish(LoopStatus.CLOSED, "router re-run found no significant failure; "
                                                           "Rung 2 not needed")
+                stop = self.budget_stop()
+                if stop:
+                    rec.action = "budget"
+                    return self.finish(LoopStatus.UNRESOLVED, f"{stop}; Rung 2 not called")
                 r2 = self.rung2(cur, rr, text)
-                if r2.label is Rung2Label.DATA_GAP:
-                    rec.action = "rung2:data_gap"
-                    return self.handoff(cur, rr, via_rung2=True)
-                if r2.label is Rung2Label.CODE:
-                    rec.action = "rung2:code"
-                    self.feedback.append(f"Rung 2 (big model) says a code problem remains: {r2.reason}")
-                    stop = self.repair(RepairKind.CODE, cur, rr, evidence, rec)
-                    if stop:
-                        return stop
-                    continue
-                rec.action = "rung2:unclear"
-                return self.finish(LoopStatus.UNRESOLVED, f"Rung 2 unclear: {r2.rejected_reason or r2.reason}")
+                # The router re-run verdict wins (ISSUES #4, F3): Rung 2's label is used only on rows
+                # 4 and 10; rows 6-7 go to the data ladder whatever it says; any other row follows the
+                # router and the label is logged only. The label stays in the result either way.
+                if v.row in CODE_OR_UNDETERMINED_ROWS:
+                    if r2.label is Rung2Label.CODE:
+                        rec.action = "rung2:code"
+                        self.feedback.append(f"Rung 2 (big model) says a code problem remains: {r2.reason}")
+                        stop = self.repair(RepairKind.CODE, cur, rr, evidence, rec)
+                        if stop:
+                            return stop
+                        continue
+                    rec.action = "rung2:unclear"      # unclear, or a data_gap claim the gate turned into unclear
+                    return self.finish(LoopStatus.UNRESOLVED, f"Rung 2 unclear: {r2.rejected_reason or r2.reason}")
+                if v.row in RESTORE_ROWS:
+                    rec.action = "rung2:data_gap" if r2.label is Rung2Label.DATA_GAP else "data_handoff"
+                    if r2.label is not Rung2Label.DATA_GAP:
+                        self.override(r2, f"overridden by router: re-run is row {v.row} ({v.label.value}), "
+                                          f"handed to the data ladder")
+                    return self.handoff(cur, rr, via_rung2=r2.label is Rung2Label.DATA_GAP)
+                self.override(r2, f"overridden by router: re-run is row {v.row} ({v.label.value}); "
+                                  f"the router's destination {v.destination.value!r} is followed, label logged only")
 
             # 2. otherwise act on the router's destination
             dest = v.destination
@@ -314,11 +382,15 @@ class _Run:
         log.info("data ladder: %s", status)
         return self.finish(LoopStatus.DATA_HANDOFF, f"factor {h.factor!r} handed to the data ladder ({status})", h)
 
+    def override(self, res: Rung2Result, note: str) -> None:
+        self.rung2s[-1] = replace(res, overridden=note)
+
     def rung2(self, cur: Incident, rr: RouterResult, rung1_text: str) -> Rung2Result:
         if self.L.rung2 is None or len(self.rung2s) >= self.cfg.max_rung2_calls:
             why = "Rung 2 not configured" if self.L.rung2 is None else "Rung 2 call budget exhausted"
             res = Rung2Result(Rung2Label.UNCLEAR, None, False, why, source="fallback")
         else:
+            self.stage = "rung2"
             res = self.L.rung2(Rung2Input(cur.incident_id, rr.verdict, rr.replays, rr.evidence, rung1_text))
         self.big_calls += res.calls
         self.cost += res.cost
@@ -338,14 +410,20 @@ class _Run:
         while True:
             if len(self.repairs) >= self.cfg.max_repairs:
                 return self.finish(LoopStatus.UNRESOLVED, f"repair cap ({self.cfg.max_repairs}) reached")
+            stop = self.budget_stop()
+            if stop:
+                return self.finish(LoopStatus.UNRESOLVED, f"{stop}; no further repair attempt")
             req = RepairRequest(kind, cur, rr.verdict, evidence, rr.branch, len(self.repairs) + 1,
                                 tuple(self.feedback))
+            self.stage, self.in_flight = "repairer", None
             out = self.L.repairer.repair(req)
             self.cost += out.cost
             self.big_calls += out.big_calls
             r = RepairRecord(req.attempt, kind.value, self.code.key(), out.code_ref.key(), "", diff=out.diff,
-                             code_diff=out.code_diff)
+                             code_diff=out.code_diff, reviews=out.reviews,
+                             pass_probabilities=out.pass_probabilities)
             self.repairs.append(r)
+            self.in_flight = r
             if out.rebuild_error:
                 r.result = "unrebuildable_patch"
                 self.feedback.append(rebuild_feedback(req.attempt, out.rebuild_cause, out.rebuild_error))
@@ -355,6 +433,7 @@ class _Run:
                 self.feedback.append(f"attempt {req.attempt}: the patch changed nothing. {out.notes}".strip())
                 continue
             if self.L.rung0 is not None:
+                self.stage = "rung0"
                 r.rung0 = self.L.rung0(req, out)
                 self.cost += r.rung0.reviewer_cost
                 self.big_calls += r.rung0.reviewer_calls
@@ -362,6 +441,7 @@ class _Run:
                     r.result = "rung0_failed"
                     self.feedback.append(f"attempt {req.attempt}: {r.rung0.feedback}")
                     continue
+            self.stage = "rung1"
             r.rung1 = run_rung1(self.L.backend, cur, out.code_ref, rr.branch, self.cfg.rung1)
             r.result = f"rung1_{r.rung1.outcome.value}"
             log.info("rung1 attempt %d: %s", req.attempt, r.rung1.outcome.value)

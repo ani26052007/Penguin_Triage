@@ -85,12 +85,14 @@ class Rung2Result:
     calls: int = 0
     cost: float = 0.0
     tokens: int = 0
+    overridden: str = ""                      # set by the loop: why the router's re-run verdict, not this label, decided
 
     def to_dict(self) -> dict:
         return {"label": self.label.value, "model_label": self.model_label.value if self.model_label else None,
                 "accepted": self.accepted, "reason": self.reason, "evidence_ids": list(self.evidence_ids),
                 "rejected_reason": self.rejected_reason, "source": self.source, "calls": self.calls,
-                "cost": self.cost, "tokens": self.tokens}
+                "cost": self.cost, "tokens": self.tokens,
+                "overridden": self.overridden}
 
 
 SYSTEM_PROMPT = """You triage ONE incident for a robot-policy repair system. A code patch was applied and the
