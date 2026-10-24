@@ -35,6 +35,7 @@ STEP_A_LINE = "return normalize_inputs(obs)  # TODO: training stats"
 FIXED_LINE = "return normalize_inputs(obs, self.norm_stats)"
 STEP_A = FileContains(WRAPPER, "normalize_inputs(obs)")
 FIXED = FileContains(WRAPPER, "normalize_inputs(obs, self.norm_stats)")
+BUGGY = FileContains(WRAPPER, BUG_LINE)
 
 WRAPPER_SRC = f'''"""Policy wrapper: observation in, action out."""
 
@@ -61,7 +62,8 @@ BLOB = "assets/blob.bin"
 
 
 def git(cwd: Path, *args: str) -> str:
-    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
     return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd, check=True,
                           capture_output=True, text=True, env=env).stdout
 
@@ -115,18 +117,18 @@ def recording(seen: list, reply: str) -> Callable:
     return lambda messages: seen.append([dict(m) for m in messages]) or reply
 
 
-def files_combined_case(*, severe: bool = False) -> RouterCase:
-    """The combined case with patched-code rules and logs keyed on the files (not on code names).
-    ``c0`` logs unnormalised inputs; code with STEP_A or FIXED logs healthy ones; anything else has
-    no logs."""
+def files_combined_case(code_ref: CodeRef, *, severe: bool = False) -> RouterCase:
+    """The combined case on ``code_ref`` (a workspace name, e.g. ``mgr.base_ref("c0")``) with
+    patched-code rules and logs keyed on the files, not on code names: code with BUG_LINE logs
+    unnormalised inputs; code with STEP_A or FIXED logs healthy ones; anything else has no logs."""
     base = next(c for c in router_cases() if c.name == "combined_code_plus_light")
     ref, rest = base.rules[:len(_REF_OK)], base.rules[len(_REF_OK):]
     patched = (MockRule(0.35, files=FIXED, factors_present=(LIGHT,)), MockRule(0.9, files=FIXED),
                MockRule(0.35, files=STEP_A, factors_present=(LIGHT,)), MockRule(0.4, files=STEP_A))
     return replace(base, name="combined_files" + ("_severe" if severe else ""), rules=ref + patched + rest,
-                   default_rate=0.10 if severe else base.default_rate,
-                   trace_faults={CodeRef("c0").key(): Faults(unnormalized=True)}, trace_default=None,
-                   trace_file_faults=((FIXED, Faults()), (STEP_A, Faults())))
+                   default_rate=0.10 if severe else base.default_rate, code_ref=code_ref,
+                   trace_faults={}, trace_default=None,
+                   trace_file_faults=((FIXED, Faults()), (STEP_A, Faults()), (BUGGY, Faults(unnormalized=True))))
 
 
 def fixed_files(checkout: Path) -> dict[str, bytes]:

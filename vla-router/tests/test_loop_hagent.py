@@ -23,7 +23,6 @@ from tests.workspace_cases import (BLOB, BUG_LINE, FIXED_LINE, STEP_A_LINE, SUBM
                                    fixed_files, hagent_settings, make_checkout, manager, recording, replace_line,
                                    snapshot)
 
-C0 = CodeRef("c0")
 
 
 @pytest.fixture
@@ -36,14 +35,20 @@ def mgr(tmp_path, checkout):
     return manager(tmp_path, checkout)
 
 
+@pytest.fixture
+def c0(mgr):
+    """The checkout's base name (``c0@<tree12>``): the incident code of these tests."""
+    return mgr.base_ref("c0")
+
+
 def hagent(mgr, *script) -> tuple[HagentRepairer, ScriptedModel]:
     small = ScriptedModel(list(script))
     return HagentRepairer(mgr, hagent_settings(), mode="small", small=small), small
 
 
-def test_combined_case_with_the_real_repairer_fixes_the_code_and_hands_off_lighting(mgr, checkout, tmp_path):
+def test_combined_case_with_the_real_repairer_fixes_the_code_and_hands_off_lighting(mgr, checkout, tmp_path, c0):
     before = snapshot(checkout)
-    case = files_combined_case()
+    case = files_combined_case(c0)
     rep, _ = hagent(mgr, replace_line(BUG_LINE, FIXED_LINE), SUBMIT)
     loop, ladder = make_loop(case, rep, workspaces=mgr)
     res = loop.run(case.incident())
@@ -52,7 +57,7 @@ def test_combined_case_with_the_real_repairer_fixes_the_code_and_hands_off_light
         ("code", 4, "hagent"), ("vision_factor", 6, "data_ladder")]
     assert res.repairs[0].rung1.outcome is Rung1Outcome.PASS_WITH_RESIDUAL and rep.calls == 1
     assert res.status is LoopStatus.DATA_HANDOFF and ladder.handoffs[0].factor == "lighting"
-    assert res.final_code.code_hash.startswith("c0+") and ladder.handoffs[0].code_ref == res.final_code
+    assert res.final_code.code_hash.startswith(c0.code_hash + "+") and ladder.handoffs[0].code_ref == res.final_code
     assert res.passes[1].code_key == res.final_code.key()                    # re-run on the patched code
     assert FIXED_LINE in res.repairs[0].diff and res.final_diff == res.repairs[0].code_diff != ""
 
@@ -66,7 +71,7 @@ def test_combined_case_with_the_real_repairer_fixes_the_code_and_hands_off_light
     assert snapshot(checkout) == before                                       # never written
 
 
-def test_attempt_two_starts_from_the_accepted_patch_and_a_failed_attempt_does_not_leak(mgr, checkout):
+def test_attempt_two_starts_from_the_accepted_patch_and_a_failed_attempt_does_not_leak(mgr, checkout, c0):
     """Attempt 1 is rejected by Rung 1 (a comment changes nothing). Attempt 2 starts from c0 again and
     writes a half fix (ambiguous Rung 1, accepted as the code under repair). Rung 2 says code; attempt 3
     starts from the half fix and completes it."""
@@ -76,7 +81,7 @@ def test_attempt_two_starts_from_the_accepted_patch_and_a_failed_attempt_does_no
                     bash(f"cat {WRAPPER}"), recording(seen, replace_line(BUG_LINE, STEP_A_LINE)), SUBMIT,
                     bash(f"cat {WRAPPER}"), recording(seen, replace_line(STEP_A_LINE, FIXED_LINE)), SUBMIT)
     fn, model = rung2_fn(reply("code"))
-    case = files_combined_case(severe=True)
+    case = files_combined_case(c0, severe=True)
     loop, ladder = make_loop(case, rep, rung2=fn, workspaces=mgr)
     res = loop.run(case.incident())
 
@@ -85,17 +90,17 @@ def test_attempt_two_starts_from_the_accepted_patch_and_a_failed_attempt_does_no
     assert "# attempt 1" not in attempt2_sees and BUG_LINE in attempt2_sees  # the rejected patch did not leak
     assert STEP_A_LINE in attempt3_sees and BUG_LINE not in attempt3_sees    # started from the accepted one
     r1, r2, r3 = res.repairs
-    assert r1.code_before == r2.code_before == C0.key()
+    assert r1.code_before == r2.code_before == c0.key()
     assert r3.code_before == r2.code_after and STEP_A_LINE in r3.diff and BUG_LINE not in r3.diff
     assert res.status is LoopStatus.DATA_HANDOFF and len(model.calls) == 1
     assert snapshot(mgr.materialize(res.final_code)) == fixed_files(checkout)
 
 
-def test_an_unrebuildable_binary_patch_gets_its_own_result_and_feedback(mgr):
+def test_an_unrebuildable_binary_patch_gets_its_own_result_and_feedback(mgr, c0):
     seen: list = []
     rep, _ = hagent(mgr, bash(f"printf 'changed\\000' > {BLOB}"), SUBMIT,
                     recording(seen, replace_line(BUG_LINE, FIXED_LINE)), SUBMIT)
-    case = files_combined_case()
+    case = files_combined_case(c0)
     loop, _ = make_loop(case, rep, workspaces=mgr, cfg=loop_config(max_repairs=2))
     res = loop.run(case.incident())
     assert [r.result for r in res.repairs] == ["unrebuildable_patch", "rung1_pass_with_residual"]

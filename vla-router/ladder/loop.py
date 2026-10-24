@@ -147,9 +147,11 @@ class RepairRecord:
 
 @dataclass(frozen=True)
 class LoopResult:
-    """``final_diff`` is the whole change of ``final_code`` against its base ("" when no fix was
-    accepted): ``WorkspaceManager.register(final_code, final_diff)`` then ``materialize(final_code)``
-    rebuilds the fixed files from this record alone."""
+    """``final_diff`` is the whole change of ``final_code`` against its base ``base`` (the incident
+    code's own diff when no fix was accepted; "" when the loop has no workspaces):
+    ``WorkspaceManager.register(final_code, final_diff)`` then ``materialize(final_code)`` rebuilds
+    the final files from this record and the base checkout alone. The diffs are the lossless
+    ``str`` view of bytes (``ladder.workspace.as_text``): serialise with ``json`` (ASCII escapes)."""
     incident_id: str
     status: LoopStatus
     reason: str
@@ -162,6 +164,7 @@ class LoopResult:
     big_calls: int
     cost: float
     final_diff: str = ""
+    base: str = ""                                # base name (label@tree12) of the incident code
 
     @property
     def destinations(self) -> tuple[str, ...]:
@@ -176,7 +179,7 @@ class LoopResult:
                              "rung0": r.rung0.to_dict() if r.rung0 else None,
                              "rung1": r.rung1.to_dict() if r.rung1 else None} for r in self.repairs],
                 "rung2": [r.to_dict() for r in self.rung2], "final_code": self.final_code.to_dict(),
-                "final_diff": self.final_diff,
+                "final_diff": self.final_diff, "base": self.base,
                 "final_verdict": self.final.verdict.to_dict() if self.final else None,
                 "handoff_factor": self.handoff.factor if self.handoff else None,
                 "big_calls": self.big_calls, "cost": self.cost}
@@ -186,13 +189,38 @@ class LoopResult:
 # the loop
 # --------------------------------------------------------------------------- #
 
+_REBUILD_ADVICE = {
+    "binary": "it edits or adds a binary file, which a text diff cannot rebuild. Do not edit or add binary files.",
+    "encoding": "it changes text next to bytes that are not valid UTF-8, and the patch text lost those bytes. "
+                "Leave the non-UTF-8 lines (and the lines around them) alone.",
+    "symlink": "it adds a symbolic link that is absolute or points outside the repository. Do not create such links.",
+    "does_not_apply": "it does not apply to a clean copy of the code. Make plain edits to the files; do not "
+                      "change git settings or history.",
+    "mismatch": "it does not give the files you left in the working copy (for example because changes were "
+                "committed). Do not commit, stash or reset; leave your changes uncommitted.",
+}
+
+
+def rebuild_feedback(attempt: int, cause: str, error: str) -> str:
+    """The feedback for an attempt whose patch could not be rebuilt, by ``UnrebuildablePatch.cause``."""
+    advice = _REBUILD_ADVICE.get(cause, _REBUILD_ADVICE["does_not_apply"])
+    return (f"attempt {attempt}: the patch could not be rebuilt on a clean copy of the code, so it was not "
+            f"validated: {advice} ({error[:300]})")
+
+
 class IncidentLoop:
+    """``workspaces`` (a ``ladder.workspace.WorkspaceManager``; default: the repairer's
+    ``workspaces``, if it has one) names the incident code's base and gives its cumulative diff, so
+    ``LoopResult.base`` / ``final_diff`` rebuild the final code even when the incident started on
+    patched code. Without one both stay "" (scripted repairers whose codes are not workspace names)."""
+
     def __init__(self, backend: RolloutBackend, cfg: LoopConfig, *, repairer: Repairer,
                  inputs: RouterInputs, data_ladder: DataLadder,
-                 rung0: Optional[Rung0Hook] = None, rung2: Optional[Rung2Fn] = None):
+                 rung0: Optional[Rung0Hook] = None, rung2: Optional[Rung2Fn] = None, workspaces=None):
         self.backend = backend if isinstance(backend, CachedBackend) else CachedBackend(backend, RolloutCache())
         self.cfg, self.repairer, self.inputs = cfg, repairer, inputs
         self.data_ladder, self.rung0, self.rung2 = data_ladder, rung0, rung2
+        self.workspaces = workspaces if workspaces is not None else getattr(repairer, "workspaces", None)
 
     def run(self, incident: Incident) -> LoopResult:
         return _Run(self, incident).execute()
@@ -204,7 +232,9 @@ class _Run:
     def __init__(self, loop: IncidentLoop, incident: Incident):
         self.L, self.cfg, self.incident = loop, loop.cfg, incident
         self.code = incident.code_ref
-        self.code_diff = ""                           # whole change of self.code against its base
+        ws = loop.workspaces
+        self.base = ws.base_name(incident.code_ref) if ws is not None else ""
+        self.code_diff = ws.diff_of(incident.code_ref) if ws is not None else ""   # whole change of self.code
         self.passes: list[PassRecord] = []
         self.repairs: list[RepairRecord] = []
         self.rung2s: list[Rung2Result] = []
@@ -219,7 +249,7 @@ class _Run:
                  len(self.passes), len(self.repairs))
         return LoopResult(self.incident.incident_id, status, reason, tuple(self.passes), tuple(self.repairs),
                           tuple(self.rung2s), self.code, self.last, handoff, self.big_calls, self.cost,
-                          self.code_diff)
+                          self.code_diff, self.base)
 
     def execute(self) -> LoopResult:
         while True:
@@ -318,10 +348,7 @@ class _Run:
             self.repairs.append(r)
             if out.rebuild_error:
                 r.result = "unrebuildable_patch"
-                self.feedback.append(
-                    f"attempt {req.attempt}: the patch could not be rebuilt on a clean copy of the code, so it was "
-                    f"not validated. Do not edit or add binary files; make text-only changes. "
-                    f"({out.rebuild_error[:300]})")
+                self.feedback.append(rebuild_feedback(req.attempt, out.rebuild_cause, out.rebuild_error))
                 continue
             if out.code_ref.key() == self.code.key():
                 r.result = "no_change"
@@ -349,4 +376,4 @@ class _Run:
 
 
 __all__ = ["DataHandoff", "DataLadder", "IncidentLoop", "LoopConfig", "LoopResult",
-           "LoopStatus", "PassRecord", "RepairRecord", "StubDataLadder"]
+           "LoopStatus", "PassRecord", "RepairRecord", "StubDataLadder", "rebuild_feedback"]

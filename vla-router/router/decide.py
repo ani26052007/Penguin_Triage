@@ -18,7 +18,8 @@ boundary: extend the seeds, 3.2.9). The verdict is the first TRUE row, except:
   the verdict is row 10 (undetermined) and says which replays need more seeds;
 * if the winning row sees conflicting evidence, the verdict is row 10.
 
-Unchecked signals (optional ``unchecked``): signals whose check did not run
+Unchecked signals (optional ``unchecked``, a collection of ``vocab.ALL_SIGNALS``
+names; a bare string or an unknown name is an error): signals whose check did not run
 (``router`` builds the set from Stage 1 / C_behavior skips). A row may only
 evaluate FALSE if every check that could make it TRUE ran: when a signal in
 ``config.row_signals[row]`` is unchecked, an evidence-based FALSE becomes
@@ -423,10 +424,15 @@ _ROWS: tuple[Callable[[_Ctx], _Match], ...] = (_row1, _row2, _row3, _row4, _row5
 # --------------------------------------------------------------------------- #
 
 def _unchecked(unchecked: Iterable[str]) -> frozenset[str]:
+    if isinstance(unchecked, (str, bytes)):
+        raise TypeError(f"unchecked must be a collection of signal names, not a single string ({unchecked!r})")
     out = frozenset(unchecked)
     bad = [u for u in out if not isinstance(u, str)]
     if bad:
-        raise TypeError(f"unchecked must be signal names, got {bad}")
+        raise TypeError(f"unchecked must be a collection of signal names, got {bad}")
+    unknown = sorted(out - V.ALL_SIGNALS)
+    if unknown:
+        raise ValueError(f"unknown signal names in unchecked: {unknown} (known: router.vocab.ALL_SIGNALS)")
     return out
 
 

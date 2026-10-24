@@ -232,7 +232,7 @@ def test_default_after_is_named_by_the_workspace_recipe(tmp_path):
     repairer names hagent's patch (``WorkspaceManager.extend``): one recipe (Fix F2a)."""
     from tests.workspace_cases import BUG_LINE, FIXED_LINE, WRAPPER, make_checkout, manager
     mgr = manager(tmp_path, make_checkout(tmp_path / "checkout"))
-    base = CodeRef("c0")
+    base = mgr.base_ref("c0")
     work = mgr.materialize(base)
     f = work / WRAPPER
     f.write_text(f.read_text().replace(BUG_LINE, FIXED_LINE))
@@ -241,7 +241,7 @@ def test_default_after_is_named_by_the_workspace_recipe(tmp_path):
     del cfg["after"]
     (tmp_path / "noafter.json").write_text(json.dumps(cfg))
     after = load_config(str(tmp_path / "noafter.json"), 20, str(work))[2]
-    assert after == mgr.extend(base, patch) and after.code_hash.startswith("c0+")
+    assert after == mgr.extend(base, patch) and after.code_hash.startswith(base.code_hash + "+")
 
 
 def test_cli_file_rules_judge_the_code_in_the_working_directory(tmp_path, capsys, monkeypatch):
@@ -253,10 +253,12 @@ def test_cli_file_rules_judge_the_code_in_the_working_directory(tmp_path, capsys
     del cfg["after"]
     cfg["workspace"] = {"store": str(tmp_path / "store"), "bases": {"c0": str(checkout)}}
     cfg["backend"]["rules"] = [{"rate": 0.97, "files": FIXED.to_dict()}]
+    from ladder.workspace import WorkspaceManager
+    mgr = WorkspaceManager(tmp_path / "store", {"c0": checkout})
+    cfg["incident"]["code_ref"] = mgr.base_ref("c0").to_dict()      # file rules need a workspace name
     path = tmp_path / "files.json"
     path.write_text(json.dumps(cfg))
-    from ladder.workspace import WorkspaceManager
-    work = WorkspaceManager(tmp_path / "store", {"c0": checkout}).materialize(CodeRef("c0"))
+    work = mgr.materialize(mgr.base_ref("c0"))
     f = work / WRAPPER
     f.write_text(f.read_text().replace(BUG_LINE, FIXED_LINE))
     monkeypatch.chdir(work)

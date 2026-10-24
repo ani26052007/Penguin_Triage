@@ -18,7 +18,11 @@ destinations that edit the system: ``hagent`` (code / config bug) and ``config_f
      patch is this attempt's change only;
   4. names the result with ``WorkspaceManager.extend``: the patch is applied to a second fresh
      copy and the new name comes from diffing those files against the base snapshot. A patch
-     that does not rebuild (e.g. a binary edit) is reported in ``rebuild_error``.
+     that does not rebuild is reported in ``rebuild_error`` with its ``rebuild_cause``
+     (``UnrebuildablePatch.CAUSES``). Under the local backend the agent's own working copy is
+     also named (``code_ref_of``); if the rebuilt patch gives a different name, the patch lost
+     something (non-UTF-8 bytes: ``encoding``; committed changes: ``mismatch``) and is refused,
+     so a lossy patch never silently becomes different code.
 
 The original checkout is never written: only the manager reads it.
 """
@@ -36,7 +40,7 @@ from hagent.models import Model
 from hagent.runner import solve
 from hagent.task_template import TaskTemplate
 
-from ladder.workspace import UnrebuildablePatch, WorkspaceManager
+from ladder.workspace import UnrebuildablePatch, WorkspaceError, WorkspaceManager, code_ref_of
 from router.report import RepoIndex, ReportContext, build_hagent_prompt, write_report
 from router.schemas import CodeRef, Evidence, Incident, Verdict
 from router.stage2 import Branch
@@ -63,7 +67,8 @@ class RepairOutcome:
     """``diff``: this attempt's change, against the code under repair. ``code_diff``: the whole
     change of ``code_ref`` against its base (what ``WorkspaceManager.materialize`` applies).
     ``rebuild_error``: set when the attempt's patch could not be rebuilt on a fresh copy;
-    ``code_ref`` is then the input code."""
+    ``code_ref`` is then the input code. ``rebuild_cause``: one of ``UnrebuildablePatch.CAUSES``.
+    The diffs are the lossless ``str`` view of bytes (``ladder.workspace.as_text``)."""
     code_ref: CodeRef                    # equal to the input code when nothing was changed
     diff: str = ""
     notes: str = ""
@@ -71,6 +76,7 @@ class RepairOutcome:
     big_calls: int = 0
     code_diff: str = ""
     rebuild_error: str = ""
+    rebuild_cause: str = ""
 
 
 class Repairer(Protocol):
@@ -108,6 +114,16 @@ class HagentRepairer:
                 f"- {f}" for f in req.feedback)
         return build_hagent_prompt(req.verdict, ctx, task, report.localization, req.evidence, self.template)
 
+    def _local_name(self, work: Path) -> Optional[str]:
+        """The name of the files the agent left in ``work`` (local backend only; under docker the
+        host copy is not the agent's). None when the copy no longer names itself."""
+        if self.settings.env.backend == "docker":
+            return None
+        try:
+            return code_ref_of(work).code_hash
+        except WorkspaceError:
+            return None
+
     def repair(self, req: RepairRequest) -> RepairOutcome:
         self.calls += 1
         base = req.incident.code_ref
@@ -115,6 +131,7 @@ class HagentRepairer:
             work = self.workspaces.materialize(base, Path(td) / "repo")
             prompt = self.build_prompt(req, work)
             result = solve(prompt, work, self.settings, self.mode, small=self.small, big=self.big)
+            actual = self._local_name(work) if result.submitted else None
         big = result.usage.get("big")
         calls = big.calls if big else 0
         notes = f"hagent exit status: {result.exit_status}"
@@ -123,10 +140,14 @@ class HagentRepairer:
                                  result.total_cost, calls, self.workspaces.diff_of(base))
         try:
             new = self.workspaces.extend(base, result.patch)
+            if actual is not None and actual != new.code_hash:
+                cause = "encoding" if "\ufffd" in result.patch else "mismatch"
+                raise UnrebuildablePatch(cause, f"the patch rebuilds as {new.code_hash}, but the files the agent "
+                                                f"left are {actual}")
         except UnrebuildablePatch as e:
-            return RepairOutcome(base, result.patch, f"{notes}; patch could not be rebuilt", result.total_cost,
-                                 calls, self.workspaces.diff_of(base), rebuild_error=str(e))
+            return RepairOutcome(base, result.patch, f"{notes}; patch could not be rebuilt ({e.cause})",
+                                 result.total_cost, calls, self.workspaces.diff_of(base), rebuild_error=str(e),
+                                 rebuild_cause=e.cause)
         return RepairOutcome(new, result.patch, notes, result.total_cost, calls, self.workspaces.diff_of(new))
-
 
 __all__ = ["HagentRepairer", "RepairKind", "RepairOutcome", "RepairRequest", "Repairer"]

@@ -56,9 +56,11 @@ Rows 2 and 4 and the whole sim-vs-policy split depend on it. reference_unqualifi
 
 ## Tier 2: The repair loop can’t produce a usable fix yet
 
-### 6. FIXED in F2a: The patched code can’t be rebuilt, and the patch itself is thrown away (cross-file).
+### 6. FIXED in F2a and the F2a review fixes: The patched code can’t be rebuilt, and the patch itself is thrown away (cross-file).
 
 (F2a: `ladder/workspace.py`. A code name is `<base>+sha1(cumulative diff)[:12]`, every cumulative diff is kept in an on-disk content-addressed store, and `materialize(code_ref)` rebuilds the files. RepairRecord stores each attempt's diff and the cumulative one; LoopResult has `final_diff`. MockBackend rules can test the files (`MockRule.files`).)
+
+(F2a review: F2a only partly fixed it. A fresh store accepted a changed base checkout under the old name, and the rollout cache never checked; text decoding lost non-UTF-8 bytes; tracked files that a `.gitignore` matches were dropped; a failed build left a temp dir and blocked `view()` retries; escaping symlinks were copied. The F2a review fixes close all five: names are `<label>@<tree12>[+<diff12>]`, everything is bytes, tracked files are kept, failures clean up, escaping symlinks are rejected. hagent's own lossy patch remains: #55, #56, F2b.)
 
 RepairRecord doesn’t store the diff. The loop keeps diff text only when it is pasted into feedback. LoopResult.final_code is a name such as c0+4a5db660a6a9, with no recoverable content. A successful fix is lost.
 
@@ -70,9 +72,11 @@ No backend can build <base>+<sha1(patch)>. On MockBackend, any real patch hash f
 
 HagentRepairer copies self.repo on every attempt. Attempt 2, for example after Rung 2 says code, runs on unpatched code, but its result is named c0+h1+h2. The name claims two stacked patches, while the content is one patch written against the original code.
 
-### 8. FIXED in F2a: The prompt tells the agent where the original repo is.
+### 8. PARTLY FIXED in F2a: The prompt tells the agent where the original repo is.
 
 (F2a: the prompt names the working copy, or `settings.env.workdir` under docker, and the RepoIndex is built from the working copy. DockerEnv itself has still never been run.)
+
+(F2a review: the prompt no longer names the original, and the F2a review fixes stop two other routes to it: inherited `GIT_*` variables (workspace git, hagent's git helpers and the agent's commands) and escaping symlinks. Still open: `$RUNG1_CONFIG` names the original path (#57), and the agent can rewrite its copy's repo refs (#58).)
 
 The Controller/wrapper code: line prints the original path, not the working copy. In your run, a scripted agent edited the original checkout and the repairer reported no_change (08 §4). LocalEnv gives no isolation. DockerEnv would block this, but it has never been run, because the test image isn’t built and all 19 tests skip.
 
@@ -173,9 +177,9 @@ Row 3 depends entirely on Stage 1 evidence, which combines badly with issue 1. (
 
 ### 29. FIXED in F1: If incident-mode traces are missing, staleness quietly checks only the clean half and records no skip.
 
-### 30. FIXED in F1: Every trace check reads CLEAN-mode traces by default, but nothing ensures clean traces are logged for each incident.
+### 30. PARTLY FIXED in F1: Every trace check reads CLEAN-mode traces by default, but nothing ensures clean traces are logged for each incident.
 
-BehaviorConfig.mode also defaults to CLEAN, with no reason given. (Defaults kept and justified in DECISIONS.md; a missing log is now a recorded skip that makes its rows undecided. The production source serving Stage 0's clean logs is TODO(verify).)
+BehaviorConfig.mode also defaults to CLEAN, with no reason given. (Defaults kept and justified in DECISIONS.md; a missing log is now a recorded skip that makes its rows undecided. The production source serving Stage 0's clean logs is TODO(verify).) (F2a review: only partly fixed until #52 (F2b): nothing checks that the logs belong to the code under test, so after a patch a source can still serve the original code's logs.)
 
 ### 31. Nominal statistics must be per scene condition, which means no-fault runs for every shifted condition.
 
@@ -278,3 +282,26 @@ The loop records such an attempt as `unrebuildable_patch` and tells the agent no
 ### 56. hagent's patch depends on the host and on what the agent did with git.
 
 It runs with the user's git config (e.g. `diff.noprefix` makes the patch fail to apply), and it is `git diff HEAD`, so a change the agent commits in the working copy is not in the patch. The workspace's own recipe (`ladder.workspace.cumulative_diff`) is immune to both, but `extend()` starts from hagent's patch.
+
+## Found during the F0/F1/F2a review
+
+### 57. run_rung1's config (`$RUNG1_CONFIG`) is readable by a local agent, and it leaks.
+
+It contains the original checkout's path (`workspace.bases`) and the mock `FileContains` rules, which spell out the fix (e.g. `normalize_inputs(obs, self.norm_stats)`). Under LocalEnv the agent can `cat` it, which leaks the answer in mock evaluations and tells it where the original is. F5.
+
+### 58. The agent can rewrite `vla.base` or `refs/vla/base` in its working copy.
+
+That changes what its own `run_rung1` evaluates (`code_ref_of` reads both from the copy), not what the loop accepts (the loop names hagent's patch with `extend` on a fresh copy). The agent can only mislead itself. F5.
+
+### 59. Checks that only partly ran still count as clean (top item for F2b).
+
+- C_behavior "not judged" (too few grasp records, an inconsistent offset, a phase tie, no failing episodes) returns no evidence, and `route()` counts it as run (`router/router.py`, `_run_c_behavior`). Rows 4 (Branch C), 8 and 9 then evaluate FALSE instead of UNKNOWN, so a code bug located only by an implied-target offset can read as row 6, a vision gap, and money goes to data.
+- The action contract's "dimensions / range / gripper sign not checked" (`router/stage1/action_contract.py`, no layout or limits in the training spec) and the observation contract's "no logged values for <x>; not checked" (`router/stage1/obs_contract.py`) only go to the log. Every router case runs with the action contract checking none of those three.
+
+Same pattern as #50 (config contract). Fix with F2b's `PartialSkip`.
+
+### 60. Remaining untested branches and hard-coded values from the review (F6).
+
+- Untested: `RouterInputs` with only one of behavior source / nominal (`ValueError`); `PatchStore.put` collision; a base path that is not a directory; `FileContains.from_dict` with an unknown kind; `file_faults` without workspaces; `code_ref_of` outside a working copy (Rung 1 CLI exit 2); an invalid base label; a non-staleness partial skip in `router.unchecked_signals`.
+- Hard-coded: the 12-hex digests (diff and tree); the truncation lengths 200 / 300 / 500 / 1000 in workspace, repair and loop messages; the fixed commit date; the `"staleness"` source special-cased in `router.unchecked_signals`; the rebuild-feedback texts in `ladder/loop.py`.
+

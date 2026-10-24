@@ -300,8 +300,10 @@ def load_config(path: str, seeds: int, cwd: str) -> tuple[RolloutBackend, Incide
         {"incident": <Incident.to_dict()>, "branch": "G" | "G_degraded" | "C",
          "after": <CodeRef dict>,                   # optional: default = the code in the working directory
                                                     #   (ladder.workspace.code_ref_of: same recipe as the repairer)
-         "workspace": {"store": DIR, "bases": {name: DIR}},   # optional: needed by "files" rules; the
-                                                    #   default "after" is then also stored so it can be built
+         "workspace": {"store": DIR, "bases": {label: DIR}},  # optional: needed by "files" rules; the
+                                                    #   default "after" is then also stored so it can be built,
+                                                    #   and the incident's code must be a workspace name
+                                                    #   (<label>@<tree12>[+<diff12>])
          "thresholds": {"failure_rate": .., "nominal_band": [lo, hi], "agreement": .., "min_agreement": ..,
                         "n_a": 10, "alpha_total": 0.05, "stage_a_fraction": 0.5},    # last three optional
          "backend": {"kind": "mock", "default_rate": .., "rules": [<rule dict>...], "salt": "x"}

@@ -56,6 +56,8 @@ staleness,cfg_contract,synthetic}.py, router/prereq/{trace,behavior_trace}.py, r
 plus (per-check variant) router/stage1/{obs_contract,action_contract,sanity}.py and router/behavior.py.
 That is 12 code files with the template variant, 16 with the per-check variant.
 
+0. Top item (F2a review, ISSUES #59): C_behavior "not judged" and the obs/action contracts' "not checked" sub-checks
+   become `PartialSkip`s with their signals, like #50 below, so they make their rows UNKNOWN instead of clean.
 1. `ConfigLoader.load(root) -> Mapping`. `JsonFileConfigLoader(relpath)` stands in for the real format, which is TODO(verify).
    The manager takes the loader. `extend()` sets `eval_config` from the patched copy, and `base_ref(base)` loads it from the checkout.
    `materialize()` raises when a ref's `eval_config` differs from its files, so a ref cannot claim a config it does not have.

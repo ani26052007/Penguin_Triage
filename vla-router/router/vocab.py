@@ -73,6 +73,12 @@ def failure_phase(phase: str) -> str:
 # then means "not looked at", not "checked, nothing found". ``route`` builds the
 # unchecked set from this map; ``decide`` reads it through ROW_SIGNALS.
 
+# Every signal name a check can emit; ``decide(unchecked=...)`` accepts only these.
+ALL_SIGNALS: frozenset[str] = frozenset({
+    SIG_CONTRACT_VIOLATION, SIG_RENDER_SETTINGS_DIFFER, SIG_RENDER_PHYSICS_BROKEN, SIG_REFERENCE_UNQUALIFIED,
+    SIG_STALENESS_VARIABLE, SIG_STALENESS_CONSTANT, SIG_IMPLIED_TARGET_OFFSET, SIG_IMPLIED_TARGET_OK,
+    SIG_IMPLIED_TARGET_WRONG, *(failure_phase(p) for p in PHASES)})
+
 SIGNALS_BY_SOURCE: dict[str, frozenset[str]] = {
     "contract_cfg": frozenset({SIG_CONTRACT_VIOLATION, SIG_RENDER_SETTINGS_DIFFER}),
     "contract_obs": frozenset({SIG_CONTRACT_VIOLATION}),
