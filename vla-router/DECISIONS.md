@@ -348,6 +348,31 @@ Rejected: skipping the call on rows the router decides alone (loses the logged l
 **Known limits**
 - Two backends that both leave the id empty still share entries (as before); a real backend must set one.
 
+## Router change 3: Rung 1 `kind: isaac` from an import path (IMPL_PLAN D14; approved with the Phase 0 plan, done after Phase 2)
+
+**What**
+- `ladder/rung1.py` `load_config`: `"backend": {"kind": "isaac", "factory": "package.module:attr[.attr]", "args": {...}}`. `load_object` imports the module and follows the attributes; `backend_from_factory` calls the object with `args` as keywords and requires a `RolloutBackend` back. vla-isaac's entry point is `"vla_isaac.backend.isaac_backend:IsaacBackend.from_config"` with `args: {"config": <backend.yaml>}`.
+- vla-router never imports the simulator package: the import path is data. The placeholder `ladder.backend.IsaacBackend` stays (unused by the CLI now), so nothing that imports it breaks.
+- Errors are `ValueError`s, so the CLI exits 2 with `run_rung1: error: ...`:
+  - no `factory`;
+  - no `:` in the path;
+  - a module or attribute that does not exist;
+  - something that is not callable;
+  - `args` that is not a mapping;
+  - a return value that is not a `RolloutBackend`.
+- Tests: `tests/test_rung1_backend_factory.py`:
+  - a dummy module in `tmp_path` used as the backend, through the whole CLI (`RUNG1 PASS`);
+  - a class-attribute path;
+  - each error above;
+  - a scan that `ladder/` and `router/` never import `vla_isaac`.
+
+  `tests/test_rung1.py`'s old `kind: isaac` case is now "no factory" and still exits 2. vla-isaac tests that its own path builds an `IsaacBackend`.
+
+**Rejected**
+- A `kind: "factory"` alongside `isaac`: the config key the plan names is `isaac`, and the mock stays the only built-in.
+- Passing the CLI's `WorkspaceManager` into the factory: the backend needs its own config loader (vla-isaac's eval-config loader with derived keys); the factory builds it from its own config. The CLI's `workspace` block keeps naming `after`; both read the same bases, so the code names agree.
+- `entry_points`: needs the simulator package installed into vla-router's environment for discovery; an explicit path is visible in the config.
+
 ## Router change 4: G3 unavailable (sim side decision 3, "G3 deferred"; docs/BUILD_STATUS.md Phase 1)
 
 **What**

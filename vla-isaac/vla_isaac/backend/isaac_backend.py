@@ -43,7 +43,8 @@ from router.schemas import (ActorKind, ActorRef, CodeRef, EpisodeResult, Mode, S
 
 from vla_isaac.arena_ext.actuator_env import ENV_BASE, ENV_NAME, ENV_OVERRIDES
 from vla_isaac.backend.server import PolicyServerProcess
-from vla_isaac.config import BackendConfig, ConfigError, TaskConfig, get_dotted
+from vla_isaac.config import (BackendConfig, ConfigError, TaskConfig, get_dotted, load_backend_config,
+                              load_task_config)
 from vla_isaac.results.episode_jsonl import (EpisodeResultsError, find_result_files, index_records, read_records,
                                              to_episode_result)
 from vla_isaac.runner.arena_cmd import (PolicySpec, RunSpec, dump_experiment_yaml, experiment_argv,
@@ -106,6 +107,17 @@ class IsaacBackend(RolloutBackend):
         self.cache = cache
         self.reference = reference
         self.backend_id = backend_id or backend_id_for(cfg, task)
+
+    @classmethod
+    def from_config(cls, config: str | Path, **kw: Any) -> "IsaacBackend":
+        """The backend for a backend-config YAML: its task config, and policy-wrapper bases with the
+        eval-config loader of ``vla_isaac.workspace``. Rung 1's ``kind: isaac`` names this
+        (``"vla_isaac.backend.isaac_backend:IsaacBackend.from_config"``, args ``{"config": path}``)."""
+        from vla_isaac.workspace import make_workspaces
+
+        cfg = load_backend_config(config)
+        task = load_task_config(cfg.task_config)
+        return cls(cfg, task, make_workspaces(cfg, task), **kw)
 
     # -- the RolloutBackend call ------------------------------------------------
     def run(self, scene: SceneSpec, code_ref: CodeRef, actor: ActorRef, seeds: Sequence[int], mode: Mode,

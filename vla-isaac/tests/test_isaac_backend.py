@@ -259,3 +259,21 @@ def test_a_crashed_run_ends_the_incident_unresolved_in_the_loop(tmp_path):
     res = IncidentLoop(rig.backend, cfg, repairer=None, inputs=RouterInputs(), data_ladder=StubDataLadder()).run(incident)
     assert res.status is LoopStatus.UNRESOLVED
     assert (res.error_stage, res.error_type) == ("router", "ArenaRunError")
+
+
+# ---- Rung 1 kind: isaac (router change 3) ------------------------------------------------ #
+
+def test_rung1_kind_isaac_builds_this_backend_from_its_import_path(tmp_path):
+    from ladder.rung1 import backend_from_factory
+    from tests.helpers import PILOT_TASK, make_checkout
+
+    checkout = make_checkout(tmp_path / "checkout")
+    cfg = {"arena_root": str(tmp_path), "gr00t_root": str(tmp_path), "arena_python": "py", "server_python": "py",
+           "output_root": str(tmp_path / "out"), "task_config": str(PILOT_TASK),
+           "workspace_store": str(tmp_path / "store"), "workspace_bases": {"pw": str(checkout)}}
+    path = tmp_path / "backend.yaml"
+    path.write_text(yaml.safe_dump(cfg))
+    be = backend_from_factory({"kind": "isaac", "factory": "vla_isaac.backend.isaac_backend:IsaacBackend.from_config",
+                               "args": {"config": str(path), "backend_id": "isaac:t"}})
+    assert type(be).__name__ == "IsaacBackend" and be.backend_id == "isaac:t"
+    assert be.task.nominal_scene == "gr1_fridge_ranch" and set(be.workspaces.bases) == {"pw"}

@@ -183,3 +183,22 @@ V-ckpt-cache, V-stats-format, V-server-seed. V-exp-remote-policy now names polic
 - **The training spec in the cfg_contract tests is built by hand from the pilot values**, with norm stats from a FIXTURE `statistics.json`. Phase 4 extracts the real one.
 - **A laptop without the checkpoint cannot name policy-wrapper code with the Q3 loader.** `WorkspaceError` names the backend `checkpoints:` key. This is intended: the norm-stats contract must not pass for lack of the statistics.
 - **Arena's own client tests may still not run without Isaac Sim.** policy-wrapper's tests show they can be made to; Phase 7's `check_client_tests.sh` checks Arena's.
+
+## Router change 3: Rung 1 `kind: isaac` from an import path (2026-10-27, after Phase 2)
+
+### Built
+- `ladder/rung1.py`: `"backend": {"kind": "isaac", "factory": "pkg.module:attr[.attr]", "args": {...}}`. The factory is called with `args` and must return a `RolloutBackend`. Every error is a clean exit-2 `ValueError`.
+- vla-isaac: `IsaacBackend.from_config(config, **kw)` builds the backend from a backend YAML: task config, policy-wrapper bases, and the Q3 eval-config loader. The Rung 1 factory string is `vla_isaac.backend.isaac_backend:IsaacBackend.from_config`.
+- `vla-router/DECISIONS.md` has a "Router change 3" entry (before change 4).
+
+### Tests
+```
+cd vla-router && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 780 passed, 1 skipped in 29.42s
+cd vla-isaac  && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 115 passed in 19.38s
+```
+- vla-router `tests/test_rung1_backend_factory.py` (10):
+  - a dummy import path through the whole CLI;
+  - a class-attribute path;
+  - seven bad configs;
+  - a scan showing that vla-router never imports `vla_isaac`.
+- vla-isaac: its factory path builds an `IsaacBackend`.

@@ -32,21 +32,23 @@ CLI (registered as a hagent custom command, see ``ladder/bin/run_rung1``):
     run_rung1 --seeds 50 [--config FILE]     # FILE or $RUNG1_CONFIG, JSON, see ``load_config``
 
 No simulator is assumed: the backend is a ``RolloutBackend``; the CLI builds a
-``MockBackend`` from JSON rules, and ``IsaacBackend`` raises until it exists.
+``MockBackend`` from JSON rules, or (``kind: isaac``) calls a backend factory named by an
+import path in the config, so this package never imports the simulator side (router change 3).
 """
 
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import sys
 from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
-from typing import Mapping, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
-from ladder.backend import IsaacBackend, MockBackend, MockRule, RolloutBackend
+from ladder.backend import MockBackend, MockRule, RolloutBackend
 from ladder.workspace import (FileContains, WorkspaceError, WorkspaceManager, code_ref_of, file_config_loader,
                               load_eval_config)
 from ladder.stats import (Comparison, Proportion, StageDecision, StagedPlan, classify_outcome, compare,
@@ -310,7 +312,7 @@ def load_config(path: str, seeds: int, cwd: str) -> tuple[RolloutBackend, Incide
          "thresholds": {"failure_rate": .., "nominal_band": [lo, hi], "agreement": .., "min_agreement": ..,
                         "n_a": 10, "alpha_total": 0.05, "stage_a_fraction": 0.5},    # last three optional
          "backend": {"kind": "mock", "default_rate": .., "rules": [<rule dict>...], "salt": "x"}
-                    | {"kind": "isaac"}}           # isaac raises NotImplementedError until built
+                    | {"kind": "isaac", "factory": "pkg.module:attr[.attr]", "args": {..}}}   # args optional
     """
     with open(path, encoding="utf-8") as fh:
         raw = json.load(fh)
@@ -336,10 +338,43 @@ def load_config(path: str, seeds: int, cwd: str) -> tuple[RolloutBackend, Incide
                                               float(b["default_rate"]), salt=b.get("salt", "mock"),
                                               workspaces=workspaces)
     elif b["kind"] == "isaac":
-        backend = IsaacBackend()
+        backend = backend_from_factory(b)
     else:
         raise ValueError(f"unknown backend kind {b['kind']!r}")
     return backend, incident, after, Branch(raw["branch"]), cfg
+
+
+def load_object(path: str) -> Any:
+    """``"pkg.module:attr[.attr...]"`` -> that object (router change 3)."""
+    module, sep, qualname = path.partition(":")
+    if not sep or not module or not qualname:
+        raise ValueError(f"backend factory {path!r} must be 'package.module:attribute'")
+    try:
+        obj = importlib.import_module(module)
+        for part in qualname.split("."):
+            obj = getattr(obj, part)
+    except (ImportError, AttributeError) as e:
+        raise ValueError(f"cannot load backend factory {path!r}: {type(e).__name__}: {e}") from e
+    return obj
+
+
+def backend_from_factory(b: Mapping) -> RolloutBackend:
+    """The ``kind: isaac`` backend: ``factory`` names a callable (a class or a function) that is
+    called with ``args`` as keywords and returns a ``RolloutBackend``. vla-router never imports the
+    simulator package itself; the import path comes from the config (router change 3)."""
+    if not b.get("factory"):
+        raise ValueError("backend kind 'isaac' needs \"factory\": \"package.module:callable\", e.g. "
+                         "\"vla_isaac.backend.isaac_backend:IsaacBackend.from_config\"")
+    args = b.get("args", {})
+    if not isinstance(args, Mapping):
+        raise ValueError("backend \"args\" must be a mapping of keyword arguments")
+    factory = load_object(b["factory"])
+    if not callable(factory):
+        raise ValueError(f"backend factory {b['factory']!r} is not callable")
+    backend = factory(**args)
+    if not isinstance(backend, RolloutBackend):
+        raise ValueError(f"backend factory {b['factory']!r} returned {type(backend).__name__}, not a RolloutBackend")
+    return backend
 
 
 EXIT = {Rung1Outcome.PASS: 0, Rung1Outcome.PASS_WITH_RESIDUAL: 0, Rung1Outcome.FAIL: 1, Rung1Outcome.AMBIGUOUS: 3}

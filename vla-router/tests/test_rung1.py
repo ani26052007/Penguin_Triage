@@ -206,7 +206,7 @@ def test_cli_errors_cleanly(tmp_path, capsys):
     cfg["backend"] = {"kind": "isaac"}
     p = tmp_path / "isaac.json"
     p.write_text(json.dumps(cfg))
-    assert main(["--config", str(p)]) == 2                           # IsaacBackend is not built yet
+    assert main(["--config", str(p)]) == 2                           # kind isaac without a factory
     with pytest.raises(SystemExit):
         main([])                                                      # no config at all
 
