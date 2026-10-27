@@ -1,0 +1,16 @@
+# Failure-map grid for the pilot (plan 6.1; vla_isaac.experiments.grid). Lighting factors are build-time,
+# so each cell is one environment build. The levels are PLACEHOLDERS until R7 / R7b settle which
+# shifted lighting the pilot fails on (docs/PILOT_AND_ORDER.md R7: intensity 100.0 is the dark cell).
+name: gr1_fridge_lighting
+nominal: gr1_fridge_ranch
+factors:                                  # factor name (config/factors_gr1_fridge.yaml) -> levels; null = absent
+  lighting.intensity: [null, "100.0", "300.0", "3000.0"]
+  lighting.hdr: [null, home_office_robolab]
+episodes: 20                              # policy episodes per cell, clean mode (plan 6.1 step 3)
+mode: clean
+policy_checkpoint: nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task/ranch_bottle_into_fridge
+code_base: pw                             # backend config workspace_bases label (policy-wrapper)
+reference: true                           # RAW Mimic reference on every cell; task config reference.qualification
+confidence: 0.95
+candidate: {nominal_min: 0.8, shifted_max: 0.4}
+hosts: []                                 # e.g. [l4-a, l4-b]: cell i runs on hosts[i % len(hosts)]

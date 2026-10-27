@@ -381,24 +381,130 @@ V-train-instr (new row; was in IMPL_PLAN §4 only), V-mimic-source, V-mimic-out,
 - **`IsaacBehaviorTrace` subclasses a router schema** (fix a), instead of adding a field to the router's `BehaviorTrace`.
 - Known limitation carried over: `FrameStats.missing_texture_fraction` is still 0.0 from vla-isaac (not measured). It is a `FrameStats` field, outside router change 5.
 
+## Decisions from the Phase 4 review, and the changes before Phase 5 (2026-10-28)
+
+Recorded in `docs/IMPL_PLAN.md` ("Decisions from the Phase 4 review"). Baseline before any change: 795 passed, 1 skipped / 213 / 41.
+
+### Router change 6: `cfg_contract` says which fields it did not compare (`b319ae2`)
+- `ConfigContractCheck.notes` gives one line per **mapped** field whose `TrainingSpec` value is `None`: `contract_cfg: not compared: <field> (missing in spec)`, in `FIELD_ORDER`. The lines go through `Stage1Result.notes` into `RouterResult.notes`, the same route as change 5.
+- It is a note, never a skip. The evidence is unchanged: same ids, strengths, locations and details. Unlike change 5, the line is not appended to fired evidence, because a `cfg_contract` evidence is about one other field.
+- **Verdicts unchanged.** All 11 router cases go through `route()`, compared against the same mapping with the spec-less fields unmapped (the old silent skip). The verdicts are equal, and the router notes differ only by the not-compared lines. 9 of the 11 cases lack both mapped fields, so the test is not vacuous.
+- `vla-router/tests/test_cfg_contract_not_compared.py` (+19), and a `vla-router/DECISIONS.md` entry. Its own commit.
+
+### Mimic: 50 trials and the datagen seed (`7955552`)
+- `reference.qualification.trials` (required, 50 in the pilot) and `qualification_seeds(rule)` = `0 .. trials-1`. With 20 trials only 20/20 clears 0.8 at 95 % (19/20 has a lower bound of 0.764). 48/50 clears it, with a lower bound of 0.865.
+- New strict section `reference.mimic.seed` (`MimicSeed`: `mode`, `flag`, `max_trials`), VERIFY(V-mimic-seed), now a **day-one check**.
+  - **`fixed`** (pilot default, the safe assumption until the check runs): the reference is deterministic. Router seed s **is** trial s of the one sequence. A run makes `max(seeds)+1` trials and returns those indices, so a G2 extension to seeds 10..19 gets trials 10..19, never a repeat of 0..9. Seeds outside `0 .. max_trials-1` are refused. Results carry `logs["deterministic"] = True` and `run_seed = None`.
+  - **`per_run`**: each run passes its own seed (`seed.flag`, PLACEHOLDER `--seed`), derived from (scene, actor, seeds). A new request is a new draw, and the same request gives the same seed, so caching stays consistent. Trial i ↔ `seeds[i]` as before. `logs["deterministic"] = False`.
+- **Qualification.** `qualify()` reads the flag from the results.
+  - **Deterministic: a single pass/fail.** `Qualification.deterministic = True`, `interval()` is None, and `to_dict()` has `lower` / `upper` = None. The evidence says "deterministic reference (one fixed trial sequence, single pass/fail)". Repeated trials (the same `trial_index` twice) are refused: a repeated run is not more data. Mixing deterministic and per-run results is refused.
+  - **Per-run**: runs are pooled and the Wilson interval is reported, as before.
+- Tests: `tests/test_mimic.py` +9 (both modes, the extension, the bounds, the seed flag before the scene overrides, deterministic pass/fail without an interval, refusing repeats and mixing, pooled per-run interval, strict sections).
+- `vla-router/DECISIONS.md` "Backend note": the known limit about G2 extensions repeating trials is marked handled (doc only, no router code).
+
+## Phase 5: experiment tools (2026-10-28)
+
+### Built
+- **`vla_isaac/experiments/grid.py`**: the failure-map grid over any `RolloutBackend` (plan 6.1).
+  - **Grid YAML** (`config/grid_gr1_fridge.yaml`, strict): factor → levels (`null` = factor absent), episodes, mode, policy checkpoint, workspace base label, `reference`, confidence, candidate rule, `hosts`. The pilot levels are PLACEHOLDERS until R7 / R7b.
+  - Cells are every combination of levels, with the nominal cell always first.
+  - **One build per cell.** One `backend.run` call per cell for the policy, seeds `0 .. episodes-1` (build seed 0 on `IsaacBackend`).
+  - **Reference qualification per cell** (point 1). The RAW reference only (`ReferenceSpec` refuses WRAPPER and policy actors), on `qualification_seeds(rule)` in clean mode. It is qualified with Phase 4's `qualify()` and the task config's rule. The table holds the reference's k/n/rate/interval next to the policy's, and the cell is flagged `reference_unqualified`. A deterministic reference shows `reference_deterministic: true` and no interval.
+  - **Candidate flag**: the nominal policy rate ≥ `nominal_min`, the cell rate ≤ `shifted_max`, and the reference not unqualified. These are point rates, a screening aid.
+  - **Resume**: one JSON file per finished cell (`<out>/cells/<id>.json`), written atomically (temporary file plus rename). Each carries a fingerprint: grid, scene, code key, policy, seeds, mode, confidence, backend id and reference rule. A rerun skips matching cells and **refuses** a cell file with another fingerprint.
+  - **Sharding**: cell i runs on `hosts[i % len(hosts)]`. `collect(spec, dirs)` merges the cell files of several hosts. It refuses missing cells, foreign cells and two different results for one cell.
+  - **Table**: `GridTable` writes `grid_table.json` and `grid_table.csv`. Intervals come from `ladder.stats.wilson_interval` (`experiments/tables.proportion`).
+  - **CLI**: `python -m vla_isaac.experiments.grid run --grid G --backend B --out D [--host H]` and `... merge --grid G --out D --from D1 D2`.
+- **`vla_isaac/experiments/replay_agreement.py`** (ISSUES #15, point 2): the same seeds twice in clean mode, per cell.
+  - It reports the agreement k/n with its Wilson interval (the rate cross-checked with `ladder.stats.agreement_rate`), the both-success, both-failure and both discordant counts, the overall success rate over both runs and each run's rate, plus a pooled agreement over all cells.
+  - **Visibility**: a cell where every agreement is a failure (or every one a success) has `informative: false` and a note, for example "agreement comes only from failures (overall success rate 0.00): it says nothing about whether successes reproduce". The note appears in the JSON and CSV next to the number.
+  - It refuses a `CachedBackend` (it would read the first run back as the second) and unpaired results (incident mode, Mimic trials). On `IsaacBackend` the second call is a real Arena run.
+  - CLI on a grid YAML (`--nominal-only` to agree on the nominal cell only).
+- **`vla_isaac/experiments/mode_gap.py`** (point 3): the nominal scene in clean and incident mode.
+  - Both rates come with Wilson intervals, the gap is clean minus incident, and `differ` = two-sided `ladder.stats.fisher_exact` p < alpha.
+  - **Always unpaired**: `pairing: "unpaired"` with the D10 reason. What the backend said (`incident_paired_in_logs`) is reported but does not change the method.
+  - CLI on a grid YAML.
+- **`vla_isaac/replay/recorded_variations.py`** (point 4): `strip_key(src, dst, key, enabled_keys)` and `strip_factor(src, dst, table, scene, factor)`.
+  - It writes a copy without `variations[key]`; everything else is unchanged.
+  - **It refuses**, before writing anything:
+    - any remaining key without an enabled variation on the replay build, **naming each key and the first record holding it** (Arena asserts there);
+    - a key that no record holds;
+    - a key that is still enabled;
+    - duplicate JSON keys (read as Arena reads them);
+    - writing over the source.
+  - `strip_factor` derives the enabled keys from `scene.restore(factor)` and the factor table.
+  - CLI.
+
+### Tests
+```
+cd vla-router     && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 814 passed, 1 skipped
+cd vla-isaac      && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 264 passed
+cd policy-wrapper && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 41 passed
+```
+(vla-router +19 from change 6. vla-isaac +9 from the Mimic changes, then Phase 5 +42: `tests/test_grid.py` 21, `tests/test_agreement_and_mode_gap.py` 14, `tests/test_recorded_variations.py` 7. The GPU-free import test covers the new modules.)
+
+Everything runs on `MockBackend` with known rates (point 5):
+- **Grid.** The rates are policy nominal 1.0, dark 0.0, dark+HDR 0.0 and 0.9 elsewhere; the reference is 1.0 everywhere except 0.5 on dark+HDR.
+  - Exact counts. The 0.9 cells are checked against an independent run of the same mock.
+  - The intervals equal `ladder.stats`.
+  - Dark is a candidate, and dark+HDR is flagged `reference_unqualified` (and is not a candidate). The flag shows in the CSV.
+  - One policy and one reference call per cell, with 20 seeds and 50 trials.
+  - A deterministic reference gives pass/fail with no interval in the table.
+  - JSON and CSV output.
+- **Resume after a crash mid-grid.**
+  - The backend crashes on the 4th cell. 3 cell files survive, and a stray half-written temporary file is ignored.
+  - The rerun runs only the 3 missing cells, and the table equals the uninterrupted run.
+  - A third run runs nothing.
+  - Changing the episodes, confidence, code or reference rule is refused, never reused.
+- **Sharding.** Two fake hosts with separate backends run disjoint cells (0, 2, 4 and 1, 3, 5). The merged JSON and CSV equal the one-host table. A partial merge, an unknown host, conflicting results and a foreign grid are refused. The merge CLI works.
+- **`IsaacBackend` (fake runner).**
+  - Each grid cell is one Arena build: seed 0, `num_envs` 1.
+  - The agreement tool makes two real Arena runs.
+- **Agreement.**
+  - Exact counts on a scripted pair (4 / 2 / 2 / 2).
+  - A deterministic mock agrees 1.0.
+  - `replay_noise = 0.25` on 400 seeds gives an interval containing 0.75, the known agreement.
+  - Always failing and always succeeding are both noted and not informative.
+  - A cache and unpaired results are refused.
+- **Mode gap.**
+  - Clean 1.0 vs incident 0.2: `differ`, p equal to `fisher_exact` on the same counts, intervals from `wilson_interval`.
+  - No gap: p = 1.
+  - Unpaired whatever the logs say.
+- **Recorded variations.**
+  - The strip keeps everything else.
+  - The refusals name the key (`'ranch_dressing_hope_robolab.mass' (first in record 0)`).
+  - **Arena's own validator** (`recorded_variation_samples.py`, pure Python, run in an isolated subprocess) rejects the original recording and accepts the stripped one.
+
+### New VERIFY items
+None new. V-mimic-seed is rewritten as a day-one check with both outcomes handled (P5). V-var-record now also covers the strip tool.
+
+### Deviations and findings
+- **Deterministic qualification still applies the Wilson rule once.** "A single pass/fail" is implemented as the Phase 4 rule (lower bound ≥ threshold) applied to the one fixed trial sequence, with no interval reported. So 19/20 still fails and 50/50 passes. The alternative, the raw rate ≥ threshold, would make 20 trials enough again; I did not choose it. **Please confirm.**
+- **Fixed mode reads router seed s as trial index s.** It is not stated in the decision. It is what keeps extensions from repeating trials. The cost: a request for seeds 10..19 reruns trials 0..9 too (20 trials). `max_trials` (200) bounds it.
+- **The grid always adds the nominal cell**, even if no factor lists `null`, because the candidate rule and the router need it.
+- **The candidate rule uses point rates.** It is a screening aid, not a decision; the intervals are next to it.
+- **The second agreement run deletes the first run's raw files on `IsaacBackend`.** It reuses the same output directory (`build0_n<k>`, which is wiped before each run). The outcomes are kept in the report, but the first run's Arena log and JSONL are gone. A follow-up could add a run tag to the output path.
+- **The mode gap calls `fisher_exact` directly** rather than `compare()`. `compare()` chooses paired or unpaired from the agreement, and D10 makes incident mode unpaired whatever the agreement is.
+- **The strip tool also refuses an absent key and a still-enabled key**, beyond the point-4 rule. Replaying a stripped file through `IsaacBackend` (`recorded_variation_samples_path`) is not wired; Phase 5 asked only for the tool.
+- **The `run` CLIs of grid, agreement and mode gap** build `IsaacBackend.from_config` and are not exercised here (GPU box). The merge CLI and every function they call are tested.
+
 ## Current state (2026-10-28)
 
-Done: Phases 1-4, router changes 1-5, and the three fixes before Phase 4. **Next: Phase 5** (experiment tools).
+Done: Phases 1-5, router changes 1-6, the three fixes before Phase 4, and the Mimic changes before Phase 5. **Next: Phase 6** (data pipeline and fine-tuning).
 
 | Repo | Test command (run inside the repo) | Result |
 |---|---|---|
-| vla-router | `env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q` | 795 passed, 1 skipped |
-| vla-isaac | same | 213 passed |
+| vla-router | `env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q` | 814 passed, 1 skipped |
+| vla-isaac | same | 264 passed |
 | policy-wrapper | same | 41 passed |
 
-Commits since Phase 3:
+Commits since Phase 4:
 
 | Commit | What |
 |---|---|
-| `5151b38` | IMPL_PLAN: decisions from the Phase 3 review |
-| `cc54314` | Fix a: grasping hand per episode |
-| `50dc31d` | Fix b: router change 5 (`SimHealth` fields not measured) |
-| policy-wrapper `1b66477` | Fix c: frame content hash |
-| (this commit) | Phase 4: training spec, Mimic reference, qualification |
+| `27346a3` | IMPL_PLAN: decisions from the Phase 4 review |
+| `b319ae2` | Router change 6: `cfg_contract` not-compared notes |
+| `7955552` | Mimic: 50-trial qualification, fixed vs per-run datagen seed |
+| (this commit) | Phase 5: grid, replay agreement, mode gap, recorded-variation strip |
 
 Repo hygiene is unchanged: never stage `.gitmodules`, `external/IsaacLab-Arena`, `hybrid-agent` or the moved `PLAN_*.md`; commit with `git commit --only -- <own paths>`.
