@@ -18,20 +18,32 @@ Rules (IMPL_PLAN "Decisions from the Phase 3 review", point 4):
 * **No downloads.** The annotated source dataset is a local path from the backend config's ``datasets``
   map (the task config names its id). Absent, the run is refused with ``MimicConfigError``
   (VERIFY(V-mimic-source)); it is never fetched.
-* **Trials, not paired seeds.** Trial i of the run is the result for ``seeds[i]``, in trial order, with
-  ``logs["paired"] = False``: a Mimic trial has nothing to do with the policy episode of the same seed.
-  The outcomes are read from Mimic's log (``MimicOutput``, VERIFY(V-mimic-out)): one cumulative
-  "successes/attempts" line per finished attempt gives each attempt's outcome in order. The pilot
-  environment sets ``generation_guarantee: True`` (``A:isaaclab_arena/tasks/common/mimic_default_params.py``),
-  so Mimic may make more attempts than ``generation_num_trials`` (it counts successes,
-  VERIFY(V-mimic-guarantee)); the first ``len(seeds)`` attempts are used, a fixed-size sample, and the
-  total is kept in the logs. Fewer attempts than seeds, or an attempt count the log cannot order, is a
-  ``MimicOutputError``.
+* **Trials, not paired seeds.** Every result has ``logs["paired"] = False``: a Mimic trial has nothing
+  to do with the policy episode of the same seed. The outcomes are read from Mimic's log (``MimicOutput``,
+  VERIFY(V-mimic-out)): one cumulative "successes/attempts" line per finished attempt gives each
+  attempt's outcome in order. The pilot environment sets ``generation_guarantee: True``
+  (``A:isaaclab_arena/tasks/common/mimic_default_params.py``), so Mimic may make more attempts than
+  ``generation_num_trials`` (it counts successes, VERIFY(V-mimic-guarantee)); the first attempts are
+  used, a fixed-size sample, and the total is kept in the logs. Too few attempts, or an attempt count
+  the log cannot order, is a ``MimicOutputError``.
+* **The datagen seed** (``reference.mimic.seed``, VERIFY(V-mimic-seed), a day-one GPU check). The pilot
+  environment fixes Mimic's datagen seed, and whether a per-run seed reaches it is unread. Two modes:
 
-Qualification (ISSUES #5): ``qualify(results, rule)`` puts a Wilson interval (``ladder.stats``) on the
-trial success rate; the reference is unqualified when the interval's **lower bound** is below the
-configured threshold, and ``Qualification.evidence()`` is then the ``reference_unqualified`` evidence
-(row 2) to pass to ``route(..., extra_evidence=...)``.
+  - ``per_run``: every run passes its own seed (``seed.flag``), derived from the scene, actor and
+    requested seeds, so two runs draw independent trials. Trial i of the run is the result for
+    ``seeds[i]``. ``logs["deterministic"] = False``.
+  - ``fixed`` (the default until V-mimic-seed is settled): every run replays the same trial sequence,
+    so the reference is deterministic. Router seed s **is** trial s of that sequence: a run makes
+    ``max(seeds) + 1`` trials and returns those indices, so a later request for seeds 10..19 gets trials
+    10..19, never a repeat of 0..9 presented as new. ``logs["deterministic"] = True``.
+
+Qualification (ISSUES #5): ``qualify(results, rule, condition)``. The reference is unqualified when the
+Wilson (``ladder.stats``) **lower bound** of its trial success rate is below the configured threshold,
+and ``Qualification.evidence()`` is then the ``reference_unqualified`` evidence (row 2) to pass to
+``route(..., extra_evidence=...)``. ``rule.trials`` (50 in the pilot) is how many trials a qualification
+runs (``qualification_seeds``): with 20 only 20/20 clears 0.8 at 95 %. A deterministic reference gives a
+**single pass/fail**: one fixed trial sequence, the same rule applied once, ``deterministic = True``, and
+no interval reported (repeating the run repeats the trials; there is nothing to pool).
 """
 
 from __future__ import annotations
@@ -81,6 +93,31 @@ class MimicOutput:
             raise ConfigError("reference.mimic.output.progress needs named groups 'successes' and 'attempts'")
 
 
+SEED_MODES = ("fixed", "per_run")
+
+
+@dataclass(frozen=True)
+class MimicSeed:
+    """How Mimic's datagen seed behaves across runs (VERIFY(V-mimic-seed)). ``fixed``: every run replays
+    one trial sequence (router seed s = trial s, at most ``max_trials``). ``per_run``: each run passes its
+    own seed with ``flag`` (the flag itself is unverified)."""
+    mode: str = "fixed"
+    flag: Optional[str] = None
+    max_trials: int = 200
+
+    def __post_init__(self) -> None:
+        if self.mode not in SEED_MODES:
+            raise ConfigError(f"reference.mimic.seed.mode must be one of {SEED_MODES}, got {self.mode!r}")
+        if self.mode == "per_run" and not self.flag:
+            raise ConfigError("reference.mimic.seed.mode per_run needs seed.flag (the CLI flag of the datagen seed)")
+        if self.max_trials < 1:
+            raise ConfigError("reference.mimic.seed.max_trials must be >= 1")
+
+    @property
+    def deterministic(self) -> bool:
+        return self.mode == "fixed"
+
+
 @dataclass(frozen=True)
 class MimicSection:
     script: str                              # generate_dataset.py, relative to the Arena root
@@ -93,6 +130,7 @@ class MimicSection:
     enable_cameras: bool = True
     extra_args: tuple[str, ...] = ()
     output: MimicOutput = field(default_factory=lambda: MimicOutput(DEFAULT_PROGRESS))
+    seed: MimicSeed = field(default_factory=MimicSeed)
 
     def __post_init__(self) -> None:
         if self.num_envs < 1:
@@ -104,13 +142,17 @@ class MimicSection:
 
 @dataclass(frozen=True)
 class QualificationRule:
-    """Unqualified when the Wilson lower bound of the trial success rate is below ``threshold``."""
+    """Unqualified when the Wilson lower bound of the trial success rate is below ``threshold``.
+    ``trials``: how many trials a qualification runs."""
     threshold: float
     confidence: float = 0.95
+    trials: int = 50
 
     def __post_init__(self) -> None:
         if not (0.0 < self.threshold <= 1.0 and 0.0 < self.confidence < 1.0):
             raise ConfigError("reference.qualification: need 0 < threshold <= 1 and 0 < confidence < 1")
+        if self.trials < 1:
+            raise ConfigError("reference.qualification.trials must be >= 1")
 
 
 @dataclass(frozen=True)
@@ -141,11 +183,20 @@ def reference_section_from_dict(d: Mapping) -> ReferenceSection:
                 ("script", "task", "env_args", "external_callback", "source_dataset"))
     if "output" in m:
         m["output"] = MimicOutput(**_strict(m["output"], MimicOutput, "reference.mimic.output", ("progress",)))
+    if "seed" in m:
+        sd = _strict(m["seed"], MimicSeed, "reference.mimic.seed", ("mode",))
+        m["seed"] = MimicSeed(str(sd["mode"]), None if sd.get("flag") is None else str(sd["flag"]),
+                              int(sd.get("max_trials", 200)))
     m["env_args"] = {str(k): str(v) for k, v in m["env_args"].items()}
     m["extra_args"] = tuple(str(x) for x in m.get("extra_args", ()))
-    q = _strict(top["qualification"], QualificationRule, "reference.qualification", ("threshold",))
+    q = _strict(top["qualification"], QualificationRule, "reference.qualification", ("threshold", "trials"))
     return ReferenceSection(str(top["actor_checkpoint"]), MimicSection(**m),
-                            QualificationRule(float(q["threshold"]), float(q.get("confidence", 0.95))))
+                            QualificationRule(float(q["threshold"]), float(q.get("confidence", 0.95)), int(q["trials"])))
+
+
+def qualification_seeds(rule: QualificationRule) -> list[int]:
+    """The seeds of a qualification run: ``0 .. trials-1`` (in ``fixed`` mode, trials 0 .. trials-1)."""
+    return list(range(rule.trials))
 
 
 # --------------------------------------------------------------------------- #
@@ -154,16 +205,22 @@ def reference_section_from_dict(d: Mapping) -> ReferenceSection:
 
 @dataclass(frozen=True)
 class MimicRunSpec:
-    """What ``RunInvocation.spec`` carries for a Mimic run (the runners name runs by ``run_name``)."""
+    """What ``RunInvocation.spec`` carries for a Mimic run (the runners name runs by ``run_name``).
+    ``trial_indices[i]`` is the trial whose outcome is the result for the i-th requested seed."""
     run_name: str
     num_trials: int
     num_envs: int
+    trial_indices: tuple[int, ...] = ()
+    run_seed: Optional[int] = None
+    deterministic: bool = True
 
 
 def mimic_argv(python: str, arena_root: Path, m: MimicSection, *, num_trials: int, input_file: Path,
-               output_file: Path, variations: Mapping[str, Any], app_flags: Sequence[str] = ()) -> list[str]:
-    """``generate_dataset.py`` with the trial count, the files, the stock Arena environment and the scene's
-    variation overrides last (``A:docs/.../sequential_static_manipulation/step_3_data_generation.rst:116-128``)."""
+               output_file: Path, variations: Mapping[str, Any], app_flags: Sequence[str] = (),
+               run_seed: Optional[int] = None) -> list[str]:
+    """``generate_dataset.py`` with the trial count, the files, the stock Arena environment, the run's
+    datagen seed (``per_run`` mode only) and the scene's variation overrides last
+    (``A:docs/.../sequential_static_manipulation/step_3_data_generation.rst:116-128``)."""
     argv = [python, str(Path(arena_root) / m.script), "--device", m.device,
             "--generation_num_trials", str(num_trials), "--num_envs", str(m.num_envs),
             "--input_file", str(input_file), "--output_file", str(output_file)]
@@ -173,6 +230,8 @@ def mimic_argv(python: str, arena_root: Path, m: MimicSection, *, num_trials: in
     for k, v in m.env_args.items():
         argv += [f"--{k}", v]
     argv += list(app_flags) + list(m.extra_args)
+    if run_seed is not None:
+        argv += [str(m.seed.flag), str(run_seed)]                   # VERIFY(V-mimic-seed): the flag reaches the datagen RNG
     argv += [hydra_override(p, v) for p, v in variations.items()]   # VERIFY(V-mimic-override)
     return argv
 
@@ -240,10 +299,22 @@ class MimicReference:
         m, cfg = self.section.mimic, self.cfg
         key = {"scene": scene.key(), "actor": actor.key(), "seeds": list(seeds), "variations": dict(variations)}
         out = cfg.output_root / "reference" / short_hash(key, 16)
-        # VERIFY(V-mimic-seed): the pilot env fixes the datagen seed (1), so two runs may draw the same trials.
-        argv = mimic_argv(cfg.arena_python, cfg.arena_root, m, num_trials=len(seeds), input_file=self.source_dataset(),
-                          output_file=out / "generated.hdf5", variations=variations, app_flags=cfg.app_flags)
-        spec = MimicRunSpec(run_name=f"mimic_{short_hash(key, 8)}", num_trials=len(seeds), num_envs=m.num_envs)
+        if m.seed.deterministic:
+            # VERIFY(V-mimic-seed): every run replays one trial sequence, so seed s is trial s of it.
+            bad = [s for s in seeds if not 0 <= s < m.seed.max_trials]
+            if bad:
+                raise ValueError(f"with a fixed Mimic datagen seed, seed s is trial s: need 0 <= s < "
+                                 f"{m.seed.max_trials} (reference.mimic.seed.max_trials), got {bad}")
+            indices, run_seed = tuple(seeds), None
+        else:
+            indices = tuple(range(len(seeds)))
+            run_seed = int(short_hash({"scene": scene.key(), "actor": actor.key(), "seeds": list(seeds)}, 8), 16)
+        num_trials = max(indices) + 1
+        argv = mimic_argv(cfg.arena_python, cfg.arena_root, m, num_trials=num_trials, input_file=self.source_dataset(),
+                          output_file=out / "generated.hdf5", variations=variations, app_flags=cfg.app_flags,
+                          run_seed=run_seed)
+        spec = MimicRunSpec(run_name=f"mimic_{short_hash(key, 8)}", num_trials=num_trials, num_envs=m.num_envs,
+                            trial_indices=indices, run_seed=run_seed, deterministic=m.seed.deterministic)
         return RunInvocation(argv=tuple(argv), cwd=cfg.arena_root, env={}, timeout_s=cfg.timeouts.run_s,
                              log_path=out / "mimic.log", output_dir=out, spec=spec)
 
@@ -259,21 +330,25 @@ class MimicReference:
         self.runner.run(inv)
         if not inv.log_path.is_file():
             raise ArenaRunError(f"Mimic run {inv.spec.run_name} left no log at {inv.log_path}", log_path=inv.log_path)
+        spec = inv.spec
         outcomes, (successes, attempts) = trial_outcomes(inv.log_path.read_text(encoding="utf-8", errors="replace"),
                                                          self.section.mimic.output)
-        if len(outcomes) < len(seeds):
-            raise MimicOutputError(f"Mimic run {inv.spec.run_name}: {len(outcomes)} attempts in the log, {len(seeds)} "
+        if len(outcomes) < spec.num_trials:
+            raise MimicOutputError(f"Mimic run {spec.run_name}: {len(outcomes)} attempts in the log, {spec.num_trials} "
                                    f"trials asked for (VERIFY(V-mimic-out)); log {inv.log_path}")
-        used = outcomes[:len(seeds)]
+        used = [outcomes[i] for i in spec.trial_indices]
         meta = {"reference": "mimic", "actor": actor.key(), "scene": scene.key(), "seeds": seeds,
-                "trials": used, "attempts_total": attempts, "successes_total": successes, "paired": False,
-                "argv": list(inv.argv), "log": str(inv.log_path), "variations": dict(variations)}
+                "trials": used, "trial_indices": list(spec.trial_indices), "attempts_total": attempts,
+                "successes_total": successes, "paired": False, "deterministic": spec.deterministic,
+                "run_seed": spec.run_seed, "argv": list(inv.argv), "log": str(inv.log_path),
+                "variations": dict(variations)}
         meta_path = inv.output_dir / META_FILE
         meta_path.write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
         paths = {"vla_meta": str(meta_path), "log": str(inv.log_path), "output_file": argv_value(inv.argv, "--output_file")}
         return [EpisodeResult(s, ok, {"reference": "mimic", "paired": False, "trial_index": i,
+                                      "deterministic": spec.deterministic, "run_seed": spec.run_seed,
                                       "attempts_total": attempts, "variations": dict(variations), "paths": paths})
-                for i, (s, ok) in enumerate(zip(seeds, used))]
+                for s, ok, i in zip(seeds, used, spec.trial_indices)]
 
 
 def argv_value(argv: Sequence[str], flag: str) -> Optional[str]:
@@ -287,36 +362,67 @@ def argv_value(argv: Sequence[str], flag: str) -> Optional[str]:
 
 @dataclass(frozen=True)
 class Qualification:
+    """``deterministic``: the reference replays one fixed trial sequence (``fixed`` datagen seed). It is
+    then a single pass/fail: ``qualified`` applies the same rule once to that sequence, and no interval
+    is reported (``interval()`` is None, ``to_dict`` has ``lower`` / ``upper`` None), because repeating
+    the run repeats the trials."""
     condition: str                           # SceneSpec.key() of the qualified scene
     k: int
     n: int
-    lower: float
+    lower: float                             # the rule's Wilson bound over the n trials
     upper: float
     rule: QualificationRule
+    deterministic: bool = False
 
     @property
     def qualified(self) -> bool:
         return self.lower >= self.rule.threshold
 
+    @property
+    def rate(self) -> float:
+        return self.k / self.n
+
+    def interval(self) -> Optional[tuple[float, float]]:
+        return None if self.deterministic else (self.lower, self.upper)
+
     def to_dict(self) -> dict:
-        return {"condition": self.condition, "k": self.k, "n": self.n, "lower": self.lower, "upper": self.upper,
-                "threshold": self.rule.threshold, "confidence": self.rule.confidence, "qualified": self.qualified}
+        lo, hi = self.interval() or (None, None)
+        return {"condition": self.condition, "k": self.k, "n": self.n, "rate": self.rate, "lower": lo, "upper": hi,
+                "threshold": self.rule.threshold, "confidence": self.rule.confidence, "qualified": self.qualified,
+                "deterministic": self.deterministic}
 
     def evidence(self) -> Optional[Evidence]:
         """``reference_unqualified`` (row 2) when unqualified; None when qualified."""
         if self.qualified:
             return None
+        if self.deterministic:
+            why = (f"deterministic reference (one fixed trial sequence, single pass/fail): fails the "
+                   f"{self.rule.confidence:.0%} Wilson rule at threshold {self.rule.threshold:.3f}")
+        else:
+            why = (f"Wilson {self.rule.confidence:.0%} lower bound {self.lower:.3f} < threshold "
+                   f"{self.rule.threshold:.3f}")
         return Evidence(f"ref.unqualified.{short_hash(self.condition, 8)}", EVIDENCE_SOURCE,
                         V.SIG_REFERENCE_UNQUALIFIED, 1.0, f"reference.{self.condition}",
-                        f"the reference controller succeeded in {self.k} of {self.n} trials on {self.condition}; "
-                        f"Wilson {self.rule.confidence:.0%} lower bound {self.lower:.3f} < threshold "
-                        f"{self.rule.threshold:.3f}")
+                        f"the reference controller succeeded in {self.k} of {self.n} trials on {self.condition}; {why}")
 
 
 def qualify(results: Sequence[EpisodeResult], rule: QualificationRule, condition: str) -> Qualification:
-    """The reference's qualification on one condition from its trial results."""
+    """The reference's qualification on one condition from its trial results.
+
+    Results that carry ``logs["deterministic"] = True`` (a ``fixed`` Mimic seed) must all do so and must be
+    distinct trials (``trial_index``): the same trial twice is a repeated run, not more data. Results
+    without the flag (a seed varied per run, or another backend) are pooled as independent trials."""
     if not results:
         raise ValueError("no reference trials to qualify")
+    flags = {bool(r.logs.get("deterministic", False)) for r in results}
+    if len(flags) > 1:
+        raise ValueError("reference trials mix a deterministic and a per-run-seeded reference")
+    deterministic = flags == {True}
+    if deterministic:
+        idx = [r.logs.get("trial_index", r.seed) for r in results]
+        if len(set(idx)) != len(idx):
+            raise ValueError(f"a deterministic reference repeats its trials; trials {sorted(i for i in set(idx) if idx.count(i) > 1)} "
+                             f"appear more than once (repeated runs are not new data)")
     k = sum(bool(r.success) for r in results)
     p = wilson_interval(k, len(results), rule.confidence)
-    return Qualification(condition, k, len(results), p.lo, p.hi, rule)
+    return Qualification(condition, k, len(results), p.lo, p.hi, rule, deterministic)

@@ -450,7 +450,7 @@ Rejected: skipping the call on rows the router decides alone (loses the logged l
 - Qualification (ISSUES #5) is vla-isaac's `qualify()`: unqualified when the Wilson lower bound (`ladder.stats.wilson_interval`) of the trial success rate is below a configured threshold. Its `reference_unqualified` evidence reaches `decide` through `route(..., extra_evidence=...)` (row 2); there is still no producer inside the router.
 
 **Known limits**
-- If Mimic's datagen seed cannot be changed per run, extending G2 from 10 to 20 seeds runs a second 10-trial Mimic run that may repeat the first one's outcomes (V-mimic-seed). The router's interval would then be too narrow.
+- ~~If Mimic's datagen seed cannot be changed per run, extending G2 from 10 to 20 seeds runs a second 10-trial Mimic run that may repeat the first one's outcomes (V-mimic-seed).~~ Handled in vla-isaac after Phase 4 (`reference.mimic.seed.mode`). With a fixed seed (the default until V-mimic-seed is checked on the GPU), router seed s is trial s of the one deterministic sequence. A G2 extension to seeds 10..19 therefore runs 20 trials and returns trials 10..19, never a repeat, and the results carry `logs["deterministic"] = True`. With a per-run seed, each run passes its own datagen seed. Still no router change.
 - `CachedBackend` keys reference results by seed like any other actor; a cached seed always returns the same trial, which is consistent with the above but means a cached reference run cannot be "re-drawn".
 
 ## Router change 6: the config contract says which fields it could not compare (sim side, after Phase 4; approved before Phase 5)

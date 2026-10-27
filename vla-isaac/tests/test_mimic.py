@@ -19,8 +19,9 @@ from router.schemas import ActionPipeline, ActorKind, ActorRef, CodeRef, Episode
 
 from vla_isaac.arena_ext.actuator_env import ENV_BASE, ENV_NAME, ENV_OVERRIDES
 from vla_isaac.config import ConfigError, load_task_config
-from vla_isaac.reference.mimic import (MimicConfigError, MimicOutput, MimicOutputError, MimicReference,
-                                       QualificationRule, qualify, reference_section_from_dict, trial_outcomes)
+from vla_isaac.reference.mimic import (MimicConfigError, MimicOutput, MimicOutputError, MimicReference, MimicSeed,
+                                       QualificationRule, qualification_seeds, qualify, reference_section_from_dict,
+                                       trial_outcomes)
 from vla_isaac.runner.subprocess_runner import ArenaRunError, ArenaRunner, RunInvocation
 from vla_isaac.scene.factors import hydra_override
 
@@ -28,6 +29,11 @@ from tests.helpers import DARK, NOMINAL, PILOT_TASK, POLICY, REF_RAW, REF_WRAP, 
 
 TASK = load_task_config(PILOT_TASK)
 OUTPUT = TASK.reference.mimic.output
+PER_RUN = MimicSeed("per_run", "--seed")
+
+
+def with_seed(task, seed: MimicSeed):
+    return replace(task, reference=replace(task.reference, mimic=replace(task.reference.mimic, seed=seed)))
 GAINS = {"right_arm": {"stiffness": 400.0}}
 
 
@@ -61,13 +67,14 @@ class FakeMimicRunner(ArenaRunner):
         inv.log_path.write_text(self.log if self.log is not None else fixture_log(self.outcomes), encoding="utf-8")
 
 
-def make_reference(tmp_path, *, outcomes=(True, True, False, True), datasets=True, **kw):
+def make_reference(tmp_path, *, outcomes=(True, True, False, True), datasets=True, seed: MimicSeed | None = None, **kw):
     tmp_path.mkdir(parents=True, exist_ok=True)
     source = tmp_path / "annotated.hdf5"
     source.write_bytes(b"FIXTURE")
     cfg = backend_config(tmp_path, tmp_path, datasets={TASK.reference.mimic.source_dataset: source} if datasets else {})
     runner = FakeMimicRunner(outcomes=tuple(outcomes), **kw)
-    return MimicReference(cfg, TASK, runner=runner), runner, source
+    task = TASK if seed is None else with_seed(TASK, seed)
+    return MimicReference(cfg, task, runner=runner), runner, source
 
 
 def variations(scene=DARK):
@@ -100,17 +107,19 @@ def test_the_progress_pattern_must_name_successes_and_attempts():
 
 # ---- one result per seed, in trial order, unpaired -------------------------------------------------
 
-def test_one_result_per_requested_seed_in_trial_order_and_unpaired(tmp_path):
-    ref, runner, _ = make_reference(tmp_path, outcomes=(True, False, True))
+def test_per_run_seed_one_result_per_requested_seed_in_trial_order_and_unpaired(tmp_path):
+    ref, runner, _ = make_reference(tmp_path, outcomes=(True, False, True), seed=PER_RUN)
     out = ref.run(DARK, REF_RAW, [40, 10, 7], variations=variations())
     assert [(r.seed, r.success, r.logs["trial_index"]) for r in out] == [(40, True, 0), (10, False, 1), (7, True, 2)]
     assert all(r.logs["paired"] is False and r.logs["reference"] == "mimic" for r in out)
+    assert all(r.logs["deterministic"] is False for r in out)
     meta = json.loads(Path(out[0].logs["paths"]["vla_meta"]).read_text())
     assert meta["trials"] == [True, False, True] and meta["paired"] is False and meta["seeds"] == [40, 10, 7]
+    assert meta["deterministic"] is False and meta["run_seed"] == out[0].logs["run_seed"]
 
 
 def test_extra_attempts_are_counted_but_only_the_first_n_are_the_trials(tmp_path):
-    ref, _, _ = make_reference(tmp_path, outcomes=(False, True, False, True, True))   # guarantee: 3 successes
+    ref, _, _ = make_reference(tmp_path, outcomes=(False, True, False, True, True), seed=PER_RUN)  # guarantee: 3 successes
     out = ref.run(NOMINAL, REF_RAW, [0, 1, 2], variations={})
     assert [r.success for r in out] == [False, True, False] and {r.logs["attempts_total"] for r in out} == {5}
 
@@ -145,7 +154,7 @@ def test_the_reference_never_gets_the_actuated_launcher_or_the_codes_gains(tmp_p
     rig = make_backend(tmp_path, eval_config=with_eval(env={"actuator_overrides": GAINS}))
     source = tmp_path / "annotated.hdf5"
     source.write_bytes(b"FIXTURE")
-    runner = FakeMimicRunner(outcomes=(True, False))
+    runner = FakeMimicRunner(outcomes=(False,) * 3 + (True,) + (False,) * 5 + (False,))
     ref = MimicReference(replace(rig.backend.cfg, datasets={TASK.reference.mimic.source_dataset: source}), TASK,
                          runner=runner)
     rig.backend.reference = ref
@@ -200,7 +209,11 @@ def test_the_reference_section_is_strict():
     d = yaml.safe_load(PILOT_TASK.read_text())["reference"]
     assert reference_section_from_dict(d) == TASK.reference
     with pytest.raises(ConfigError, match="unknown keys"):
-        reference_section_from_dict({**d, "mimic": {**d["mimic"], "seed": 3}})
+        reference_section_from_dict({**d, "mimic": {**d["mimic"], "num_workers": 3}})
+    with pytest.raises(ConfigError, match="unknown keys"):
+        reference_section_from_dict({**d, "mimic": {**d["mimic"], "seed": {**d["mimic"]["seed"], "value": 1}}})
+    with pytest.raises(ConfigError, match="missing keys"):
+        reference_section_from_dict({**d, "qualification": {"threshold": 0.8}})        # the trial count is config
     with pytest.raises(ConfigError, match="never the actuated launcher"):
         reference_section_from_dict({**d, "mimic": {**d["mimic"], "extra_args": ["--external_environment_class_path",
                                                                                    "vla_isaac.arena_ext:X"]}})
@@ -245,3 +258,104 @@ def test_unqualified_evidence_is_reference_unqualified_and_routes_to_row_2():
              rep(V.R_C1, Outcome.RESTORED), rep(V.restore_id("lighting.intensity"), Outcome.NO_EFFECT),
              rep(V.R_C_ALL, Outcome.NO_EFFECT)]
     assert decide([e], table).row == 2 and decide([], table).row != 2
+
+
+# ---- the datagen seed: fixed (deterministic) or per run (VERIFY(V-mimic-seed)) --------------------
+
+def test_the_pilot_assumes_a_fixed_seed_and_qualifies_on_50_trials():
+    m, rule = TASK.reference.mimic, TASK.reference.qualification
+    assert m.seed.deterministic and m.seed.mode == "fixed"
+    assert rule.trials == 50 and qualification_seeds(rule) == list(range(50))
+
+
+def test_fixed_seed_router_seed_s_is_trial_s_of_the_one_sequence(tmp_path):
+    sequence = (True, False, False, True, True, False, True)
+    ref, runner, _ = make_reference(tmp_path, outcomes=sequence)
+    out = ref.run(DARK, REF_RAW, [4, 1, 6], variations=variations())
+    argv = list(runner.calls[0].argv)
+    assert argv[argv.index("--generation_num_trials") + 1] == "7"                  # max(seeds) + 1 trials
+    assert "--seed" not in argv                                                     # nothing to vary
+    assert [(r.seed, r.success, r.logs["trial_index"]) for r in out] == [(4, True, 4), (1, False, 1), (6, True, 6)]
+    assert all(r.logs["deterministic"] is True and r.logs["run_seed"] is None and r.logs["paired"] is False
+               for r in out)
+
+
+def test_fixed_seed_an_extension_gets_new_trials_not_a_repeat(tmp_path):
+    """G2 extended from 10 to 20 seeds: the second request (seeds 10..19) must not replay trials 0..9."""
+    sequence = tuple([True] * 10 + [False] * 10)                       # every run replays this sequence
+    ref, runner, _ = make_reference(tmp_path, outcomes=sequence)
+    first = ref.run(NOMINAL, REF_RAW, list(range(10)), variations={})
+    more = ref.run(NOMINAL, REF_RAW, list(range(10, 20)), variations={})
+    assert [r.success for r in first] == [True] * 10 and [r.success for r in more] == [False] * 10
+    assert [r.logs["trial_index"] for r in more] == list(range(10, 20))
+    q = qualify(first + more, TASK.reference.qualification, NOMINAL.key())
+    assert (q.k, q.n, q.deterministic) == (10, 20, True)
+
+
+def test_fixed_seed_refuses_seeds_outside_the_sequence(tmp_path):
+    ref, runner, _ = make_reference(tmp_path, seed=MimicSeed("fixed", max_trials=5))
+    for bad in ([5], [-1]):
+        with pytest.raises(ValueError, match="seed s is trial s"):
+            ref.run(NOMINAL, REF_RAW, bad, variations={})
+    assert not runner.calls
+
+
+def test_per_run_seed_passes_its_own_seed_before_the_scene_overrides(tmp_path):
+    ref, runner, _ = make_reference(tmp_path, outcomes=(True,) * 4, seed=PER_RUN)
+    a = ref.run(DARK, REF_RAW, [0, 1], variations=variations())
+    b = ref.run(DARK, REF_RAW, [2, 3], variations=variations())
+    again = ref.run(DARK, REF_RAW, [0, 1], variations=variations())
+    argvs = [list(inv.argv) for inv in runner.calls]
+    seeds = [argv[argv.index("--seed") + 1] for argv in argvs]
+    assert seeds[0] != seeds[1] and seeds[0] == seeds[2] == str(a[0].logs["run_seed"])   # a new request: a new draw
+    overrides = [hydra_override(k, v) for k, v in variations().items()]
+    assert argvs[0][-len(overrides):] == overrides and argvs[0].index("--seed") < len(argvs[0]) - len(overrides)
+    assert argvs[0][argvs[0].index("--generation_num_trials") + 1] == "2"
+    assert [r.logs["trial_index"] for r in b] == [0, 1] and again == a
+
+
+def test_per_run_mode_needs_a_seed_flag_and_modes_are_checked():
+    with pytest.raises(ConfigError, match="seed.flag"):
+        MimicSeed("per_run")
+    with pytest.raises(ConfigError, match="mode must be one of"):
+        MimicSeed("sometimes")
+    with pytest.raises(ConfigError, match="max_trials"):
+        MimicSeed("fixed", max_trials=0)
+
+
+# ---- qualification of a deterministic reference: a single pass/fail -------------------------------
+
+def det_trials(k: int, n: int, indices=None) -> list[EpisodeResult]:
+    indices = list(range(n)) if indices is None else indices
+    return [EpisodeResult(i, j < k, {"deterministic": True, "trial_index": i}) for j, i in enumerate(indices)]
+
+
+def test_a_deterministic_reference_is_a_single_pass_fail_without_an_interval():
+    rule = TASK.reference.qualification
+    passed = qualify(det_trials(50, 50), rule, NOMINAL.key())
+    assert passed.deterministic and passed.qualified and passed.interval() is None
+    d = passed.to_dict()
+    assert d["deterministic"] is True and d["qualified"] is True and d["lower"] is None and d["upper"] is None
+    assert (d["k"], d["n"], d["rate"]) == (50, 50, 1.0)
+    failed = qualify(det_trials(19, 20), rule, DARK.key())            # the same rule: 19/20 fails at 0.8
+    assert not failed.qualified and failed.interval() is None
+    e = failed.evidence()
+    assert e.signal == V.SIG_REFERENCE_UNQUALIFIED and "deterministic reference" in e.detail
+    assert "single pass/fail" in e.detail and "lower bound" not in e.detail
+
+
+def test_a_deterministic_reference_refuses_repeated_trials_and_mixing():
+    rule = TASK.reference.qualification
+    with pytest.raises(ValueError, match="repeats its trials"):
+        qualify(det_trials(10, 10) + det_trials(10, 10), rule, "c")       # the same run twice is not 20 trials
+    mixed = det_trials(5, 5) + [EpisodeResult(9, True, {"deterministic": False})]
+    with pytest.raises(ValueError, match="mix"):
+        qualify(mixed, rule, "c")
+
+
+def test_a_per_run_seeded_reference_pools_runs_and_reports_the_interval():
+    rule = TASK.reference.qualification
+    runs = [EpisodeResult(i, i % 25 != 0, {"deterministic": False, "run_seed": i // 25}) for i in range(50)]
+    q = qualify(runs, rule, NOMINAL.key())
+    assert not q.deterministic and (q.k, q.n) == (48, 50) and q.qualified
+    assert q.interval() == (q.lower, q.upper) and q.to_dict()["lower"] == pytest.approx(0.8654, abs=1e-3)
