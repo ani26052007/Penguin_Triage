@@ -64,7 +64,8 @@ traces:                                   # vla_isaac.traces (Phase 3)
   ee:                                     # GR1 has no ee_frame transformer at Arena 7632eb7d5e, so the wrapper logs the
     source: instrument                    # policy's own EE observation each step. Frame vs object pose: VERIFY(V-ee-frame)
     keys: {left: policy.left_eef_pos, right: policy.right_eef_pos}
-  hand_closure:                           # (open, closed) per finger joint: PLACEHOLDER values, VERIFY(V-hand-limits)
+  hand_closure:                           # (open, closed) per finger joint: PLACEHOLDER values, VERIFY(V-hand-limits).
+                                          # The grasping hand is chosen per episode (vla_isaac.traces.events.choose_hand)
     hands:
       left:
         L_index_proximal_joint: [0.0, 1.5]
@@ -76,7 +77,6 @@ traces:                                   # vla_isaac.traces (Phase 3)
         R_middle_proximal_joint: [0.0, 1.5]
         R_ring_proximal_joint: [0.0, 1.5]
         R_pinky_proximal_joint: [0.0, 1.5]
-    width_hand: right                     # VERIFY(V-hand-limits): which hand grasps the bottle
   reach_distance_m: 0.10
   grasp:                                  # thresholds are first guesses, to calibrate on nominal runs
     closure_threshold: 0.5

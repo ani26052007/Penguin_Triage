@@ -37,8 +37,8 @@ def kind(k: int) -> str:
     return KINDS[k % 4]
 
 
-def make_rig(tmp_path, *, delay: int = 0, **kw):
-    writer = TraceWriter(LAYOUT, failure_kind=kind, delay=delay)
+def make_rig(tmp_path, *, delay: int = 0, hand=lambda k: "right", **kw):
+    writer = TraceWriter(LAYOUT, failure_kind=kind, delay=delay, hand=hand)
     runner = FakeArenaRunner(success=lambda spec, k: kind(k) == "success", on_run=writer)
     return make_backend(tmp_path, runner=runner, **kw), writer
 
@@ -131,6 +131,22 @@ def test_behavior_traces_have_the_grasp_moment_and_the_phases_with_the_door_as_p
     assert by_kind["grasp"].failure_phase() == "grasp" and by_kind["grasp"].grasp is None
     assert by_kind["reach"].failure_phase() == "reach"
     assert all(t.code_key == code.key() for t in traces)
+
+
+def test_the_grasping_hand_is_chosen_per_episode_and_recorded_in_the_notes(tmp_path):
+    hands = {0: "left", 1: "right", 2: "left", 3: "right"}                 # kinds: success, door, grasp, reach
+    _, _, _, inc = traced(tmp_path, seeds=range(4), hand=lambda k: hands[k])
+    behavior = IsaacBehaviorSource(LAYOUT).load(inc, Mode.CLEAN)
+    assert [t.notes for t in behavior] == [
+        {"grasp_hand": "left", "width_hand": "left", "hand_basis": "grasp"},       # left-hand grasp
+        {"grasp_hand": "right", "width_hand": "right", "hand_basis": "grasp"},     # right-hand grasp
+        {"grasp_hand": "left", "width_hand": "left", "hand_basis": "attempt"},     # closes, the object stays
+        {"grasp_hand": None, "width_hand": "right", "hand_basis": "nearest"}]      # no grasp
+    assert behavior[0].grasp.step == CLOSE_AT and behavior[2].grasp is None and behavior[3].grasp is None
+    assert [type(t).from_dict(t.to_dict()) for t in behavior] == behavior
+    traces = IsaacTraceSource(LAYOUT).load(inc, Mode.CLEAN)
+    for t in traces:            # the chosen hand's closure is the width (the reach episode's right hand closes out of reach)
+        assert t.gripper_width[0] == pytest.approx(1.0) and t.gripper_width[-1] == pytest.approx(0.0)
 
 
 def test_without_progress_tracking_only_the_offline_subtasks_are_reported(clean):

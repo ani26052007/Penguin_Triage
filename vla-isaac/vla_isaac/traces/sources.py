@@ -17,6 +17,11 @@ record traces, a missing or unreadable file, or an episode missing from one of t
 ``TraceUnavailable``: a missing log never reads as a clean one. A reference to runs of the other mode
 is a ``ValueError`` (a wiring error, as in the router's in-memory sources).
 
+The grasping hand is chosen per episode (``vla_isaac.traces.events.choose_hand``). Its closure is the
+episode's gripper width, and the choice is recorded in the behaviour trace's ``notes``
+(``IsaacBehaviorTrace``: the router's ``BehaviorTrace`` has no notes field, so the record is a subclass
+with one; the router reads it as a plain ``BehaviorTrace``).
+
 Not logged: contact penetration (``SimHealth.max_penetration`` stays 0.0) and the missing-texture
 fraction of frames.
 """
@@ -24,7 +29,7 @@ fraction of frames.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
@@ -34,7 +39,7 @@ from router.schemas import Incident, Mode
 
 from vla_isaac.results.episode_jsonl import EpisodeRecord, EpisodeResultsError, index_records, read_records
 from vla_isaac.seeds import join_seed
-from vla_isaac.traces.events import fired, grasp_event, reach_step, subtask_progress
+from vla_isaac.traces.events import HandChoice, choose_hand, fired, reach_step, subtask_progress
 from vla_isaac.traces.hand_closure import closure, opening
 from vla_isaac.traces.hdf5_reader import (EpisodeArrays, H5pyStore, TrajectoryError, TrajectoryStore, dataset_files,
                                           read_episodes)
@@ -43,6 +48,21 @@ from vla_isaac.traces.layout import TraceLayout
 
 META_FILE = "vla_meta.json"
 StoreFactory = Callable[[Path, str], TrajectoryStore]
+
+
+@dataclass(frozen=True)
+class IsaacBehaviorTrace(BehaviorTrace):
+    """A ``BehaviorTrace`` with the episode's ``notes`` (the grasping hand: ``HandChoice.notes``)."""
+    notes: Mapping[str, Any] = field(default_factory=dict, hash=False)
+
+    def to_dict(self) -> dict:
+        return {**super().to_dict(), "notes": dict(self.notes)}
+
+    @classmethod
+    def from_dict(cls, d: Mapping) -> "IsaacBehaviorTrace":
+        base = BehaviorTrace.from_dict(d)
+        return cls(base.seed, base.mode, base.success, base.grasp, base.subtasks, base.code_key,
+                   dict(d.get("notes", {})))
 
 
 @dataclass(frozen=True)
@@ -136,8 +156,15 @@ def _ee(layout: TraceLayout, ep: LoadedEpisode) -> dict[str, tuple]:
     return {hand: tuple(r[:3] for r in ep.instrument.observations[key]) for hand, key in layout.ee_keys.items()}
 
 
+def hand_choice(layout: TraceLayout, ep: LoadedEpisode) -> HandChoice:
+    """The episode's grasping hand, from the tracked hand closures, the end effectors and the object."""
+    a = ep.arrays
+    closures = {h: closure(a.joint_pos_state, layout.state_joints, joints) for h, joints in layout.hands.items()}
+    return choose_hand(closures, _ee(layout, ep), a.object_pos, layout.grasp, layout.reach_distance_m)
+
+
 def episode_trace(layout: TraceLayout, ep: LoadedEpisode, mode: Mode) -> EpisodeTrace:
-    a, hand = ep.arrays, layout.hands[layout.width_hand]
+    a, hand = ep.arrays, layout.hands[hand_choice(layout, ep).hand]
     rest: tuple = ()
     if layout.object_rest_event is not None:
         step = fired(ep.record.raw.get("progress", {}).get("events", []), layout.object_rest_event)
@@ -152,19 +179,19 @@ def episode_trace(layout: TraceLayout, ep: LoadedEpisode, mode: Mode) -> Episode
         code_key=ep.code_key)
 
 
-def behavior_trace(layout: TraceLayout, ep: LoadedEpisode, mode: Mode) -> BehaviorTrace:
+def behavior_trace(layout: TraceLayout, ep: LoadedEpisode, mode: Mode) -> IsaacBehaviorTrace:
     a = ep.arrays
     ee = _ee(layout, ep)
-    closures = {h: closure(a.joint_pos_state, layout.state_joints, joints) for h, joints in layout.hands.items()}
-    grasp = grasp_event(closures, ee, a.object_pos, layout.grasp)
+    choice = hand_choice(layout, ep)
+    grasp = choice.grasp
     completed: dict[str, bool] = {"reach": reach_step(ee, a.object_pos, layout.reach_distance_m) is not None,
                                   "grasp": grasp is not None}
     progress: Mapping[str, Any] | None = ep.record.raw.get("progress")
     if progress is not None:                    # without progress tracking, only the offline subtasks are known
         events = progress.get("events", [])
         completed.update({name: fired(events, m) is not None for name, m in layout.subtasks.items()})
-    return BehaviorTrace(ep.seed, mode, ep.success, grasp.record if grasp else None,
-                         subtask_progress(completed, layout.phase_map), ep.code_key)
+    return IsaacBehaviorTrace(ep.seed, mode, ep.success, grasp.record if grasp else None,
+                              subtask_progress(completed, layout.phase_map), ep.code_key, choice.notes())
 
 
 class IsaacTraceSource(TraceSource):
@@ -179,5 +206,5 @@ class IsaacBehaviorSource(BehaviorSource):
     def __init__(self, layout: TraceLayout, store_factory: Optional[StoreFactory] = None) -> None:
         self.loader = RunLoader(layout, store_factory)
 
-    def _load(self, incident: Incident, mode: Mode) -> list[BehaviorTrace]:
+    def _load(self, incident: Incident, mode: Mode) -> list[IsaacBehaviorTrace]:
         return [behavior_trace(self.loader.layout, ep, Mode(mode)) for ep in self.loader.load(incident, mode)]

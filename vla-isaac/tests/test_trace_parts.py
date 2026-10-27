@@ -14,7 +14,7 @@ import yaml
 from router.prereq.behavior_trace import SubtaskProgress
 
 from vla_isaac.config import ConfigError, load_task_config
-from vla_isaac.traces.events import fired, grasp_event, reach_step, subtask_progress
+from vla_isaac.traces.events import choose_hand, fired, grasp_event, reach_step, subtask_progress
 from vla_isaac.traces.hand_closure import closure, opening
 from vla_isaac.traces.hdf5_reader import H5pyStore, TrajectoryError, read_episodes
 from vla_isaac.traces.instrument_reader import InstrumentError, read_episode
@@ -60,7 +60,8 @@ def _hands(s):
 
 
 def _closures(s):
-    return {"left": [0.0] * len(s["closure"]), "right": s["closure"].tolist()}
+    idle = [0.0] * len(s["closure"])
+    return {h: s["closure"].tolist() if h == s["hand"] else idle for h in ("left", "right")}
 
 
 def test_reach_is_the_first_step_an_end_effector_is_within_the_distance():
@@ -71,17 +72,71 @@ def test_reach_is_the_first_step_an_end_effector_is_within_the_distance():
     assert reach_step(_hands(r), r["object"].tolist(), LAYOUT.reach_distance_m) is None
 
 
+def _grasp(s):
+    return grasp_event(_closures(s), _hands(s), s["object"].tolist(), LAYOUT.grasp, LAYOUT.reach_distance_m)
+
+
+def _choice(s):
+    return choose_hand(_closures(s), _hands(s), s["object"].tolist(), LAYOUT.grasp, LAYOUT.reach_distance_m)
+
+
 def test_grasp_needs_the_closure_crossing_and_the_object_moving_with_the_hand():
     s = script("success")
-    g = grasp_event(_closures(s), _hands(s), s["object"].tolist(), LAYOUT.grasp)
+    g = _grasp(s)
     assert (g.step, g.hand) == (CLOSE_AT, "right") and g.record.ee_pos == pytest.approx(g.record.target_pos)
     still = script("grasp")                                             # closes, the object stays
-    assert grasp_event(_closures(still), _hands(still), still["object"].tolist(), LAYOUT.grasp) is None
-    short = {k: v[:CLOSE_AT + LAYOUT.grasp.window] for k, v in s.items()}   # the window runs past the end
-    assert grasp_event(_closures(short), _hands(short), short["object"].tolist(), LAYOUT.grasp) is None
+    assert _grasp(still) is None
+    short = {k: v[:CLOSE_AT + LAYOUT.grasp.window] if k != "hand" else v for k, v in s.items()}   # window past the end
+    assert _grasp(short) is None
     away = dict(s, object=s["object"] + np.array([0.0, 0.0, 0.0]))
     away["right"] = s["right"] + np.linspace(0, 0.2, len(s["right"]))[:, None] * np.array([1.0, 0, 0])
-    assert grasp_event(_closures(away), _hands(away), away["object"].tolist(), LAYOUT.grasp) is None
+    assert _grasp(away) is None
+
+
+# ---- the grasping hand, per episode ---------------------------------------------------------------
+
+@pytest.mark.parametrize("hand", ["left", "right"])
+def test_the_grasping_hand_is_the_one_that_closes_within_reach_and_moves_the_object(hand):
+    s = script("success", hand=hand)
+    c = _choice(s)
+    assert (c.hand, c.basis, c.grasp.hand, c.grasp.step) == (hand, "grasp", hand, CLOSE_AT)
+    assert c.notes() == {"grasp_hand": hand, "width_hand": hand, "hand_basis": "grasp"}
+    assert c.grasp.record.ee_pos == pytest.approx(tuple(s[hand][CLOSE_AT]))
+
+
+def test_no_grasp_names_no_grasping_hand_and_takes_the_nearest_hand_for_the_width():
+    r = script("reach")                                                 # the right hand never comes within reach
+    c = _choice(r)
+    assert c.grasp is None and c.grasp_hand is None and c.basis == "nearest" and c.hand == "right"
+    assert c.notes() == {"grasp_hand": None, "width_hand": "right", "hand_basis": "nearest"}
+    away = script("reach", hand="left")                                 # the left hand comes nearest, closes
+    away["left"] = away["left"] - np.array([0.15, 0.0, 0.0])             # 0.15 m away: nearer, out of reach
+    assert _choice(away).hand == "left" and _choice(away).grasp_hand is None
+
+
+def test_a_closure_within_reach_that_does_not_move_the_object_is_an_attempt_with_that_hand():
+    c = _choice(script("grasp", hand="left"))
+    assert (c.hand, c.basis, c.grasp, c.grasp_hand) == ("left", "attempt", None, "left")
+
+
+def test_a_hand_that_closes_out_of_reach_is_not_the_grasping_hand():
+    s = script("success", hand="right")
+    closures = _closures(s)
+    closures["left"] = [0.0] * 10 + [1.0] * (len(s["closure"]) - 10)   # the left hand closes first, 0.4 m away
+    c = choose_hand(closures, _hands(s), s["object"].tolist(), LAYOUT.grasp, LAYOUT.reach_distance_m)
+    assert (c.hand, c.basis, c.grasp.step) == ("right", "grasp", CLOSE_AT)
+
+
+def test_two_hands_crossing_at_the_same_step_go_to_the_nearer_hand():
+    s = script("success", hand="right")
+    hands = _hands(s)
+    on = np.array(hands["right"])                                       # on the object from step 20
+    hands["right"] = (on + np.array([0.0, -0.03, 0.0])).tolist()        # 0.03 m from the object
+    for nearer, offset in (("right", 0.05), ("left", 0.01)):
+        hands["left"] = (on + np.array([0.0, offset, 0.0])).tolist()    # both within reach, moving with the object
+        closures = {h: s["closure"].tolist() for h in ("left", "right")}
+        c = choose_hand(closures, hands, s["object"].tolist(), LAYOUT.grasp, LAYOUT.reach_distance_m)
+        assert (c.hand, c.basis, c.grasp.step) == (nearer, "grasp", CLOSE_AT)
 
 
 def test_events_mark_subtasks_and_the_phase_map_orders_them_as_router_phases():
@@ -176,7 +231,7 @@ def _traces() -> dict:
     (lambda d: d["phase_map"].update(wave="post_place"), "unknown subtasks"),
     (lambda d: d["instrument"].update(obs_keys=["policy.left_eef_pos"]), "not in instrument.obs_keys"),
     (lambda d: d["hand_closure"]["hands"]["right"].update(R_nonexistent_joint=[0, 1]), "state and an action joint"),
-    (lambda d: d["hand_closure"].update(width_hand="third"), "width_hand"),
+    (lambda d: d["hand_closure"].update(width_hand="right"), "chosen per episode"),
     (lambda d: d["ee"].update(source="camera"), "'instrument' or 'hdf5'"),
     (lambda d: d["hdf5"].pop("joint_cmd"), "missing keys"),
     (lambda d: d["joints"].update(state="nope.yaml"), "no joint-space file"),

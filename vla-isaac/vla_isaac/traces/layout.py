@@ -9,7 +9,7 @@ Two sources, both written by a run that records traces (``IsaacBackend.run(..., 
 
 Everything task-specific is here: the HDF5 key paths (Isaac Lab's recorder layout is unread,
 VERIFY(V-hdf5-keys)), the joint orders, the object, the end-effector source, the hand-closure joints,
-the reach / grasp thresholds, the progress events that mark subtasks, and the map from the task's
+the reach / grasp thresholds (the grasping hand is chosen per episode, ``traces.events.choose_hand``), the progress events that mark subtasks, and the map from the task's
 subtask names to the router's phases (``phase_map``, router change 2).
 """
 
@@ -72,9 +72,10 @@ class EventMatch:
 
 @dataclass(frozen=True)
 class GraspRule:
-    """Grasp = the hand closure crosses ``closure_threshold`` and, over the next ``window`` steps, the
-    object moves at least ``min_object_motion_m`` while its distance to the end effector changes by
-    at most ``max_relative_motion_m`` (it moves with the hand)."""
+    """Grasp = a hand's closure crosses ``closure_threshold`` while the hand is within the reach
+    distance of the object and, over the next ``window`` steps, the object moves at least
+    ``min_object_motion_m`` while its distance to that end effector changes by at most
+    ``max_relative_motion_m`` (it moves with the hand)."""
     closure_threshold: float
     window: int
     min_object_motion_m: float
@@ -91,7 +92,6 @@ class TraceLayout:
     ee_source: str                                      # instrument | hdf5
     ee_keys: Mapping[str, str]                          # hand -> instrument obs key or HDF5 path
     hands: Mapping[str, Mapping[str, tuple[float, float]]]   # hand -> joint -> (open, closed)
-    width_hand: str                                     # hand whose closure is the gripper width
     reach_distance_m: float
     grasp: GraspRule
     subtasks: Mapping[str, EventMatch]                  # subtask completed by a progress event
@@ -107,8 +107,6 @@ class TraceLayout:
         if set(self.ee_keys) != set(self.hands):
             raise ConfigError(f"traces: ee keys {sorted(self.ee_keys)} and hands {sorted(self.hands)} must name "
                               f"the same hands")
-        if self.width_hand not in self.hands:
-            raise ConfigError(f"traces.hand_closure.width_hand {self.width_hand!r} is not a hand")
         for hand, joints in self.hands.items():
             if not joints:
                 raise ConfigError(f"traces.hand_closure.hands.{hand} lists no joints")
@@ -161,8 +159,8 @@ def layout_from_dict(d: Mapping, base: Path) -> TraceLayout:
     ee, hc = d["ee"], d["hand_closure"]
     if not isinstance(ee, Mapping) or set(ee) != {"source", "keys"}:
         raise ConfigError("traces.ee must have 'source' and 'keys'")
-    if not isinstance(hc, Mapping) or set(hc) != {"hands", "width_hand"}:
-        raise ConfigError("traces.hand_closure must have 'hands' and 'width_hand'")
+    if not isinstance(hc, Mapping) or set(hc) != {"hands"}:
+        raise ConfigError("traces.hand_closure must have 'hands' only (the grasping hand is chosen per episode)")
     hands = {str(h): {str(j): (float(v[0]), float(v[1])) for j, v in js.items()} for h, js in hc["hands"].items()}
     inst = d["instrument"]
     if not isinstance(inst, Mapping) or set(inst) != {"obs_keys"}:
@@ -174,7 +172,7 @@ def layout_from_dict(d: Mapping, base: Path) -> TraceLayout:
         state_joints=load_joint_order((base / joints["state"]).resolve()),
         action_joints=load_joint_order((base / joints["action"]).resolve()),
         object=str(d["object"]), ee_source=str(ee["source"]), ee_keys={str(k): str(v) for k, v in ee["keys"].items()},
-        hands=hands, width_hand=str(hc["width_hand"]), reach_distance_m=float(d["reach_distance_m"]),
+        hands=hands, reach_distance_m=float(d["reach_distance_m"]),
         grasp=GraspRule(**{k: float(v) if k != "window" else int(v)
                            for k, v in _strict(d["grasp"], GraspRule, "traces.grasp").items()}),
         subtasks={str(k): _match(v, f"traces.subtasks.{k}") for k, v in d["subtasks"].items()},

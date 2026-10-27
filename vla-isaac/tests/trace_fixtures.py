@@ -11,10 +11,11 @@ what a real traced run would leave behind:
   identity);
 * the record's ``progress.events`` and ``episode_length``.
 
-Episode scripts (local step t, ``LENGTH`` steps): the right hand moves from 0.3 m in front of the object
-to the object by step 20, closes between steps 30 and 40 (closure 0.5 at step 35), and from step 35 the
-object rises with the hand. Kinds: ``success``; ``door`` (lift and place fire, the door never closes);
-``grasp`` (the hand closes but the object stays); ``reach`` (the hand never comes close).
+Episode scripts (local step t, ``LENGTH`` steps): the grasping hand (``hand``, right by default) moves
+from 0.3 m in front of the object to the object by step 20, closes between steps 30 and 40 (closure 0.5
+at step 35), and from step 35 the object rises with the hand; the other hand stays 0.4 m to its side,
+open. Kinds: ``success``; ``door`` (lift and place fire, the door never closes); ``grasp`` (the hand
+closes but the object stays); ``reach`` (the hand never comes close).
 """
 
 from __future__ import annotations
@@ -51,17 +52,19 @@ def policy_wrapper():
     return instrument, ActionChunkScheduler
 
 
-def script(kind: str, length: int = LENGTH) -> dict:
-    """Per-step right / left EE position, object position and right-hand closure for one episode."""
+def script(kind: str, length: int = LENGTH, hand: str = "right") -> dict:
+    """Per-step right / left EE position, object position and the grasping hand's closure for one episode."""
     t = np.arange(length, dtype=float)
     approach = np.clip(t / 20.0, 0.0, 1.0)[:, None]
-    right = START + (OBJECT0 - START) * approach if kind != "reach" else np.repeat(START[None], length, 0)
+    active = START + (OBJECT0 - START) * approach if kind != "reach" else np.repeat(START[None], length, 0)
     closure = np.clip((t - 30.0) / 10.0, 0.0, 1.0)
     rise = np.where(t > CLOSE_AT, (t - CLOSE_AT) * LIFT_RATE, 0.0)[:, None] * np.array([0.0, 0.0, 1.0])
-    right = right + rise if kind != "reach" else right
+    active = active + rise if kind != "reach" else active
     obj = OBJECT0 + (rise if kind in ("success", "door") else np.zeros_like(rise))
-    left = np.repeat((OBJECT0 + np.array([0.0, 0.4, 0.0]))[None], length, 0)
-    return {"right": right, "left": left, "object": obj, "closure": closure}
+    other = "left" if hand == "right" else "right"
+    side = np.array([0.0, 0.4 if other == "left" else -0.4, 0.0])
+    return {hand: active, other: np.repeat((OBJECT0 + side)[None], length, 0), "object": obj,
+            "closure": closure, "hand": hand}
 
 
 def progress(kind: str) -> dict:
@@ -166,8 +169,10 @@ def write_hdf5(path: Path, layout, episodes: list[tuple[int, int, dict]]) -> Non
             g[k.episode_in_env] = np.array([ep], dtype=np.int64)
             q = np.zeros((T, len(layout.state_joints)))
             q[:, state_ix["left_shoulder_pitch_joint"]] = np.linspace(0, 0.5, T)
-            for j, (lo, hi) in layout.hands[layout.width_hand].items():
-                q[:, state_ix[j]] = lo + (hi - lo) * s["closure"]
+            for hand, joints in layout.hands.items():
+                closed = s["closure"] if hand == s["hand"] else np.zeros(T)
+                for j, (lo, hi) in joints.items():
+                    q[:, state_ix[j]] = lo + (hi - lo) * closed
             g[k.joint_pos] = q
             cmd = np.roll(q, -1, axis=0)                      # the target is one step ahead of the tracked joint
             cmd[-1] = q[-1]
@@ -182,6 +187,7 @@ class TraceWriter:
     """``FakeArenaRunner.on_run``: traces for every record of the run (see the module docstring)."""
     layout: object
     failure_kind: Callable[[int], str] = lambda k: "grasp"
+    hand: Callable[[int], str] = lambda k: "right"     # the grasping hand of episode k
     delay: int = 0
     length: int = LENGTH
     runs: list = field(default_factory=list)
@@ -194,7 +200,7 @@ class TraceWriter:
             kind = "success" if rec["success"] else self.failure_kind(k)
             rec["episode_length"] = self.length
             rec["progress"] = progress(kind)
-            s = script(kind, self.length)
+            s = script(kind, self.length, self.hand(k))
             by_env.setdefault(rec["env_id"], []).append((rec["episode_in_env"], s))
             demos.append((rec["env_id"], rec["episode_in_env"], s))
         self.runs.append(run_dir)
