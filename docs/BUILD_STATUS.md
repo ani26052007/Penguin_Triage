@@ -483,10 +483,20 @@ None new. V-mimic-seed is rewritten as a day-one check with both outcomes handle
 - **Fixed mode reads router seed s as trial index s.** It is not stated in the decision. It is what keeps extensions from repeating trials. The cost: a request for seeds 10..19 reruns trials 0..9 too (20 trials). `max_trials` (200) bounds it.
 - **The grid always adds the nominal cell**, even if no factor lists `null`, because the candidate rule and the router need it.
 - **The candidate rule uses point rates.** It is a screening aid, not a decision; the intervals are next to it.
-- **The second agreement run deletes the first run's raw files on `IsaacBackend`.** It reuses the same output directory (`build0_n<k>`, which is wiped before each run). The outcomes are kept in the report, but the first run's Arena log and JSONL are gone. A follow-up could add a run tag to the output path.
+- **The second agreement run deletes the first run's raw files on `IsaacBackend`.** It reuses the same output directory (`build0_n<k>`, which is wiped before each run). The outcomes are kept in the report, but the first run's Arena log and JSONL are gone. A follow-up could add a run tag to the output path. *(Fixed before Phase 6, below.)*
 - **The mode gap calls `fisher_exact` directly** rather than `compare()`. `compare()` chooses paired or unpaired from the agreement, and D10 makes incident mode unpaired whatever the agreement is.
 - **The strip tool also refuses an absent key and a still-enabled key**, beyond the point-4 rule. Replaying a stripped file through `IsaacBackend` (`recorded_variation_samples_path`) is not wired; Phase 5 asked only for the tool.
 - **The `run` CLIs of grid, agreement and mode gap** build `IsaacBackend.from_config` and are not exercised here (GPU box). The merge CLI and every function they call are tested.
+
+## Decisions from the Phase 5 review, and the fix before Phase 6 (2026-10-28)
+
+Recorded in `docs/IMPL_PLAN.md` ("Decisions from the Phase 5 review"): a deterministic reference keeps the Wilson lower-bound rule; fixed mode reads router seed s as trial s, with the `max_trials` cap of 200; replaying a stripped recording through `IsaacBackend` stays unwired (known limitation; live restore covers it). Baseline before any change: 814 passed, 1 skipped / 264 / 41.
+
+### Fix: replay agreement keeps both runs' raw files
+- `IsaacBackend.run(..., run_tag=None)`. A tag joins the output key and names the directory: `runs/<hash>_<tag>/`. Without a tag the path is unchanged. A tag that is not a plain name (letters, digits, `-`, `_`, `.`) raises `ConfigError`.
+- `measure_agreement` passes `run_tag="agreement_1"` / `"agreement_2"` to a backend whose `run` takes `run_tag` (`IsaacBackend`), so each run keeps its own Arena log, experiment YAML, episode JSONL and `vla_meta.json`. Other backends (`MockBackend`) are called as before.
+- Each cell reports both runs' directories (`run_roots.first` / `.second`, from `logs["paths"]["run_root"]`). `compare_runs` refuses two runs that report the same directory.
+- Tests (+3, vla-isaac 267): both runs' log, YAML, meta and JSONL exist after the measurement, in different directories; an untagged run keeps its old path and a bad tag is refused; a shared directory is refused. Mutation check: calling `run` without the tag fails 2 tests.
 
 ## Current state (2026-10-28)
 

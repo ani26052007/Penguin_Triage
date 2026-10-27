@@ -18,6 +18,9 @@ mode (``vla_isaac.traces.sources``).
 
 Modes: clean = 1 env, incident = ``BackendConfig.incident_num_envs`` envs sharing the server.
 Seeds: ``vla_isaac.seeds`` (build seed, episode index); results come back in the caller's order.
+Output: each call writes under ``runs/<hash>`` of (code, actor, scene, mode, backend, traces), wiped
+before each build. ``run_tag`` adds itself to that key, so two calls with different tags (the two runs
+of ``vla_isaac.experiments.replay_agreement``) keep separate directories and both runs' raw files.
 Seed k of a build needs episodes 0..k; the extra episodes go into ``cache`` (the ``RolloutCache``
 the router's ``CachedBackend`` wraps), keyed with this backend's ``backend_id``.
 
@@ -133,7 +136,7 @@ class IsaacBackend(RolloutBackend):
 
     # -- the RolloutBackend call ------------------------------------------------
     def run(self, scene: SceneSpec, code_ref: CodeRef, actor: ActorRef, seeds: Sequence[int], mode: Mode,
-            *, record_trajectories: bool = False) -> list[EpisodeResult]:
+            *, record_trajectories: bool = False, run_tag: Optional[str] = None) -> list[EpisodeResult]:
         if wrapper_reference(actor):
             raise ReplayUnavailable("the reference controller through the wrapper (G3) is deferred "
                                     "(decision 3): no joint-space reference exists")
@@ -152,7 +155,7 @@ class IsaacBackend(RolloutBackend):
                 if not server.ping():
                     server.restart()
                 planned = self.plan_run(scene, code_ref, actor, mode, build_seed, plan.episodes_needed(build_seed),
-                                        workdir=workdir, record_trajectories=record_trajectories)
+                                        workdir=workdir, record_trajectories=record_trajectories, run_tag=run_tag)
                 produced.update(self._execute(planned, scene, code_ref, actor, mode, build_seed,
                                               server_log=server.log_path))
         finally:
@@ -162,7 +165,8 @@ class IsaacBackend(RolloutBackend):
 
     # -- planning (pure) ----------------------------------------------------------
     def plan_run(self, scene: SceneSpec, code_ref: CodeRef, actor: ActorRef, mode: Mode, build_seed: int,
-                 num_episodes: int, *, workdir: Path, record_trajectories: bool = False) -> PlannedRun:
+                 num_episodes: int, *, workdir: Path, record_trajectories: bool = False,
+                 run_tag: Optional[str] = None) -> PlannedRun:
         """The Arena run for one build. Actuator overrides are planned only for a policy actor."""
         mode = Mode(mode)
         cfg, task = self.cfg, self.task
@@ -179,7 +183,7 @@ class IsaacBackend(RolloutBackend):
                        num_envs=1 if mode is Mode.CLEAN else cfg.incident_num_envs, num_episodes=num_episodes,
                        language_instruction=str(instruction), policy=policy,
                        variations=self.factors.assignments(scene), record_trajectories=record_trajectories)
-        out = self._run_root(scene, code_ref, actor, mode, record_trajectories) / f"build{build_seed}_n{num_episodes}"
+        out = self._run_root(scene, code_ref, actor, mode, record_trajectories, run_tag) / f"build{build_seed}_n{num_episodes}"
         yaml_path = out / "experiment.yaml"
         if cfg.runner == "experiment_runner":
             argv = experiment_argv(cfg.arena_python, yaml_path, out / "arena", environment=environment,
@@ -288,10 +292,15 @@ class IsaacBackend(RolloutBackend):
             shutil.rmtree(dest)
         return self.workspaces.materialize(code_ref, dest)
 
-    def _run_root(self, scene: SceneSpec, code_ref: CodeRef, actor: ActorRef, mode: Mode, traj: bool) -> Path:
+    def _run_root(self, scene: SceneSpec, code_ref: CodeRef, actor: ActorRef, mode: Mode, traj: bool,
+                  run_tag: Optional[str] = None) -> Path:
         key = {"code": code_ref.key(), "actor": actor.key(), "scene": scene.key(), "mode": Mode(mode).value,
                "backend": self.backend_id, "traj": traj}
-        return self.cfg.output_root / "runs" / short_hash(key, 16)
+        if run_tag is None:
+            return self.cfg.output_root / "runs" / short_hash(key, 16)
+        if not run_tag or not all(c.isalnum() or c in "-_." for c in run_tag):
+            raise ConfigError(f"run_tag {run_tag!r} must be a non-empty name of letters, digits, '-', '_' or '.'")
+        return self.cfg.output_root / "runs" / f"{short_hash({**key, 'tag': run_tag}, 16)}_{run_tag}"
 
     # -- checks -------------------------------------------------------------------
     def _check_scene(self, scene: SceneSpec) -> None:

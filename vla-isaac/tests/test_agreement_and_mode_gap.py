@@ -159,3 +159,40 @@ def test_on_isaac_backend_the_second_run_is_a_real_rerun(tmp_path):
     rep = measure_agreement(rig.backend, [PILOT_NOMINAL], rig.code(), PILOT_POLICY, range(3))
     assert len(rig.runner.calls) == 2 and rep.cells[0].agreement["n"] == 3     # Arena ran twice, nothing reused
     assert all(inv.spec.num_envs == 1 for inv in rig.runner.calls)             # clean mode
+
+
+def test_on_isaac_backend_both_runs_keep_their_raw_arena_logs_and_jsonl(tmp_path):
+    from tests.helpers import NOMINAL as PILOT_NOMINAL, POLICY as PILOT_POLICY, make_backend
+
+    rig = make_backend(tmp_path)
+    rep = measure_agreement(rig.backend, [PILOT_NOMINAL], rig.code(), PILOT_POLICY, range(3))
+    first, second = rig.runner.calls
+    assert first.log_path.parent != second.log_path.parent
+    for inv in (first, second):                             # both survive the whole measurement
+        assert inv.log_path.is_file()
+        assert list(inv.output_dir.rglob("episode_results_*.jsonl"))
+        assert (inv.log_path.parent / "experiment.yaml").is_file()
+        assert (inv.log_path.parent / "vla_meta.json").is_file()
+    roots = rep.cells[0].run_roots
+    assert roots[0] and roots[1] and not set(roots[0]) & set(roots[1])
+    assert roots[0][0].endswith("_agreement_1") and roots[1][0].endswith("_agreement_2")
+    assert json.loads(json.dumps(rep.to_dict()))["cells"][0]["run_roots"]["second"] == list(roots[1])
+
+
+def test_an_untagged_isaac_run_keeps_its_old_directory(tmp_path):
+    from tests.helpers import NOMINAL as PILOT_NOMINAL, POLICY as PILOT_POLICY, make_backend
+
+    rig = make_backend(tmp_path)
+    plain = rig.backend.run(PILOT_NOMINAL, rig.code(), PILOT_POLICY, [0], Mode.CLEAN)
+    tagged = rig.backend.run(PILOT_NOMINAL, rig.code(), PILOT_POLICY, [0], Mode.CLEAN, run_tag="agreement_1")
+    p, t = plain[0].logs["paths"]["run_root"], tagged[0].logs["paths"]["run_root"]
+    assert "_" not in p.rsplit("/", 1)[1] and t.endswith("_agreement_1") and p != t
+    with pytest.raises(Exception, match="run_tag"):
+        rig.backend.run(PILOT_NOMINAL, rig.code(), PILOT_POLICY, [0], Mode.CLEAN, run_tag="../x")
+
+
+def test_two_runs_sharing_a_directory_are_refused():
+    logs = {"paths": {"run_root": "/out/runs/abc"}}
+    a = [EpisodeResult(0, True, logs)]
+    with pytest.raises(AgreementError, match="replaced the first run"):
+        compare_runs(NOMINAL, a, a)

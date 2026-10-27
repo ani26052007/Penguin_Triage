@@ -20,12 +20,17 @@ Rules:
   to its cache, it never reads them.
 * The backend must be asked twice; the second call is a real re-run (``MockBackend``: a repeat, which
   ``replay_noise`` may flip).
+* **Both runs' raw files are kept.** A backend whose ``run`` takes ``run_tag`` (``IsaacBackend``) gets
+  ``agreement_1`` and ``agreement_2``, so each run writes its Arena log, experiment YAML and episode JSONL
+  into its own directory; neither run wipes the other's. Each cell lists both runs' directories
+  (``logs["paths"]["run_root"]``) in ``run_roots``.
 """
 
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+import inspect
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Optional, Sequence
 
@@ -38,6 +43,7 @@ from vla_isaac.experiments.tables import csv_text, flat, proportion, write_atomi
 
 AGREEMENT_JSON = "replay_agreement.json"
 AGREEMENT_CSV = "replay_agreement.csv"
+RUN_TAGS = ("agreement_1", "agreement_2")
 
 
 class AgreementError(RuntimeError):
@@ -56,6 +62,7 @@ class CellAgreement:
     success: Mapping                      # tables.proportion over both runs (2n episodes)
     first_rate: float
     second_rate: float
+    run_roots: tuple[tuple[str, ...], tuple[str, ...]] = field(default=((), ()))  # per run: its output dirs
 
     @property
     def discordant(self) -> int:
@@ -84,7 +91,8 @@ class CellAgreement:
                 "first_fail_second_success": self.first_fail_second_success,
                 "first_success_second_fail": self.first_success_second_fail, "discordant": self.discordant,
                 "success": dict(self.success), "first_rate": self.first_rate, "second_rate": self.second_rate,
-                "informative": self.informative, "note": self.note}
+                "informative": self.informative, "note": self.note,
+                "run_roots": {"first": list(self.run_roots[0]), "second": list(self.run_roots[1])}}
 
 
 def compare_runs(scene: SceneSpec, first: Sequence[EpisodeResult], second: Sequence[EpisodeResult],
@@ -106,8 +114,28 @@ def compare_runs(scene: SceneSpec, first: Sequence[EpisodeResult], second: Seque
     agree = both_s + both_f
     assert agree / n == agreement_rate(a, b)
     k1, k2 = sum(a.values()), sum(b.values())
+    roots = (_run_roots(first), _run_roots(second))
+    if roots[0] and set(roots[0]) & set(roots[1]):
+        raise AgreementError(f"{scene.key()}: both runs wrote into {sorted(set(roots[0]) & set(roots[1]))}; "
+                             f"the second run would have replaced the first run's raw files")
     return CellAgreement(scene.key(), tuple(seeds), proportion(agree, n, confidence), both_s, both_f, fs, sf,
-                         proportion(k1 + k2, 2 * n, confidence), k1 / n, k2 / n)
+                         proportion(k1 + k2, 2 * n, confidence), k1 / n, k2 / n, roots)
+
+
+def _run_roots(results: Sequence[EpisodeResult]) -> tuple[str, ...]:
+    roots = {(e.logs.get("paths") or {}).get("run_root") for e in results}
+    return tuple(sorted(r for r in roots if r))
+
+
+def _tagged_run(backend: RolloutBackend, tag: str):
+    """``backend.run`` with ``run_tag=tag`` when the backend takes one (separate output directories)."""
+    try:
+        takes_tag = "run_tag" in inspect.signature(backend.run).parameters
+    except (TypeError, ValueError):
+        takes_tag = False
+    if not takes_tag:
+        return backend.run
+    return lambda *args: backend.run(*args, run_tag=tag)
 
 
 @dataclass(frozen=True)
@@ -152,8 +180,8 @@ def measure_agreement(backend: RolloutBackend, scenes: Sequence[SceneSpec], code
     seeds = [int(s) for s in seeds]
     cells = []
     for scene in scenes:
-        first = backend.run(scene, code_ref, policy, seeds, Mode.CLEAN)
-        second = backend.run(scene, code_ref, policy, seeds, Mode.CLEAN)
+        first = _tagged_run(backend, RUN_TAGS[0])(scene, code_ref, policy, seeds, Mode.CLEAN)
+        second = _tagged_run(backend, RUN_TAGS[1])(scene, code_ref, policy, seeds, Mode.CLEAN)
         cells.append(compare_runs(scene, first, second, confidence))
     agree = sum(c.agreement["k"] for c in cells)
     total = sum(c.agreement["n"] for c in cells)
