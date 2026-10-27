@@ -1,0 +1,8 @@
+FIXTURE: a GR00T launch_finetune.py log. Only the two parameter lines follow the code
+(G:gr00t/model/gr00t_n1d6/setup.py:105-110); the prefix and every number are made up (VERIFY(V-finetune-log)).
+Loaded modality config: /arena/isaaclab_arena_gr00t/embodiments/gr1/gr1_arms_only_data_config.py
+Model Config: Gr00tN1d6Config {...}
+2026-10-28 10:00:01 | INFO | Total parameters: 3,288,135,680
+2026-10-28 10:00:01 | INFO | Trainable parameters: 1,019,203,584 (31.00%)
+Model:  Gr00tN1d6(...)
+{'loss': 0.0412, 'grad_norm': 0.3, 'learning_rate': 9.9e-05, 'epoch': 0.01}

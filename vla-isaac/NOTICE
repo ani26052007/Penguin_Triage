@@ -4,3 +4,6 @@ Lab Arena Project Developers. The copied files keep their original copyright and
 
   isaaclab_arena_gr00t/embodiments/gr1/54dof_joint_space.yaml -> config/gr1/54dof_joint_space.yaml
   isaaclab_arena_gr00t/embodiments/gr1/36dof_joint_space.yaml -> config/gr1/36dof_joint_space.yaml
+  isaaclab_arena_gr00t/lerobot/config/gr1_manip_ranch_bottle_config.yaml -> config/arena/gr1_manip_ranch_bottle_config.yaml
+    (unchanged; vla_isaac.data.rung_b_mimic writes a per-run copy with data_root, hdf5_name and absolute
+    paths, and refuses one whose action_name_sim is not processed_actions)

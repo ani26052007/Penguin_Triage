@@ -479,7 +479,7 @@ Everything runs on `MockBackend` with known rates (point 5):
 None new. V-mimic-seed is rewritten as a day-one check with both outcomes handled (P5). V-var-record now also covers the strip tool.
 
 ### Deviations and findings
-- **Deterministic qualification still applies the Wilson rule once.** "A single pass/fail" is implemented as the Phase 4 rule (lower bound ≥ threshold) applied to the one fixed trial sequence, with no interval reported. So 19/20 still fails and 50/50 passes. The alternative, the raw rate ≥ threshold, would make 20 trials enough again; I did not choose it. **Please confirm.**
+- **Deterministic qualification still applies the Wilson rule once.** "A single pass/fail" is implemented as the Phase 4 rule (lower bound ≥ threshold) applied to the one fixed trial sequence, with no interval reported. So 19/20 still fails and 50/50 passes. The alternative, the raw rate ≥ threshold, would make 20 trials enough again; I did not choose it. *(Confirmed in the Phase 5 review: the Wilson rule stays.)*
 - **Fixed mode reads router seed s as trial index s.** It is not stated in the decision. It is what keeps extensions from repeating trials. The cost: a request for seeds 10..19 reruns trials 0..9 too (20 trials). `max_trials` (200) bounds it.
 - **The grid always adds the nominal cell**, even if no factor lists `null`, because the candidate rule and the router need it.
 - **The candidate rule uses point rates.** It is a screening aid, not a decision; the intervals are next to it.
@@ -498,23 +498,72 @@ Recorded in `docs/IMPL_PLAN.md` ("Decisions from the Phase 5 review"): a determi
 - Each cell reports both runs' directories (`run_roots.first` / `.second`, from `logs["paths"]["run_root"]`). `compare_runs` refuses two runs that report the same directory.
 - Tests (+3, vla-isaac 267): both runs' log, YAML, meta and JSONL exist after the measurement, in different directories; an untagged run keeps its old path and a bad tag is refused; a shared directory is refused. Mutation check: calling `run` without the tag fails 2 tests.
 
+## Phase 6: data pipeline and fine-tuning (2026-10-28)
+
+Requirements from `docs/IMPL_PLAN.md` ("Decisions from the Phase 5 review", Phase 6 points 1-6).
+
+### Built
+- **`config/finetune_gr1_fridge.yaml`** (`vla_isaac/data/config.py`, strict): `rung_a`, `rung_b` (episodes 100 in 50-100; the shifted conditions, PLACEHOLDERS until R7 / R7b; the converter), `heldout` (seed, fraction), `mix` (ratio 0.5, seed, nominal dataset id), `finetune` (launcher, modality config, embodiment tag, base checkpoint id and revision `TODO_PIN`, `allow_unknown_top_llm_layers: false`, the two presets, hardware per GPU count, `timeout_s`).
+- **`config/arena/gr1_manip_ranch_bottle_config.yaml`**: Arena's converter YAML, copied unchanged (Apache header kept; `vla-isaac/NOTICE`). A test checks it is byte-identical to Arena's.
+- **`vla_isaac/data/rung_a.py`** (point 5): `--color-jitter-params brightness 0.3 contrast 0.4 saturation 0.5 hue 0.08` (tyro's dict form, Arena's values) and `--random-rotation-angle N`. A `None` value passes no flag, and the manifest says, per field, that GR00T then keeps the checkpoint's own setting (facts §5, `processing_gr00t_n1d6.py:513-522`), with the checkpoint's value when its `processor_config.json` is readable.
+- **`vla_isaac/data/heldout.py`** (point 2): the split is over **conditions** (`condition_key`: sorted `factor=value` pairs, or `nominal`). The shifted keys are sorted, shuffled with `random.Random(heldout.seed)`, and `round(fraction * n)` are held out (at least one each side). The nominal condition is never held out or trained through the split: its episodes are the separate **regression** set. `split_episodes` puts every episode where its condition goes and refuses an episode id under two conditions.
+- **`vla_isaac/data/mixer.py`** (point 3):
+  - `mix_counts` / `select_mix`: ratio = shifted / total (config, default 0.5). All shifted episodes are used when the nominal pool is large enough, otherwise all nominal ones and the shifted are sampled down. Exact rational arithmetic, half up. Deterministic for `mix.seed` and independent of input order. An empty source, or an episode in both, is refused.
+  - `write_mixed_dataset`: one GR00T LeRobot v2 directory, because `launch_finetune.py` takes a single `--dataset-path`. GR00T finds an episode's files through `episodes.jsonl` `episode_index` and the `info.json` patterns (`G:gr00t/data/dataset/lerobot_episode_loader.py`), so parquet and video files are copied under new indices without rewriting the parquet. Tasks map, modality, features and patterns must match across sources, or the mix is refused (the parquet's task indices are not rewritten). `meta/stats.json` is **not** copied: GR00T's dataset factory computes it when it is missing and keeps a stale one. `meta/vla_mix.json` maps every new index to its source episode, condition and role.
+- **`vla_isaac/data/rung_b_mimic.py`** (point 4):
+  - `regenerate` runs the existing `MimicReference` (RAW, the scene's variation overrides, no actuator overrides) for trials 0..N-1 on the shifted scene. In **fixed** seed mode the report says `deterministic: true`, `trajectory_sequence: "single fixed sequence"`, and warns that the N episodes are one fixed trajectory sequence whose diversity comes only from the scene variations. In `per_run` mode it reports the run seed and no warning. The nominal condition, a count outside 50-100, and zero successes are refused. The demo count is Mimic's `successes_total` (V-mimic-guarantee).
+  - `plan_conversion` writes a per-run copy of the converter YAML: `data_root` and `hdf5_name` point at the generated HDF5, and the Arena-relative paths are made absolute. A template whose `action_name_sim` is not `processed_actions` is refused. The command is `<arena python> <arena>/isaaclab_arena_gr00t/lerobot/convert_hdf5_to_lerobot.py --yaml_file <yaml>` from the Arena root. An existing output directory is refused, because the converter would ask on stdin. `convert` returns a `LeRobotSource` tagged with the condition.
+- **`vla_isaac/train/finetune_launcher.py`** (points 1 and 6):
+  - Presets `default` (`--no-tune-llm --no-tune-visual --tune-projector --tune-diffusion-model`) and `tune_visual` (Arena's recipe, the ablation), both followed by Rung A's flags. Argument order as in Arena's docs. 1 GPU: `CUDA_VISIBLE_DEVICES=0 <python> gr00t/experiment/launch_finetune.py ...`. N GPUs: `<python> -m torch.distributed.run --nproc_per_node=N --standalone ...`. Batch, steps and workers come from `finetune.hardware[N]` (1: 16 / 30000 / 4; 8: 96 / 20000 / 16, from the sequential-task doc). Runs from the GR00T root.
+  - **Refuses** to build a command when `tune_top_llm_layers` cannot be read from the base checkpoint's `config.json` (file missing, not JSON, key absent, not an integer >= 0), unless `allow_unknown_top_llm_layers` is set in config or passed. The manifest records the value, its source, the reason, and the allow flag either way. An unmapped base checkpoint is always refused (never downloaded).
+  - **Manifest** (`vla_finetune_manifest.json`, written before the run): both presets' flags and args, the chosen preset, `tune_top_llm_layers`, checkpoint id / revision / `revision_pinned` / local dir, hardware, Rung A, the data mix (from `meta/vla_mix.json`, or `mixed: false`), the held-out split, the seeds (mix, held-out, and GR00T's training seed 42, which is not on the fine-tune CLI), cwd, argv, env and the command string.
+  - **After the run**, `record_run` adds the trainable / total parameter counts and percentage from the log (ranks reporting different counts are an error), `experiment_cfg/final_model_config.json`, its `tune_top_llm_layers` and whether it matches the value read before, and `complete` / `missing`. CLI: `python -m vla_isaac.train.finetune_launcher plan|run --backend B --pipeline P --dataset D --out O [--preset] [--num-gpus] [--heldout split.json] [--allow-unknown-top-llm-layers]`.
+
+### Tests
+```
+cd vla-router     && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 814 passed, 1 skipped
+cd vla-isaac      && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 331 passed, 1 skipped
+cd policy-wrapper && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 41 passed
+```
+vla-isaac: 267 after the agreement fix, then Phase 6 +64 (`tests/test_data_pipeline.py` 38, `tests/test_rung_b.py` 11 + 1 skipped, `tests/test_finetune_launcher.py` 15). The skip: `V-converter-noisaac: Arena's converter does not import in this environment (ModuleNotFoundError: No module named 'tqdm'); it needs no Isaac module, but its third-party imports (tqdm, imageio, pandas) are not installed here.`
+- **Config**: the pilot loads; ratio defaults to 0.5; 12 bad configs refused.
+- **Rung A**: exact flags; a `None` field passes no flag, and the manifest note says the checkpoint's setting is kept (with the FIXTURE checkpoint's value, or `unread`).
+- **Held-out**: deterministic and independent of input order; the seed changes the split; at least one condition on each side for fractions 0.1-0.9. No episode id or condition is on both sides, and nominal episodes are only in the regression set (on a shuffled pool of 25 episodes). Duplicates, fewer than two shifted conditions, and an episode under two conditions are refused.
+- **Mixer**: exact counts for 7 cases (e.g. 1000/100 at 0.5 → 100/100; at 0.25 → 300/100; 30/100 at 0.5 → 30/30; 1000/3 at 0.4 → 5/3). Deterministic for a seed and independent of input order; another seed differs; empty sources refused. The merged directory: every new file's bytes are the source episode's, the meta is renumbered, the totals are right, there is no `stats.json`, and an existing output is refused. Different tasks or modality are refused, and nothing is written.
+- **Rung B**: fixed mode is deterministic, with the warning, and a regeneration repeats the same command. The Mimic command has the lighting override, no actuator variables and `--generation_num_trials 50`. Per-run mode has the seed flag and no warning. The default count comes from config; the range, nominal and zero successes are refused. The template is byte-identical to Arena's. The written YAML changes exactly `data_root`, `hdf5_name` and the five paths, which resolve to real files in the Arena checkout. Other actions are refused. The exact converter command, the output dir rule and the stdin-prompt refusal; `convert` with a fake.
+- **Launcher**: the exact command strings for both presets on 1 and 8 GPUs. The `tune_visual` flags and the jitter string are found in Arena's documented recipe. The manifest has every required field and is JSON-serialisable. 4 unreadable-config cases are refused, and accepted with the flag (from config or the argument), recorded in the manifest. Unmapped checkpoint, unknown preset and unconfigured GPU count are refused. `record_run` on the FIXTURE run (`tests/fixtures/finetune_run/`) parses the counts and the final config; missing outputs give `complete: false`; ranks reporting different counts raise. `run_finetune` writes the manifest before and after, with the env, cwd and timeout.
+
+### VERIFY items
+No new ids. Extended (P6): V-converter-noisaac (the import chain was read; the missing modules here), V-finetune-log (both lines and the final config file), V-ckpt-cfg (the launcher's refusal), V-hf-rev (`finetune.base_revision`), V-mimic-seed and V-mimic-guarantee (Rung B).
+
+### Deviations and findings
+- **The converter does not run here.** It needs no Isaac module, but tqdm, imageio, pandas and pyarrow are not in vla-sim. I did not install them (the env is pinned by the `[test]` extra), so the run test skips with that reason.
+- **The mixer writes one merged LeRobot directory.** It does not use GR00T's multi-dataset `mix_ratio`, because `launch_finetune.py` hard-codes one dataset with `mix_ratio: 1.0`; that would need `launch_train.py`. The merge relies on the loader code read above. Whether training accepts the merged directory is checked by the first fine-tune.
+- **Sources must share one instruction string.** The parquet's task indices are not rewritten, so the mix is refused when `tasks.jsonl` differs. The copied converter YAML says "ranch dressing bottle". If the original dataset's `tasks.jsonl` (V-train-instr) says something else, the Rung B YAML's `language_instruction` must be set to it before converting.
+- **The held-out fraction is of the shifted conditions in `rung_b.conditions`.** Held-out conditions are regenerated too only if they are listed. Their episodes are set aside by `split_episodes`, never mixed in. The plan's evaluation on them is Rung 1, which is not part of this phase.
+- **8-GPU hardware values** come from the sequential-task doc (batch 96). facts §3 quotes batch 24 for the static-manipulation doc.
+- **Training seed**: GR00T's `data.seed = 42` is not on the fine-tune CLI, so every fine-tune uses it. The manifest says so. Run-to-run variance (README: 5-6 points) therefore needs `launch_train.py`, or repeated runs with that caveat.
+- **Fine-tune timeout** is its own config value (`finetune.timeout_s`, 48 h). The backend's `timeouts.run_s` (2 h) is too short for 30k steps.
+- **The `plan` / `run` CLI of the launcher** reads a backend YAML and is not exercised here; every function it calls is tested.
+
 ## Current state (2026-10-28)
 
-Done: Phases 1-5, router changes 1-6, the three fixes before Phase 4, and the Mimic changes before Phase 5. **Next: Phase 6** (data pipeline and fine-tuning).
+Done: Phases 1-6, router changes 1-6, the three fixes before Phase 4, the Mimic changes before Phase 5, and the replay-agreement fix before Phase 6. **Next: Phase 7** (GPU runbook).
 
 | Repo | Test command (run inside the repo) | Result |
 |---|---|---|
 | vla-router | `env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q` | 814 passed, 1 skipped |
-| vla-isaac | same | 264 passed |
+| vla-isaac | same | 331 passed, 1 skipped (V-converter-noisaac) |
 | policy-wrapper | same | 41 passed |
 
-Commits since Phase 4:
+Commits since Phase 5:
 
 | Commit | What |
 |---|---|
-| `27346a3` | IMPL_PLAN: decisions from the Phase 4 review |
-| `b319ae2` | Router change 6: `cfg_contract` not-compared notes |
-| `7955552` | Mimic: 50-trial qualification, fixed vs per-run datagen seed |
-| (this commit) | Phase 5: grid, replay agreement, mode gap, recorded-variation strip |
+| `1c77108` | IMPL_PLAN: decisions from the Phase 5 review |
+| `642ee28` | Replay agreement keeps both runs' raw Arena files |
+| (this commit) | Phase 6: data pipeline and fine-tuning |
+
+Known limitations carried forward: a stripped recorded-variation file is not replayed through `IsaacBackend` (live restore covers it); the staleness checks see only action-side delay; `FrameStats.missing_texture_fraction` is not measured.
 
 Repo hygiene is unchanged: never stage `.gitmodules`, `external/IsaacLab-Arena`, `hybrid-agent` or the moved `PLAN_*.md`; commit with `git commit --only -- <own paths>`.

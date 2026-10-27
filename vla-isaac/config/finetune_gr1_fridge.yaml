@@ -1,0 +1,53 @@
+# Data pipeline and fine-tuning for the pilot (Phase 6; plan 5.3-5.5, 6.2-6.3; PLAN_UPDATE 5.4).
+# Read by vla_isaac.data.config. Relative paths: `converter.template` against this file; the
+# `arena:` paths against the backend config's arena_root; `finetune.launcher` against its gr00t_root.
+name: gr1_fridge_lighting
+nominal: gr1_fridge_ranch                 # SceneSpec.nominal: the condition with no factors (regression set)
+
+rung_a:                                   # GR00T's built-in augmentation (facts 5). null = flag not passed:
+  color_jitter_params:                    # the checkpoint's own processor setting is kept
+    brightness: 0.3                       # Arena's GR1 values (A:docs/.../sequential_static_manipulation/step_4_policy_training.rst:175)
+    contrast: 0.4
+    saturation: 0.5
+    hue: 0.08
+  random_rotation_angle: null
+
+rung_b:                                   # Mimic regeneration under the failing factor (decision 4)
+  episodes: 100                           # per shifted condition
+  min_episodes: 50
+  max_episodes: 100
+  conditions:                             # shifted conditions to regenerate under; PLACEHOLDERS until R7 / R7b
+    - {lighting.intensity: "100.0"}
+    - {lighting.intensity: "300.0"}
+    - {lighting.hdr: home_office_robolab}
+    - {lighting.intensity: "100.0", lighting.hdr: home_office_robolab}
+  converter:
+    script: isaaclab_arena_gr00t/lerobot/convert_hdf5_to_lerobot.py        # arena:
+    template: arena/gr1_manip_ranch_bottle_config.yaml                    # copy of Arena's converter YAML
+    action_name_sim: processed_actions                                    # required in the written YAML
+
+heldout:                                  # split of the shifted conditions; never by episode
+  seed: 0
+  fraction: 0.5                           # of the shifted conditions; at least one each side
+
+mix:
+  ratio: 0.5                              # fraction of shifted episodes in the training mix
+  seed: 0
+  nominal_dataset: arena_gr1_ranch_bottle_lerobot   # backend config datasets id: the original LeRobot set
+
+finetune:
+  launcher: gr00t/experiment/launch_finetune.py
+  modality_config_path: isaaclab_arena_gr00t/embodiments/gr1/gr1_arms_only_data_config.py   # arena:
+  embodiment_tag: GR1
+  base_checkpoint: nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task/ranch_bottle_into_fridge  # backend checkpoints id
+  base_revision: TODO_PIN                 # VERIFY(V-hf-rev)
+  allow_unknown_top_llm_layers: false     # VERIFY(V-ckpt-cfg): refuse when config.json has no tune_top_llm_layers
+  preset: default
+  presets:                                # PLAN_UPDATE 5.4: default recipe; Arena's recipe as the vision-side ablation
+    default: {tune_llm: false, tune_visual: false, tune_projector: true, tune_diffusion_model: true}
+    tune_visual: {tune_llm: false, tune_visual: true, tune_projector: true, tune_diffusion_model: true}
+  num_gpus: 1
+  timeout_s: 172800                       # 48 h for one fine-tune run
+  hardware:                               # per GPU count; Arena's sequential-task values (step_4_policy_training.rst:164-215)
+    1: {global_batch_size: 16, max_steps: 30000, save_steps: 5000, save_total_limit: 5, dataloader_num_workers: 4}
+    8: {global_batch_size: 96, max_steps: 20000, save_steps: 5000, save_total_limit: 5, dataloader_num_workers: 16}

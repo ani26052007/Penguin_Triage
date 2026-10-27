@@ -1,0 +1,13 @@
+{
+  "_comment": "FIXTURE: shape of experiment_cfg/final_model_config.json (G:gr00t/model/gr00t_n1d6/setup.py:101-103, Gr00tN1d6Config.to_filtered_json); values made up",
+  "model_type": "Gr00tN1d6",
+  "model_name": "nvidia/Eagle-Block2A-2B-v2",
+  "tune_llm": false,
+  "tune_visual": false,
+  "tune_projector": true,
+  "tune_diffusion_model": true,
+  "tune_vlln": true,
+  "tune_top_llm_layers": 4,
+  "action_horizon": 16,
+  "num_inference_timesteps": 4
+}

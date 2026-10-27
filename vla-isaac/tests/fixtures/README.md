@@ -12,3 +12,7 @@
 - `list_variations_gr1_fridge.txt`, `fake_rep_server.py`: see their headers.
 - Mimic logs are written by the tests (`tests/test_mimic.py`); their progress lines follow the
   PLACEHOLDER pattern of V-mimic-out.
+- `finetune_run/`: a GR00T fine-tune output directory as `vla_isaac.train.finetune_launcher.record_run`
+  reads it: `finetune.log` (the two parameter lines of `setup.py:105-110`, made-up numbers and prefix,
+  V-finetune-log) and `experiment_cfg/final_model_config.json` (made-up values).
+- LeRobot directories for the mixer are written by the tests (`tests/test_data_pipeline.py`).
