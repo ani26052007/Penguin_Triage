@@ -347,3 +347,32 @@ Rejected: skipping the call on rows the router decides alone (loses the logged l
 
 **Known limits**
 - Two backends that both leave the id empty still share entries (as before); a real backend must set one.
+
+## Router change 4: G3 unavailable (sim side decision 3, "G3 deferred"; docs/BUILD_STATUS.md Phase 1)
+
+**What**
+- `ladder.backend.ReplayUnavailable(NotImplementedError)`: the backend cannot run the requested actor / pipeline at all; nothing was simulated. `ladder.backend.wrapper_reference(actor)` names the G3 actor (reference controller, WRAPPER pipeline). vla-isaac's `IsaacBackend.run` raises it for that actor as its first statement: no copy materialised, no policy server, no subprocess, nothing cached. `MockBackend(..., wrapper_reference_unavailable=True)` does the same (default off, so every existing test and the Step 3 fixture are unchanged).
+- Only the G3 call site catches it (`run_branch_g`). G3 then gets no `ReplayResult`; `ReplayRunner.mark_unavailable` records `{replay id: reason}`, `route()` passes the ids to `decide(..., unavailable=)` and keeps them in `RouterResult.unavailable`; the verdict notes say `replays unavailable: G3 (<reason>)`.
+- `decide()`: an unavailable replay has its own state, `unavailable`, never no-effect, restored or failed. G3 unavailable is neither "the wrapper is broken" (G3 failing while G2 passes, a located row 4) nor "the wrapper is fine" (G3 restored, location `observation_side_or_policy_loading`). Row 4 then rests on located evidence (contract violation, constant delay, implied-target offset: same verdict as with G3), or in Branch G on elimination alone. In the latter case the verdict has `g3_unavailable=True`, `by_elimination=True`, location `None`, notes `confidence=low (elimination only, G3 unavailable)`; `verdict_text` (the hagent prompt / report) says so; `PassRecord.g3_unavailable` carries it into `LoopResult.to_dict()` so the evaluation can count these verdicts apart. `unavailable` accepts only `vocab.MAY_BE_UNAVAILABLE` (= `{G3}`), and an id that is also in the replay table is an error.
+- `CachedBackend` counts hits/misses after the backend returns, so a refused run adds no misses (`episodes_simulated` stays the episodes actually run).
+- `Verdict.g3_unavailable` is serialised; a dict without it loads as `False`.
+- Tests: `tests/test_g3_unavailable.py`. Branch G with a located Stage 1 contract hit (`combined_code_plus_light`; `code_global` + an external contract violation): same verdict as with G3 run. Branch G without one (`code_global`, `code_partial_offset`): code by elimination, low confidence, flag set. A plain `NotImplementedError` for G3, one for G2, and `ReplayUnavailable` for G2 all still end the incident UNRESOLVED (`error_stage="router"`). Every Branch C case gives an identical result. `decide` reads unavailable G3 like a missing one, never as pass or fail.
+
+**Call-site audit** (every request of a reference actor, and every backend `run` call)
+- `router/branches/branch_g.py:37` G3: reference, **WRAPPER**. The only WRAPPER request for the reference in the router; catches `ReplayUnavailable`.
+- `router/branches/branch_g.py:35` G2 and `router/branches/branch_c.py:49` C1: reference, RAW. Not caught.
+- `router/stage0.py:20`, `router/stage2.py:38`, `router/branches/branch_g.py:28` (G1), `router/branches/branch_c.py:51,54,61` (restores, C_all, C_render), `ladder/rung1.py:243`: `incident.policy`, a POLICY actor. Not caught.
+- Calibration: no backend call (`ReplayConfig` anchors and `NominalStats` are inputs; `ladder/stats.py` is pure).
+- `scripts/confusion_matrix.py:144` (`_replay(..., V.R_G3, ..., REF_WRAP)`): the Step 3 evaluation fixture, outside `route()`, on a `MockBackend` that never raises it. Not changed.
+- `ladder/rung1.py:293` (`ActorRef.from_dict` in a `MockRule`): a rule matcher, not a request.
+
+**Rejected**
+- A `RouterConfig.run_g3` flag: a per-deployment switch the backend already knows; a wrong setting on a backend that could run G3 silently loses evidence.
+- Catching every `NotImplementedError` at G3: a backend that is merely unfinished would look "unavailable by design".
+- Catching `ReplayUnavailable` in `ReplayRunner.run` (every replay): G2 / C1 unavailable would hide a row 2 check.
+- An `Outcome.UNAVAILABLE` on a `ReplayResult` with no episodes: every consumer of `Outcome` (stats, report, the replay table, the extension rule) would have to learn it.
+- Setting the flag on every verdict that ran without G3: with a located cause G3 adds nothing (row 4 is already located); the evaluation needs the elimination-only ones.
+
+**Known limits**
+- `ActorRef`'s default pipeline (and `from_dict`'s) is WRAPPER, so `ActorRef(REFERENCE, x)` with no pipeline is a G3 actor. No production call site relies on the default.
+- In Branch G the row 4 location `observation_side_or_policy_loading` needs G3 restored, so with G3 unavailable an elimination verdict has no location (`code_partial_offset` loses it).

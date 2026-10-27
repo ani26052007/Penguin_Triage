@@ -19,7 +19,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence
 
-from router.schemas import ActorRef, CodeRef, EpisodeResult, Mode, SceneSpec
+from router.schemas import ActionPipeline, ActorKind, ActorRef, CodeRef, EpisodeResult, Mode, SceneSpec
 
 
 class RolloutBackend(ABC):
@@ -36,6 +36,22 @@ class RolloutBackend(ABC):
     def run(self, scene: SceneSpec, code_ref: CodeRef, actor: ActorRef,
             seeds: Sequence[int], mode: Mode) -> list[EpisodeResult]:
         """Return one EpisodeResult per seed, in the order of ``seeds``."""
+
+
+class ReplayUnavailable(NotImplementedError):
+    """This backend cannot run the requested actor / pipeline at all (router change 4).
+
+    Not a failed run: nothing was simulated. Raised before any side effect (no
+    copy built, no server started, no episode run). The only caller that
+    catches it is the G3 replay (``router.branches.branch_g``), where a backend
+    without a reference controller that runs through the wrapper leaves G3
+    unavailable (sim side decision 3). Everywhere else it propagates like any
+    other ``NotImplementedError``."""
+
+
+def wrapper_reference(actor: ActorRef) -> bool:
+    """The reference controller run through the WRAPPER: the G3 actor."""
+    return actor.kind is ActorKind.REFERENCE and actor.pipeline is ActionPipeline.WRAPPER
 
 
 class IsaacBackend(RolloutBackend):
@@ -136,10 +152,15 @@ class MockBackend(RolloutBackend):
     ``workspaces`` (a ``ladder.workspace.WorkspaceManager``) is needed only by
     rules with a ``files`` predicate; each (predicate, code name) pair is
     evaluated once, on ``workspaces.view(code_ref)``.
+
+    ``wrapper_reference_unavailable``: raise ``ReplayUnavailable`` for the
+    reference controller through the WRAPPER (G3), like a backend that has no
+    such reference (router change 4).
     """
 
     def __init__(self, rules: Sequence[MockRule], default_rate: float,
-                 replay_noise: float = 0.0, salt: str = "mock", workspaces=None) -> None:
+                 replay_noise: float = 0.0, salt: str = "mock", workspaces=None,
+                 wrapper_reference_unavailable: bool = False) -> None:
         if not (0.0 <= default_rate <= 1.0):
             raise ValueError("default_rate must be in [0, 1]")
         if not (0.0 <= replay_noise <= 1.0):
@@ -149,6 +170,7 @@ class MockBackend(RolloutBackend):
         self.replay_noise = replay_noise
         self.salt = salt
         self.workspaces = workspaces
+        self.wrapper_reference_unavailable = wrapper_reference_unavailable
         self.calls: Counter = Counter()
         self._repeat: Counter = Counter()
         self._file_checks: dict[tuple[Callable, str], bool] = {}
@@ -164,6 +186,10 @@ class MockBackend(RolloutBackend):
             return self._file_checks[key]
         return check
 
+    def check_available(self, actor: ActorRef) -> None:
+        if self.wrapper_reference_unavailable and wrapper_reference(actor):
+            raise ReplayUnavailable("mock: no reference controller through the wrapper (G3)")
+
     def rate_for(self, scene: SceneSpec, code_ref: CodeRef, actor: ActorRef, mode: Mode) -> float:
         files = self._files(code_ref)
         for rule in self.rules:
@@ -177,6 +203,7 @@ class MockBackend(RolloutBackend):
 
     def run(self, scene: SceneSpec, code_ref: CodeRef, actor: ActorRef,
             seeds: Sequence[int], mode: Mode) -> list[EpisodeResult]:
+        self.check_available(actor)
         mode = Mode(mode)
         rate = self.rate_for(scene, code_ref, actor, mode)
         cfg = self.config_key(scene, code_ref, actor, mode)

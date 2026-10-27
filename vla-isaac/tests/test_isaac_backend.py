@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 import yaml
 
+from ladder.backend import ReplayUnavailable
 from ladder.loop import IncidentLoop, LoopConfig, LoopStatus, StubDataLadder
 from ladder.rung1 import Rung1Config, staged_plan_for
 from router.prereq.rollout_cache import CacheKey, CachedBackend, RolloutCache
 from router.replay import ReplayConfig
 from router.router import RouterConfig, RouterInputs
-from router.schemas import EpisodeResult, Incident, Mode, TrainingSpec
+from router.schemas import EpisodeResult, Incident, Mode, SceneSpec, TrainingSpec
 
 from vla_isaac.arena_ext.actuator_env import ENV_BASE, ENV_NAME, ENV_OVERRIDES
 from vla_isaac.backend.isaac_backend import META_FILE
@@ -152,11 +154,23 @@ def test_actuator_overrides_are_absent_for_a_reference_actor(tmp_path, actor):
     assert "launch_experiment" not in " ".join(planned.invocation.argv)
 
 
-def test_reference_through_the_wrapper_raises_not_implemented(tmp_path):
-    rig = make_backend(tmp_path)
-    with pytest.raises(NotImplementedError, match="G3"):
-        rig.backend.run(NOMINAL, rig.code(), REF_WRAP, [0], Mode.CLEAN)
-    assert not rig.runner.calls and not rig.servers
+def test_reference_through_the_wrapper_raises_replay_unavailable_before_any_side_effect(tmp_path, monkeypatch):
+    rig = make_backend(tmp_path, cache=RolloutCache())
+    code = rig.code()
+    built = []
+    monkeypatch.setattr(rig.workspaces, "materialize", lambda *a, **k: built.append(a))
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("no subprocess for G3"))
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: pytest.fail("no subprocess for G3"))
+    with pytest.raises(ReplayUnavailable, match="G3"):
+        rig.backend.run(NOMINAL, code, REF_WRAP, [0, 10001], Mode.CLEAN)
+    with pytest.raises(ReplayUnavailable):           # not even a malformed request gets further
+        rig.backend.run(SceneSpec("not_the_pilot"), code, REF_WRAP, [-1], Mode.INCIDENT)
+    assert not built and not rig.runner.calls and not rig.servers and not list(rig.cache.keys())
+    assert not (tmp_path / "out").exists()
+    cached = CachedBackend(rig.backend, RolloutCache())
+    with pytest.raises(ReplayUnavailable):
+        cached.run(NOMINAL, code, REF_WRAP, [0], Mode.CLEAN)
+    assert cached.misses == 0
 
 
 def test_raw_reference_goes_to_the_reference_runner_with_scene_variations_only(tmp_path):

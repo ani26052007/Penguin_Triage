@@ -5,13 +5,16 @@ G1  infra: the policy on the incident scene in INCIDENT mode. The clean side
     incident mode (otherwise there is nothing to compare).
 G2  simulator: reference controller on the nominal scene, RAW actions.
 G3  pipeline isolation: reference controller on the nominal scene, actions
-    through the current WRAPPER and controller.
+    through the current WRAPPER and controller. A backend without such a
+    reference raises ``ReplayUnavailable``; G3 is then recorded as unavailable
+    (``ReplayRunner.unavailable``), never as a result (router change 4).
 G4  contract evidence comes from Stage 1, which ``router.route`` runs on every
     incident.
 """
 
 from __future__ import annotations
 
+from ladder.backend import ReplayUnavailable
 from router import vocab as V
 from router.replay import ReplayRunner
 from router.schemas import ActionPipeline, ActorKind, ActorRef, Incident, Mode, ReplayResult
@@ -34,6 +37,9 @@ def run_branch_g(runner: ReplayRunner, incident: Incident, reference_checkpoint:
     out = run_g1(runner, incident) if include_g1 else []
     out.append(runner.run(V.R_G2, nominal, incident.code_ref,
                           reference_actor(reference_checkpoint, ActionPipeline.RAW)))
-    out.append(runner.run(V.R_G3, nominal, incident.code_ref,
-                          reference_actor(reference_checkpoint, ActionPipeline.WRAPPER)))
+    try:
+        out.append(runner.run(V.R_G3, nominal, incident.code_ref,
+                              reference_actor(reference_checkpoint, ActionPipeline.WRAPPER)))
+    except ReplayUnavailable as exc:
+        runner.mark_unavailable(V.R_G3, str(exc) or type(exc).__name__)
     return out

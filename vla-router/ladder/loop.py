@@ -138,6 +138,7 @@ class PassRecord:
     episodes_simulated: int
     cache_hits: int
     action: str = ""
+    g3_unavailable: bool = False
 
 
 @dataclass
@@ -337,7 +338,8 @@ class _Run:
             v = rr.verdict
             rec = PassRecord(len(self.passes) + 1, self.code.key(), v.label.value, v.row, v.destination.value,
                              rr.branch.value if rr.branch else None, v.factor, v.likely_second_cause,
-                             v.multi_cause_flag, v.by_elimination, rr.episodes_simulated, rr.cache_hits)
+                             v.multi_cause_flag, v.by_elimination, rr.episodes_simulated, rr.cache_hits,
+                             g3_unavailable=v.g3_unavailable)
             self.passes.append(rec)
 
             # 1. the verdict after an ambiguous Rung 1 goes to Rung 2 first

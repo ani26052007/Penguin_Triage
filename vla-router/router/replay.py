@@ -84,11 +84,11 @@ class ReplayRunner:
         self.cfg = cfg
         self.results: list[ReplayResult] = []
         self.extended: list[str] = []
+        self.unavailable: dict[str, str] = {}      # replay id -> reason the backend could not run it
 
     def run(self, replay_id: str, scene: SceneSpec, code_ref: CodeRef, actor: ActorRef,
             mode: Mode = Mode.CLEAN) -> ReplayResult:
-        if any(r.replay_id == replay_id for r in self.results):
-            raise ValueError(f"replay {replay_id} already run for this incident")
+        self._check_new(replay_id)
         n, cap = self.cfg.n_initial, self.cfg.cap(replay_id)
         while True:
             eps = self.backend.run(scene, code_ref, actor, self.seeds[:n], mode)
@@ -101,6 +101,16 @@ class ReplayRunner:
         result = ReplayResult(replay_id, scene, code_ref, actor, mode, tuple(eps), outcome, prop.lo, prop.hi)
         self.results.append(result)
         return result
+
+    def mark_unavailable(self, replay_id: str, reason: str) -> None:
+        """Record that the backend could not run ``replay_id`` (``ReplayUnavailable``).
+        It gets no ``ReplayResult``: ``decide`` sees it through ``unavailable``."""
+        self._check_new(replay_id)
+        self.unavailable[replay_id] = reason
+
+    def _check_new(self, replay_id: str) -> None:
+        if any(r.replay_id == replay_id for r in self.results) or replay_id in self.unavailable:
+            raise ValueError(f"replay {replay_id} already run for this incident")
 
     def get(self, replay_id: str) -> Optional[ReplayResult]:
         return next((r for r in self.results if r.replay_id == replay_id), None)

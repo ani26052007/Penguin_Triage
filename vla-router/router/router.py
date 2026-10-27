@@ -14,7 +14,11 @@ Order:
               20-seed cap, or staleness_variable not checked) makes every
               lower row row 10 whatever else runs.
   Stage 2     branch split on the nominal scene; ``stage2.branches_to_run``.
-  Branch G    G1 (when observed in incident mode), G2, G3.
+  Branch G    G1 (when observed in incident mode), G2, G3. G3 may be
+              unavailable on a backend without a reference controller that
+              runs through the wrapper (``ladder.backend.ReplayUnavailable``):
+              recorded in ``RouterResult.unavailable`` and passed to ``decide``
+              as ``unavailable`` (router change 4).
   Branch C    C_behavior (logs only, ``inputs.behavior_source``), C1, every
               one-factor restore, C_all when needed, C_render when needed.
   Stage 3     ``decide(evidence, replays)`` over everything that ran.
@@ -36,7 +40,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field, replace
-from typing import Optional, Sequence
+from typing import Mapping, Optional, Sequence
 
 from ladder.backend import RolloutBackend
 from router.behavior import SOURCE as BEHAVIOR_SOURCE
@@ -113,6 +117,7 @@ class RouterResult:
     skipped: tuple[tuple[str, str], ...] = ()  # (source, reason): did not run
     partial: tuple[tuple[str, V.PartialSkip], ...] = ()  # ran, part of it not checked
     unchecked: tuple[str, ...] = ()            # signals passed to decide as not checked
+    unavailable: tuple[tuple[str, str], ...] = ()  # (replay id, reason): the backend could not run it
 
     def episodes_by_replay(self) -> dict[str, int]:
         return {r.replay_id: r.n for r in self.replays}
@@ -122,10 +127,14 @@ class RouterResult:
 
 
 def _with_skip_notes(verdict: Verdict, skipped: Sequence[tuple[str, str]],
-                     partial: Sequence[tuple[str, V.PartialSkip]]) -> Verdict:
-    """Name every check that did not (fully) run in the verdict notes. Only
-    the notes change: row, label and destination are decide's."""
+                     partial: Sequence[tuple[str, V.PartialSkip]],
+                     unavailable: Optional[Mapping[str, str]] = None) -> Verdict:
+    """Name every check that did not (fully) run, and every replay the backend
+    could not run, in the verdict notes. Only the notes change: row, label,
+    destination and flags are decide's."""
     extra = []
+    if unavailable:
+        extra.append("replays unavailable: " + " | ".join(f"{r} ({why})" for r, why in unavailable.items()))
     if skipped:
         extra.append("checks skipped: " + " | ".join(f"{s} ({why})" for s, why in skipped))
     if partial:
@@ -218,9 +227,9 @@ def route(incident: Incident, backend: RolloutBackend, config: RouterConfig,
             _, c_notes = run_branch_c(runner, incident, config.reference_checkpoint, evidence,
                                       config.render_config_key)
             notes += c_notes
-        verdict = decide(evidence, runner.results, config.decide, unchecked)
+        verdict = decide(evidence, runner.results, config.decide, unchecked, runner.unavailable)
 
-    verdict = _with_skip_notes(verdict, skipped, partial)
+    verdict = _with_skip_notes(verdict, skipped, partial, runner.unavailable)
     result = RouterResult(
         incident_id=incident.incident_id, verdict=verdict, replays=tuple(runner.results),
         evidence=evidence, seeds=seeds, stages=tuple(stages), branch=branch,
@@ -228,7 +237,7 @@ def route(incident: Incident, backend: RolloutBackend, config: RouterConfig,
         cache_hits=cached.hits - hits0, extended=tuple(runner.extended), notes=tuple(notes),
         stage1_evidence=s1.evidence, behavior_evidence=behavior_ev, external_evidence=external,
         sources_run=tuple(sources_run), skipped=tuple(skipped), partial=tuple(partial),
-        unchecked=tuple(sorted(unchecked)))
+        unchecked=tuple(sorted(unchecked)), unavailable=tuple(runner.unavailable.items()))
     log.info("incident %s: verdict=%s row=%d branch=%s replays=%d episodes_simulated=%d "
              "episodes_used=%d cache_hits=%d extended=%s skipped=%s",
              incident.incident_id, verdict.label.value, verdict.row,

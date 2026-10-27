@@ -29,6 +29,8 @@ by the caller with ``ladder.stats`` (anchors: failure rate, nominal band):
                   the scene has two or more factors).
   C_render        shifted scene with the training data's render settings.
   For G2, G3 and C1, RESTORED means "the reference controller succeeded".
+  G3 may instead be *unavailable* (``MAY_BE_UNAVAILABLE``): the backend has no
+  reference controller that runs through the wrapper, so nothing was run.
 """
 
 from __future__ import annotations
@@ -60,6 +62,9 @@ R_C1 = "C1"
 R_C_ALL = "C_all"
 R_C_RENDER = "C_render"
 _RESTORE_PREFIX = "C_restore:"
+
+# Replays a backend may refuse with ``ladder.backend.ReplayUnavailable`` (router change 4).
+MAY_BE_UNAVAILABLE = frozenset({R_G3})
 
 
 def restore_id(factor: str) -> str:

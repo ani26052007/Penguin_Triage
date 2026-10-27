@@ -18,7 +18,8 @@ the router's ``CachedBackend`` wraps), keyed with this backend's ``backend_id``.
 
 Actuator overrides (``env.actuator_overrides`` in the eval config) are code under test and apply
 to policy actors only. Reference actors never get them: RAW reference runs go to the reference
-runner (Mimic, Phase 4), and a WRAPPER reference (G3) raises ``NotImplementedError`` (decision 3).
+runner (Mimic, Phase 4), and a WRAPPER reference (G3) raises ``ReplayUnavailable`` (decision 3,
+router change 4) before anything is built, started or run.
 
 Errors: a crashed or timed-out Arena run raises ``ArenaRunError``; bad records raise
 ``EpisodeResultsError``; the incident loop turns either into UNRESOLVED (``R:ladder/loop.py:313``).
@@ -34,10 +35,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
 
-from ladder.backend import RolloutBackend
+from ladder.backend import ReplayUnavailable, RolloutBackend, wrapper_reference
 from ladder.workspace import WorkspaceManager
 from router.prereq.rollout_cache import CacheKey, RolloutCache
-from router.schemas import (ActionPipeline, ActorKind, ActorRef, CodeRef, EpisodeResult, Mode, SceneSpec,
+from router.schemas import (ActorKind, ActorRef, CodeRef, EpisodeResult, Mode, SceneSpec,
                             short_hash)
 
 from vla_isaac.arena_ext.actuator_env import ENV_BASE, ENV_NAME, ENV_OVERRIDES
@@ -109,6 +110,9 @@ class IsaacBackend(RolloutBackend):
     # -- the RolloutBackend call ------------------------------------------------
     def run(self, scene: SceneSpec, code_ref: CodeRef, actor: ActorRef, seeds: Sequence[int], mode: Mode,
             *, record_trajectories: bool = False) -> list[EpisodeResult]:
+        if wrapper_reference(actor):
+            raise ReplayUnavailable("the reference controller through the wrapper (G3) is deferred "
+                                    "(decision 3): no joint-space reference exists")
         mode = Mode(mode)
         plan = plan_seeds([int(s) for s in seeds], self.cfg.seed_stride)
         self._check_scene(scene)
@@ -226,9 +230,6 @@ class IsaacBackend(RolloutBackend):
                 self.cache.put(CacheKey.make(scene, code_ref, actor, seed, mode, self.backend_id), ep)
 
     def _run_reference(self, scene: SceneSpec, actor: ActorRef, plan: SeedPlan) -> list[EpisodeResult]:
-        if actor.pipeline is ActionPipeline.WRAPPER:
-            raise NotImplementedError("the reference controller through the wrapper (G3) is deferred "
-                                      "(decision 3): no joint-space reference exists")
         if self.reference is None:
             raise NotImplementedError("RAW reference runs need a reference runner (vla_isaac.reference, Phase 4)")
         # The reference runs the scene's variations and nothing from the code's eval config.

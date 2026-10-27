@@ -87,8 +87,8 @@ class RouterCase:
     def backend(self, salt: str, workspaces=None) -> MockBackend:
         return MockBackend(self.rules, self.default_rate, salt=salt, workspaces=workspaces)
 
-    def quota_backend(self, workspaces=None) -> "QuotaBackend":
-        return QuotaBackend(self.rules, self.default_rate, workspaces=workspaces)
+    def quota_backend(self, workspaces=None, **kw) -> "QuotaBackend":
+        return QuotaBackend(self.rules, self.default_rate, workspaces=workspaces, **kw)
 
     def incident(self, log_modes: tuple[str, ...] = LOG_REFS) -> Incident:
         """``log_modes``: the inference modes whose logs exist (``()``: no logs at all)."""
@@ -161,6 +161,7 @@ class QuotaBackend(MockBackend):
     salted ``MockBackend`` is used to measure noise."""
 
     def run(self, scene, code_ref, actor, seeds, mode):
+        self.check_available(actor)
         mode = Mode(mode)
         rate = self.rate_for(scene, code_ref, actor, mode)
         cfg = self.config_key(scene, code_ref, actor, mode)

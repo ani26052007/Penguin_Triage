@@ -38,7 +38,7 @@ ROS `PYTHONPATH` loads pytest plugins that break collection.
   - Order of work: materialise, start the copy's `serve.py`, run the experiment runner per build with `PYTHONPATH` set to the copy, parse the results, write the `vla_meta.json` sidecar with `code_key`, and stamp `code_key` into every result's logs.
   - Episodes beyond the requested seeds go into `cache` under this backend's `backend_id`.
   - `plan_run` is the pure planning step, which keeps commands deterministic.
-  - Reference actors: WRAPPER raises `NotImplementedError` (G3, decision 3). RAW goes to a `reference` runner (Phase 4) and receives the scene's variations only.
+  - Reference actors: WRAPPER raises `NotImplementedError` (G3, decision 3; since router change 4 `ReplayUnavailable`, below). RAW goes to a `reference` runner (Phase 4) and receives the scene's variations only.
 - `vla_isaac/arena_ext/{actuator_env,launch_experiment}.py` run in Isaac's Python only (D7). The launcher registers a subclass of the task's env factory that applies `env.actuator_overrides`, then calls Arena's `experiment_runner.main()`.
   - `IsaacBackend` uses this path only for a POLICY actor with non-empty overrides.
   - Reference runs never get it, so a gain bug cannot make G2 / C1 fail.
@@ -75,4 +75,34 @@ V-viz, V-exp-yaml, V-exp-remote-policy, V-runner-parity, V-instruction, V-timest
 - **The camera stride is applied by the reader, not by Arena.** Arena records every step and has no stride option. The stride is in the backend config and in every `vla_meta.json`.
 - **`record_trajectories` may not record cameras at all (V-traj-size).** Its terms (`A:isaaclab_arena/terms/recorders.py:277-289`) have no camera term; camera frames are only in the demo recorder config. If so, Phase 3's `FrameStats` come from the wrapper's `instrument.py` (policy input) and the render stats need another source; Phase 3 will say which.
 - **Not yet copied: the runner-parity and instruction GPU scripts.** They are Phase 7 runbook items; their VERIFY rows exist now.
-- **G3 will crash the router (question below, blocking).** `router/branches/branch_g.py:37-38` always runs the G3 replay through the backend. With decision 3, `IsaacBackend` raises `NotImplementedError` for it, so every Branch G routing on the real backend ends UNRESOLVED (`error_stage="router"`) instead of leaving the G3-dependent result undecided. `decide` does not require G3: in Branch G, row 4 is "code by elimination" without it. Fixing it means a router edit beyond the approved ones, so this is a STOP condition.
+- **G3 will crash the router (question below, blocking).** `router/branches/branch_g.py:37-38` always runs the G3 replay through the backend. With decision 3, `IsaacBackend` raises `NotImplementedError` for it, so every Branch G routing on the real backend ends UNRESOLVED (`error_stage="router"`) instead of leaving the G3-dependent result undecided. `decide` does not require G3: in Branch G, row 4 is "code by elimination" without it. Fixing it means a router edit beyond the approved ones, so this is a STOP condition. **Resolved:** the user chose option (a) as router change 4 (next section).
+
+## Router change 4: G3 unavailable (2026-10-27, between Phases 1 and 2)
+
+Approved as option (a) with six conditions; each is met as follows.
+
+### Built
+1. `ladder.backend.ReplayUnavailable(NotImplementedError)` and `wrapper_reference(actor)`. `IsaacBackend.run` raises it for REFERENCE + WRAPPER as its first statement: no materialise, no server, no subprocess, no output directory, nothing cached (tested with spies on `materialize`, `subprocess.run` / `Popen`, the fake runner and the server factory).
+2. Call-site audit, listed in `vla-router/DECISIONS.md`: G3 (`router/branches/branch_g.py:37`) is the only router request for the reference through the WRAPPER, and it is the only place that catches `ReplayUnavailable`. G2 and C1 are RAW; every other replay uses the policy. Outside `route()`, `scripts/confusion_matrix.py` also builds G3 on a mock that never raises it. No other WRAPPER use, so no STOP.
+3. G3 gets no `ReplayResult`; it is recorded as unavailable (`ReplayRunner.unavailable`, `RouterResult.unavailable`, verdict notes) and `decide(..., unavailable={"G3"})` gives it its own state. It is read as neither a pass nor a fail.
+4. Row 4 by elimination with G3 unavailable sets `Verdict.g3_unavailable=True` (with `by_elimination=True`, `confidence=low (elimination only, G3 unavailable)`). It is shown by `verdict_text` (report / hagent prompt) and carried in `PassRecord` / `LoopResult.to_dict()`.
+5. `MockBackend(..., wrapper_reference_unavailable=True)`, and the test `QuotaBackend` honours it. Tests in `vla-router/tests/test_g3_unavailable.py` (16) cover:
+   - a located contract hit gives the same verdict;
+   - no contract hit gives code by elimination with the flag;
+   - a plain `NotImplementedError` (G3 or G2) and `ReplayUnavailable` for G2 end UNRESOLVED;
+   - Branch C gives identical results;
+   - `decide` semantics and validation.
+6. `vla-router/DECISIONS.md` "Router change 4" entry, referencing decision 3.
+
+Side fix: `CachedBackend` counts hits and misses after the backend returns, so a refused run adds no misses.
+
+### Tests
+```
+cd vla-router && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 770 passed, 1 skipped in 29.52s
+cd vla-isaac  && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 92 passed in 13.02s
+```
+(vla-router: 754 + 16 new. vla-isaac: the G3 test was replaced by the stricter no-side-effect test.)
+
+### Deviations and findings
+- `code_partial_offset` with G3 unavailable loses the location `observation_side_or_policy_loading` (it needs G3 restored); the verdict is otherwise unchanged.
+- Until Phase 4 wires the Mimic RAW reference, G2 on `IsaacBackend` still raises a plain `NotImplementedError`, so a Branch G incident on the real backend still ends UNRESOLVED; that is intended (only G3 is optional).

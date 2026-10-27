@@ -274,6 +274,8 @@ def verdict_text(v: Verdict) -> str:
         parts.append(f"factor: {v.factor}")
     if v.by_elimination:
         parts.append("reached by elimination only, no located cause (low confidence)")
+    if v.g3_unavailable:
+        parts.append("G3 (reference through the wrapper) was unavailable, so the wrapper was not isolated")
     if v.likely_second_cause:
         parts.append("a second cause is likely")
     if v.multi_cause_flag:

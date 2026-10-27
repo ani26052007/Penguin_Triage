@@ -119,12 +119,12 @@ class CachedBackend(RolloutBackend):
         backend_id = getattr(self.backend, "backend_id", "")
         keys = {s: CacheKey.make(scene, code_ref, actor, s, mode, backend_id) for s in seeds}
         missing = [s for s in seeds if keys[s] not in self.cache]
+        fresh = self.backend.run(scene, code_ref, actor, missing, mode) if missing else []
+        if sorted(e.seed for e in fresh) != sorted(missing):
+            raise RuntimeError("backend returned episodes for the wrong seeds")
+        # counted after the run: a run the backend refused (ReplayUnavailable) simulated nothing
         self.hits += len(seeds) - len(missing)
         self.misses += len(missing)
-        if missing:
-            fresh = self.backend.run(scene, code_ref, actor, missing, mode)
-            if sorted(e.seed for e in fresh) != sorted(missing):
-                raise RuntimeError("backend returned episodes for the wrong seeds")
-            for ep in fresh:
-                self.cache.put(keys[ep.seed], ep)
+        for ep in fresh:
+            self.cache.put(keys[ep.seed], ep)
         return [self.cache.get(keys[s]) for s in seeds]

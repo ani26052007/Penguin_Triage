@@ -1,6 +1,6 @@
 """Stage 3: the decision table (plan.md 3.2.8) as a pure function.
 
-    decide(evidence, replays, config, unchecked=()) -> Verdict
+    decide(evidence, replays, config, unchecked=(), unavailable=()) -> Verdict
 
 No I/O, no randomness, no simulator, no models. The result depends only on the
 *set* of evidence records and the *set* of replays, never on their order
@@ -28,6 +28,15 @@ FALSE, so its absence-based TRUE becomes UNKNOWN. A result fixed by the
 replays (a factor restored, Stage 0 not restored) does not flip, and TRUE never
 becomes UNKNOWN for rows 2-9. The UNKNOWN then blocks lower rows as above. An
 empty set (the default) is the old behaviour.
+
+Unavailable replays (optional ``unavailable``, replay ids from
+``vocab.MAY_BE_UNAVAILABLE``, i.e. G3): the backend could not run them at all
+(``ladder.backend.ReplayUnavailable``). Such a replay is neither a pass nor a
+fail and never stands in for one: G3 unavailable is not "the wrapper is fine"
+(G3 restored) and not "the wrapper is broken" (G3 failing while G2 passes).
+Row 4 then rests on located evidence or, in Branch G, on elimination alone;
+the latter sets ``Verdict.g3_unavailable`` so it can be counted apart
+(router change 4).
 
 Confidence (code verdicts): ``by_elimination=False`` when a located cause
 exists (a contract violation, a constant delay, a consistent implied-target
@@ -112,6 +121,7 @@ class _Tri(Enum):
 
 # replay states
 _RESTORED, _PARTIAL, _NONE, _UNKNOWN, _MISSING = "restored", "partial", "none", "unknown", "missing"
+_UNAVAILABLE = "unavailable"         # the backend could not run it (vocab.MAY_BE_UNAVAILABLE)
 _FAILS = (_PARTIAL, _NONE)          # a reference controller that is not restored has failed
 
 
@@ -171,7 +181,7 @@ def _ids(evs: Iterable[Evidence]) -> tuple[str, ...]:
 
 class _Ctx:
     def __init__(self, evidence: Sequence[Evidence], replays: dict[str, ReplayResult], cfg: DecideConfig,
-                 unchecked: AbstractSet[str] = frozenset()):
+                 unchecked: AbstractSet[str] = frozenset(), unavailable: AbstractSet[str] = frozenset()):
         seen: set[str] = set()
         for e in evidence:
             if e.id in seen:
@@ -181,6 +191,7 @@ class _Ctx:
         self.evidence = [e for e in evidence if e.strength >= cfg.min_strength]
         self.replays = replays
         self.unchecked = frozenset(unchecked)
+        self.unavailable = frozenset(unavailable)
         self.row_signals = cfg.row_signals
 
     def blind(self, row: int) -> tuple[str, ...]:
@@ -195,6 +206,8 @@ class _Ctx:
         return {e.signal[len(p):] for e in self.evidence if e.signal.startswith(p)}
 
     def state(self, rid: str) -> str:
+        if rid in self.unavailable:
+            return _UNAVAILABLE
         r = self.replays.get(rid)
         if r is None:
             return _MISSING
@@ -282,7 +295,7 @@ def _row4(c: _Ctx) -> _Match:
     g2, g3 = c.state(V.R_G2), c.state(V.R_G3)
     g3_fail = g2 == _RESTORED and g3 in _FAILS          # reference fine raw, broken through the wrapper
     g3_unknown = g3 == _UNKNOWN or (g3 in _FAILS and g2 == _UNKNOWN)
-    proving = tuple(r for r in (V.R_G2, V.R_G3) if c.state(r) != _MISSING)
+    proving = tuple(r for r in (V.R_G2, V.R_G3) if c.state(r) not in (_MISSING, _UNAVAILABLE))
 
     if located or g3_fail:
         loc = _strongest_location(located) or ("action_side" if g3_fail else None)
@@ -436,6 +449,19 @@ def _unchecked(unchecked: Iterable[str]) -> frozenset[str]:
     return out
 
 
+def _unavailable(unavailable: Iterable[str], table: Mapping[str, ReplayResult]) -> frozenset[str]:
+    if isinstance(unavailable, (str, bytes)):
+        raise TypeError(f"unavailable must be a collection of replay ids, not a single string ({unavailable!r})")
+    out = frozenset(unavailable)
+    bad = sorted(map(repr, out - V.MAY_BE_UNAVAILABLE))
+    if bad:
+        raise ValueError(f"only {sorted(V.MAY_BE_UNAVAILABLE)} may be unavailable, got {bad}")
+    both = sorted(out & set(table))
+    if both:
+        raise ValueError(f"replays both run and unavailable: {both}")
+    return out
+
+
 def row1_state(evidence: Sequence[Evidence],
                replays: Union[Mapping[str, ReplayResult], Iterable[ReplayResult]],
                config: Optional[DecideConfig] = None, unchecked: Iterable[str] = frozenset()) -> str:
@@ -448,10 +474,11 @@ def row1_state(evidence: Sequence[Evidence],
 
 def decide(evidence: Sequence[Evidence],
            replays: Union[Mapping[str, ReplayResult], Iterable[ReplayResult]],
-           config: Optional[DecideConfig] = None, unchecked: Iterable[str] = frozenset()) -> Verdict:
+           config: Optional[DecideConfig] = None, unchecked: Iterable[str] = frozenset(),
+           unavailable: Iterable[str] = frozenset()) -> Verdict:
     cfg = config or DecideConfig()
     table = _normalize(replays)
-    c = _Ctx(tuple(evidence), table, cfg, _unchecked(unchecked))
+    c = _Ctx(tuple(evidence), table, cfg, _unchecked(unchecked), _unavailable(unavailable, table))
     matches = [row(c) for row in _ROWS]
     multi = c.branch is _Branch.G_DEGRADED
 
@@ -464,12 +491,13 @@ def decide(evidence: Sequence[Evidence],
             continue
         if unknown_rows or m.conflict:
             return _undetermined(c, table, matches, unknown_rows, m, i, multi)
-        return _winner(i, m, matches, table, multi and i != 1)
+        return _winner(i, m, matches, table, multi and i != 1,
+                       g3_unavailable=i == 4 and m.by_elimination and V.R_G3 in c.unavailable)
     return _undetermined(c, table, matches, unknown_rows, None, None, multi)
 
 
 def _winner(row: int, m: _Match, matches: Sequence[_Match], table: dict[str, ReplayResult],
-            multi: bool) -> Verdict:
+            multi: bool, g3_unavailable: bool = False) -> Verdict:
     second = m.partial
     if row in (3, 4):
         for j in range(row + 1, 8):
@@ -480,7 +508,9 @@ def _winner(row: int, m: _Match, matches: Sequence[_Match], table: dict[str, Rep
                          if row in (3, 4) and matches[j - 1].tri is _Tri.UNKNOWN})
     conf = ""
     if row == 4:
-        conf = "confidence=low (elimination only)" if m.by_elimination else "confidence=higher (located cause)"
+        conf = ("confidence=higher (located cause)" if not m.by_elimination else
+                "confidence=low (elimination only, G3 unavailable)" if g3_unavailable else
+                "confidence=low (elimination only)")
     notes = "; ".join(x for x in (f"row {row}", conf, m.note,
                                   "second cause suspected" if second else "",
                                   ("second-cause check incomplete: " + " | ".join(incomplete)) if incomplete else "",
@@ -489,7 +519,7 @@ def _winner(row: int, m: _Match, matches: Sequence[_Match], table: dict[str, Rep
         label=LABEL_BY_ROW[row], destination=DESTINATION_BY_ROW[row], row=row,
         evidence_ids=m.evidence_ids, factor=m.factor, location=m.location,
         by_elimination=m.by_elimination, likely_second_cause=second, multi_cause_flag=multi,
-        replays=tuple(table[r] for r in m.replay_ids if r in table), notes=notes)
+        replays=tuple(table[r] for r in m.replay_ids if r in table), notes=notes, g3_unavailable=g3_unavailable)
 
 
 def _undetermined(c: _Ctx, table: dict[str, ReplayResult], matches: Sequence[_Match],

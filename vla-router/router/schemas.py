@@ -461,6 +461,8 @@ class Verdict:
     by_elimination:      code verdict without a located cause (low confidence).
     likely_second_cause: the winning replay only partly restored success.
     multi_cause_flag:    Stage 2 came back "degraded".
+    g3_unavailable:      row 4 by elimination while the backend could not run G3
+                         (router change 4): low confidence, counted apart.
     """
     label: VerdictLabel
     destination: Destination
@@ -473,6 +475,7 @@ class Verdict:
     multi_cause_flag: bool = False
     replays: tuple[ReplayResult, ...] = ()
     notes: str = ""
+    g3_unavailable: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "label", VerdictLabel(self.label))
@@ -495,6 +498,7 @@ class Verdict:
             "multi_cause_flag": self.multi_cause_flag,
             "replays": [r.to_dict() for r in self.replays],
             "notes": self.notes,
+            "g3_unavailable": self.g3_unavailable,
         }
 
     @classmethod
@@ -511,4 +515,5 @@ class Verdict:
             multi_cause_flag=bool(d.get("multi_cause_flag", False)),
             replays=tuple(ReplayResult.from_dict(r) for r in d.get("replays", ())),
             notes=d.get("notes", ""),
+            g3_unavailable=bool(d.get("g3_unavailable", False)),
         )
