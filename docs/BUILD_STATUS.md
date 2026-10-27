@@ -202,3 +202,27 @@ cd vla-isaac  && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytes
   - seven bad configs;
   - a scan showing that vla-router never imports `vla_isaac`.
 - vla-isaac: its factory path builds an `IsaacBackend`.
+
+## Current state (handoff, 2026-10-27)
+
+Done: Phase 1, router change 4, Phase 2, router change 3 (and router change 1 in Phase 1). **Next: Phase 3** (instrumentation, `TraceSource` / `BehaviorSource`, router change 2). The decisions to follow are in `docs/IMPL_PLAN.md` §8, "Accepted decisions".
+
+| Repo | Test command (run inside the repo) | Result |
+|---|---|---|
+| vla-router | `env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q` | 780 passed, 1 skipped in 29.56s |
+| vla-isaac | same | 115 passed in 19.08s |
+| policy-wrapper | same | 25 passed in 3.03s |
+
+Commits (top-level repo `Penguin_Triage`, branch `fixes`; vla-router and vla-isaac are directories in it):
+
+| Commit | What |
+|---|---|
+| `08a2006` | Phase 1: vla-isaac package, `IsaacBackend`, router change 1 |
+| `e0c88d6` | Router change 4: G3 unavailable |
+| `24052ae` | Phase 2: vla-isaac side (eval-config loader, norm stats, `make_workspaces`, policy-wrapper base tests) |
+| `1ae2385` | Router change 3: Rung 1 `kind: isaac` from an import path |
+| policy-wrapper `23fa9de` | Separate repo `policy-wrapper/` (branch `main`, gitignored at top level): the single base snapshot |
+
+Repo hygiene:
+- The top level still has the user's staged `.gitmodules` / `external/IsaacLab-Arena`, the deleted root `PLAN_*.md` / `plan.md` / `prompts.md` (moved to `docs/`), the modified `hybrid-agent`, and untracked docs.
+- Never stage any of them. Commit with `git commit --only -- <own paths>`.

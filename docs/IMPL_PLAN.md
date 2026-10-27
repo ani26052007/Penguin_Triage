@@ -373,3 +373,63 @@ Phases 1-8 as in the prompt, each ending with `pytest` in `vla-isaac`, `policy-w
 - **Q3 (D8, D9).** Drop `image_size` and `norm_stats` from the pilot `ConfigMapping` (recommended), or add the extra keys?
 - **Q4 (§5).** `post_place` optional phase (recommended), or fold the door into `place`?
 - **Q5.** Python environment for tests: the `vla` conda env (Python 3.12, hagent installed) lacks numpy, torch, h5py, pyzmq, msgpack and opencv. OK to `pip install numpy h5py pyzmq msgpack opencv-python-headless gymnasium` and CPU-only `torch` into it? (These are packages, not models or datasets.) Base miniconda has a CUDA torch and no hagent. Also: put `policy-wrapper/` in the top-level `.gitignore` (recommended), or register it some other way?
+
+---
+
+## 8. Accepted decisions (handoff; supersedes §3-§7 where they differ)
+
+State on 2026-10-27: Phases 1 and 2, router changes 1, 3 and 4 are done (see `docs/BUILD_STATUS.md`, "Current state"). Next is **Phase 3**. Router change 2 is part of it.
+
+### User answers to Q1-Q5
+- **Q1 (runner).** Use Arena's experiment runner for every run.
+  - `record_trajectories` is a per-call option on `IsaacBackend.run`, **off by default**. It is turned on only when traces are requested.
+  - The camera stride is in the backend config (`trajectories.camera_stride`).
+  - VERIFY items: **V-runner-parity** (nominal success via `policy_runner` vs the experiment runner on the same seeds; GPU script `R4b_runner_parity.sh`) and **V-exp-remote-policy** (the experiment YAML accepts the remote GR00T policy type, its config path and remote host/port).
+  - The user's 390 MB/episode estimate is replaced by **V-traj-size**: the trajectory terms may hold no camera frames (accepted).
+- **Q2 (instruction).** Keep "sauce bottle" in `eval.yaml`. Add a day-one GPU script `R4c_instruction_ab.sh`: 20 nominal episodes with each string (eval vs the training string from `meta/tasks.jsonl`), result written to `measurements/`. If the training string scores as well, switch `eval.yaml` to it (V-instruction).
+- **Q3 (image_size, norm_stats).** Keep both in the mapping. There is no router change: vla-isaac provides a custom `config_loader` for `WorkspaceManager`, which reads `config/eval.yaml` and adds:
+  - `client.target_image_hw` = `target_image_size[:2]`;
+  - `server.effective_norm_stats` = the checkpoint's `statistics.json` (resolved from `server.checkpoint`) when `norm_stats_override` is null, otherwise the override file. It has the same structure `extract_training_spec` produces for `TrainingSpec.norm_stats` (`vla_isaac/specs/norm_stats.py`).
+
+  The mapping is `image_size → client.target_image_hw` and `norm_stats → server.effective_norm_stats`. Tests: nominal gives 0 violations; each edited mapped key gives exactly 1; a `norm_stats_override` pointing at modified stats gives 1 `norm_stats` violation. All done in Phase 2.
+- **Q4 (door subtask).** Add an optional `post_place` phase (router change 2, Phase 3): appended to both `PHASES` tuples (`router/prereq/behavior_trace.py`, `router/vocab.py`) and to `PHASES_ACTION_GAP`, with the composite-subtask → phase map in vla-isaac YAML. **Required test:** a pick-only `BehaviorTrace` (no `post_place` record) gets the same verdict as before the change.
+- **Q5 (environment).** Do not install into the `vla` env (hagent runs there). Use `conda create --name vla-sim --clone vla` with CPU-only torch; the versions are pinned in vla-isaac's `[test]` extra. Done. Always run tests as `env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q`, because the shell's ROS `PYTHONPATH` breaks pytest. `policy-wrapper/` is in the top-level `.gitignore`.
+
+### Other user instructions from the Phase 0 approval
+- Episodes produced beyond the requested seeds (seed k needs episodes 0..k of its build) go into the rollout cache, never discarded. Done in Phase 1.
+- Router change 3 (D14) is approved. Done; see below.
+- Leave the staged `.gitmodules` / `external/IsaacLab-Arena` changes and the moved `PLAN_*.md` files alone, and never stage them. Commit only your own paths: `git commit --only -- <paths>`.
+
+### Router change 4: G3 unavailable (user's six conditions; done in `e0c88d6`)
+1. `ReplayUnavailable(NotImplementedError)` lives in `ladder/backend.py`. `IsaacBackend` raises it for REFERENCE + WRAPPER **before any side effect**: no materialise, no server, no subprocess. This is tested.
+2. Audit every call site that requests a reference actor with WRAPPER, and list them in `vla-router/DECISIONS.md`. Catch `ReplayUnavailable` **only at G3**. If any other site uses WRAPPER for the reference, STOP and ask. The audit found none: only G3 at `branch_g.py:37`; G2 and C1 are RAW.
+3. G3 skipped is its own state, `unavailable`, never no-effect, restored or failed. `decide()` must not read it as pipeline evidence either way. Implemented as `decide(..., unavailable={"G3"})`, `RouterResult.unavailable` and `ReplayRunner.unavailable`; only `vocab.MAY_BE_UNAVAILABLE = {G3}` may be unavailable.
+4. A verdict where G3 is unavailable AND row 4 fired by elimination carries a flag visible in the report: `Verdict.g3_unavailable=True`, `confidence=low (elimination only, G3 unavailable)`, also in `verdict_text` and `PassRecord`.
+5. `MockBackend(wrapper_reference_unavailable=True)`. Tests:
+   - Branch G with a located Stage 1 contract hit gives the same verdict;
+   - Branch G with no contract hit gives code by elimination, low confidence, flag set;
+   - any other `NotImplementedError` still ends UNRESOLVED;
+   - Branch C is unaffected.
+6. A `DECISIONS.md` entry in the existing style, referencing decision 3 (G3 deferred).
+
+### Router change 3 (done in `1ae2385`)
+- Rung 1 `kind: isaac` takes `{"factory": "pkg.module:attr[.attr]", "args": {...}}`. vla-router never imports vla-isaac.
+- vla-isaac's entry is `vla_isaac.backend.isaac_backend:IsaacBackend.from_config` with `args: {"config": <backend.yaml>}`.
+- Tested with a dummy import path. Recorded in `DECISIONS.md`.
+
+### Deviations made in Phases 1-2 (all reported to the user; the first and last were explicitly accepted)
+- **`environment_class` in the task config** (`module:Class` of the env factory). The actuated launcher needs it, and Python must not name the pilot. Accepted.
+- **The eval config must name the scene's environment.** The task config's `environment_checks` (`type → env.task`, `embodiment → env.embodiment`, `object → env.object`) are checked against the code's `eval.yaml`. A mismatch raises `ConfigError`.
+- **Camera stride.** Arena records every step, so the stride is applied by the trace reader and written into every `vla_meta.json`.
+- **Cache miss counting (router change 4 side fix).** `CachedBackend` counts hits/misses after the backend returns, so a refused run adds no misses.
+- **Location loss.** With G3 unavailable, `code_partial_offset` loses the location `observation_side_or_policy_loading`, which needs G3 restored.
+- **Policy registry name** is `policy_wrapper_gr00t_remote_closedloop`, not Arena's `gr00t_remote_closedloop`, which would collide with Arena's own GR00T policy if both were imported.
+- **`scheduler`** moved from `Gr00tRemoteClosedloopPolicyCfg` into `eval.yaml` `client:` (with a `scheduler` field on `Gr00tClosedloopPolicyCfg`), so `client:` is the client's single source of truth. `bgr_conversion` is a new config field and is honoured by `resize_rgb_for_policy`.
+- **Arena stand-ins.** `policy_wrapper/_arena.py` uses Arena's `PolicyBase` / `PolicyCfg` / `register_policy` when importable and minimal stand-ins otherwise (D5; not a STOP). The `isaaclab_arena_g1` constants are imported only in the G1 branch.
+- **`cv2`** is still imported at module level in `utils/image_conversion.py` (IMPL_PLAN said to move it). headless opencv is in the test env.
+- **Per-request seed (D16).** The client sends `options={"seed": request_seed(cfg.seed, resets, request index)}` (`policy_wrapper/seeding.py`). `serve.py` seeds torch with it, or with its own counters (restarted by `reset`) when absent, and returns the seed in the reply's info.
+- **`serve.py` checkpoint.** It resolves the checkpoint from `--checkpoint-dir`, a local path relative to the repo root, or the local HF cache with `local_files_only` (V-ckpt-cache), and never downloads. `server.checkpoint_revision: TODO_PIN` is an added key (V-hf-rev). None of the pilot doc's comments that name bug homes are copied into `eval.yaml`.
+- **`checkpoints:` map** in the backend config (checkpoint id → local dir). The Q3 loader uses it to find `statistics.json`, and `IsaacBackend` passes `--checkpoint-dir` and `--device` to `serve.py`. A checkpoint that cannot be found is a `WorkspaceError`, so a laptop without the checkpoint cannot name policy-wrapper code with this loader. This is intended.
+- **New task-config sections.** `eval_config:` (key paths, derived-key names, norm-stats group order) and `config_mapping:` (the pilot `ConfigMapping`).
+- **Test fixtures.** The cfg_contract tests build the `TrainingSpec` by hand from the pilot values plus a FIXTURE `statistics.json`; Phase 4 extracts the real spec. policy-wrapper's tests use `tests/fake_gr00t`, stand-ins written for the tests; no GR00T code is copied (D15).
+- **V-traj-size** replaces the 390 MB estimate. Accepted.
