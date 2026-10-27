@@ -203,7 +203,7 @@ cd vla-isaac  && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytes
   - a scan showing that vla-router never imports `vla_isaac`.
 - vla-isaac: its factory path builds an `IsaacBackend`.
 
-## Current state (handoff, 2026-10-27)
+## State before Phase 3 (handoff, 2026-10-27; superseded by "Current state" at the end)
 
 Done: Phase 1, router change 4, Phase 2, router change 3 (and router change 1 in Phase 1). **Next: Phase 3** (instrumentation, `TraceSource` / `BehaviorSource`, router change 2). The decisions to follow are in `docs/IMPL_PLAN.md` §8, "Accepted decisions".
 
@@ -227,7 +227,7 @@ Repo hygiene:
 - The top level still has the user's staged `.gitmodules` / `external/IsaacLab-Arena`, the deleted root `PLAN_*.md` / `plan.md` / `prompts.md` (moved to `docs/`), the modified `hybrid-agent`, and untracked docs.
 - Never stage any of them. Commit with `git commit --only -- <own paths>`.
 
-## Phase 3: instrumentation, trace sources, router change 2 (2026-10-27, partial: see "Not done")
+## Phase 3: instrumentation, trace sources, router change 2 (2026-10-27, finished 2026-10-28)
 
 ### Built
 - **policy-wrapper `instrument.py`**: five hooks (`steps`, `on_request`, `on_reply`, `on_step`, `on_reset`/`close`), configured only by `VLA_INSTRUMENT_*` env vars set by the harness (never `eval.yaml`); `NullInstrument` when unset (no counters, stats or files).
@@ -242,9 +242,12 @@ Repo hygiene:
 ### Tests
 ```
 vla-router     786 passed, 1 skipped   (780 + 6: tests/test_post_place_phase.py; golden pick-only verdicts unchanged)
-vla-isaac      152 passed              (115 + 37: test_traces.py, test_trace_parts.py, Rung 0 protection)
+vla-isaac      176 passed              (115 + 61: test_traces.py, test_trace_parts.py, test_source_contract.py, Rung 0 protection)
 policy-wrapper  38 passed              (25 + 13: tests/test_instrument.py)
 ```
+- The source contract suite (`tests/contracts/source_contract.py`: template `load` not overridden, traces in the mode asked for with the code key, deterministic and round-tripping, other code refused, a missing reference unavailable, a reference to the other mode's logs a `ValueError`) runs on the router's `InMemoryTraceSource` / `InMemoryBehaviorSource` and on `IsaacTraceSource` / `IsaacBehaviorSource` (IMPL_PLAN D1).
+- Mutation checks (made by hand, then reverted): logging `applied = obs_step + chunk index` instead of the step at the return to `env.step` fails the delay-buffer tests in policy-wrapper and vla-isaac; stamping the incident's code key instead of the run's fails four refusal tests.
+
 Staleness: a 3-step buffer → `estimate_extra_delay` 3.00 and `staleness_constant`; no buffer → 0, no evidence. Also tested: a client preprocessing change (BGR, flip) shows in `policy_input` stats.
 
 ### New VERIFY items
@@ -257,6 +260,19 @@ V-hdf5-joint-order, V-hand-limits (placeholder 0.0/1.5 rad, `width_hand: right`)
 - **Not visible**: a delay on the observation side (a stale observation reused) is not in the step pairs; only action-side delay is.
 - Arena's copied `ActionChunkScheduler` clears `env_requires_new_chunk[mask]` in place, so its fetch-count stats read the zeroed mask (Arena quirk, left as is; tags set before it).
 
-### Not done (usage limit)
-- The reusable `TraceSource`/`BehaviorSource` contract suite (`tests/contracts/source_contract.py`, IMPL_PLAN D1); the refusals are tested directly in `test_traces.py`.
-- policy-wrapper `NOTICE` lines for the scheduler / client changes in this phase; the P2/P3 legend in `VERIFY_ON_GPU.md`.
+### Also in this phase
+- policy-wrapper `NOTICE` lists the changes to the copied schedulers and client.
+- `VERIFY_ON_GPU.md`: the P0-P3 legend is below the table, which is now one table (the legend used to split it).
+
+## Current state (2026-10-28)
+
+Done: Phases 1-3, router changes 1-4. **Next: Phase 4** (training spec and reference controller).
+
+| Repo | Test command (run inside the repo) | Result |
+|---|---|---|
+| vla-router | `env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q` | 786 passed, 1 skipped |
+| vla-isaac | same | 176 passed |
+| policy-wrapper | same | 38 passed |
+
+Phase 3 commits: top level `f458483` plus the follow-up commit (source contract suite, docs); policy-wrapper `268f971` plus the `NOTICE` follow-up.
+
