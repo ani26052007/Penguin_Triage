@@ -23,8 +23,10 @@ the router's ``CachedBackend`` wraps), keyed with this backend's ``backend_id``.
 
 Actuator overrides (``env.actuator_overrides`` in the eval config) are code under test and apply
 to policy actors only. Reference actors never get them: RAW reference runs go to the reference
-runner (Mimic, Phase 4), and a WRAPPER reference (G3) raises ``ReplayUnavailable`` (decision 3,
-router change 4) before anything is built, started or run.
+runner (``vla_isaac.reference.mimic.MimicReference`` by default when the task config has a
+``reference:`` section), which receives the scene's variations and nothing from the code's eval
+config, and a WRAPPER reference (G3) raises ``ReplayUnavailable`` (decision 3, router change 4) before
+anything is built, started or run.
 
 Errors: a crashed or timed-out Arena run raises ``ArenaRunError``; bad records raise
 ``EpisodeResultsError``; the incident loop turns either into UNRESOLVED (``R:ladder/loop.py:313``).
@@ -64,7 +66,7 @@ VLA_ISAAC_ROOT = Path(__file__).resolve().parents[2]
 
 
 class ReferenceRunner(Protocol):
-    """Runs the RAW reference controller (Phase 4: ``vla_isaac.reference.mimic``)."""
+    """Runs the RAW reference controller (``vla_isaac.reference.mimic.MimicReference``)."""
 
     def run(self, scene: SceneSpec, actor: ActorRef, seeds: Sequence[int], *,
             variations: Mapping[str, Any]) -> list[EpisodeResult]: ...
@@ -111,6 +113,10 @@ class IsaacBackend(RolloutBackend):
         self.runner = runner or SubprocessRunner()
         self.server_factory = server_factory or PolicyServerProcess
         self.cache = cache
+        if reference is None and task.reference is not None:
+            from vla_isaac.reference.mimic import MimicReference
+
+            reference = MimicReference(cfg, task)
         self.reference = reference
         self.backend_id = backend_id or backend_id_for(cfg, task)
 
@@ -261,7 +267,8 @@ class IsaacBackend(RolloutBackend):
 
     def _run_reference(self, scene: SceneSpec, actor: ActorRef, plan: SeedPlan) -> list[EpisodeResult]:
         if self.reference is None:
-            raise NotImplementedError("RAW reference runs need a reference runner (vla_isaac.reference, Phase 4)")
+            raise NotImplementedError(f"task config {self.task.source} has no reference section, so RAW reference "
+                                      f"runs have no runner (vla_isaac.reference.mimic)")
         # The reference runs the scene's variations and nothing from the code's eval config.
         return self.reference.run(scene, actor, plan.seeds, variations=self.factors.assignments(scene))
 

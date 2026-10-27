@@ -43,7 +43,7 @@ class RunInvocation:
     timeout_s: float
     log_path: Path
     output_dir: Path                        # the experiment output directory
-    spec: RunSpec
+    spec: RunSpec                           # RunSpec for Arena runs; vla_isaac.reference.mimic.MimicRunSpec for Mimic
 
 
 def log_tail(path: Optional[Path], n: int = 2000) -> str:

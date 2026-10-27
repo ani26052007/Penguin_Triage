@@ -6,10 +6,12 @@ adds two derived keys (``TaskConfig.eval_config``):
 
 * ``derived_image_hw``: the first two entries of the image size, the (H, W) the training spec has;
 * ``derived_norm_stats``: the normalisation statistics the server will use, flattened like
-  ``TrainingSpec.norm_stats``: the override file named in the eval config (relative to the copy)
-  when set, else the checkpoint's ``statistics.json``. The checkpoint id is looked up in the backend
-  config's ``checkpoints`` map, or is a local directory. A checkpoint that cannot be found is a
-  ``WorkspaceError``: the config contract must not pass for lack of the statistics.
+  ``TrainingSpec.norm_stats`` by the same function (``vla_isaac.specs.norm_stats.training_norm_stats``):
+  the override file named in the eval config (relative to the copy) when set, else the checkpoint's
+  ``statistics.json``, in the checkpoint's group order either way. The checkpoint id is looked up in
+  the backend config's ``checkpoints`` map, or is a local directory. A checkpoint that cannot be found
+  is a ``WorkspaceError``, with or without an override: the config contract must not pass for lack of
+  the statistics or of the checkpoint's group order.
 
 ``config_mapping(task)`` is the router's ``ConfigMapping`` for this task, and ``rung0_config(task)`` its
 Rung 0 settings (the task config's forbidden paths, which include the instrumentation).
@@ -26,9 +28,7 @@ from ladder.workspace import ConfigLoader, WorkspaceError, WorkspaceManager, fil
 from router.stage1.cfg_contract import ConfigMapping
 
 from vla_isaac.config import BackendConfig, EvalConfigSection, TaskConfig, get_dotted
-from vla_isaac.specs.norm_stats import NormStatsError, load_flat_statistics
-
-STATISTICS_FILE = "statistics.json"
+from vla_isaac.specs.norm_stats import NormStatsError, training_norm_stats
 
 
 def set_dotted(cfg: dict, dotted: str, value: Any) -> None:
@@ -60,20 +60,18 @@ def derive_keys(cfg: Mapping[str, Any], ec: EvalConfigSection, workdir: Path,
     found, embodiment = get_dotted(out, ec.embodiment_key)
     if not found or not isinstance(embodiment, str):
         raise WorkspaceError(f"eval config has no embodiment tag at {ec.embodiment_key!r}")
+    found, checkpoint = get_dotted(out, ec.checkpoint_key)
+    if not found or not checkpoint:
+        raise WorkspaceError(f"eval config has no checkpoint at {ec.checkpoint_key!r}")
+    ckpt = checkpoint_dir(str(checkpoint), checkpoints, workdir)
     _, override = get_dotted(out, ec.norm_stats_override_key)
+    stats = None
     if override is not None:
         stats = Path(override) if Path(str(override)).is_absolute() else workdir / str(override)
-    else:
-        found, checkpoint = get_dotted(out, ec.checkpoint_key)
-        if not found or not checkpoint:
-            raise WorkspaceError(f"eval config has no checkpoint at {ec.checkpoint_key!r}")
-        stats = checkpoint_dir(str(checkpoint), checkpoints, workdir) / STATISTICS_FILE
-    if not stats.is_file():
-        raise WorkspaceError(f"no normalisation statistics at {stats}")
     try:
-        flat = load_flat_statistics(stats, embodiment.lower(), ec.norm_stats_groups)
-    except (NormStatsError, ValueError) as e:
-        raise WorkspaceError(f"cannot read the normalisation statistics {stats}: {e}") from e
+        flat = training_norm_stats(ckpt, embodiment.lower(), ec.norm_stats_groups, statistics=stats).stats
+    except (NormStatsError, ValueError, OSError) as e:
+        raise WorkspaceError(f"cannot read the normalisation statistics for {checkpoint!r}: {e}") from e
     set_dotted(out, ec.derived_norm_stats, flat)
     return out
 

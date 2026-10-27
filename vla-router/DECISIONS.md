@@ -439,3 +439,16 @@ Rejected: skipping the call on rows the router decides alone (loses the logged l
 **Known limits**
 - The note is per `SanityCheck` instance and incident id (the last `run` for that incident).
 - `FrameStats.missing_texture_fraction` is also not measured by vla-isaac and still defaults to `0.0`; it is a `FrameStats` field, outside this change.
+
+## Backend note: the Mimic reference's trials are not paired with policy seeds (sim side Phase 4; no router change)
+
+**What**
+- vla-isaac's RAW reference (`vla_isaac/reference/mimic.py`, Isaac Lab Mimic `generate_dataset.py`) returns one `EpisodeResult` per requested seed, in trial order: trial i of the run is the result for `seeds[i]`. Every result has `logs["paired"] = False`.
+- A Mimic trial is not the policy episode with the same seed number. Mimic draws its own object placements from its annotated source demos (its datagen seed is fixed by the task, VERIFY(V-mimic-seed)), so seed s of G2 / C1 and seed s of Stage 0 or a restore replay share nothing but the number.
+- Nothing in the router reads `logs["paired"]`, and nothing needs to: G2 and C1 are classified on the reference's own success rate with the replay outcome rule (`ladder.stats.replay_outcome`, the same anchors as every replay, which ISSUES #5 notes are the policy's), never compared seed by seed with a policy replay, and `compare()` (McNemar vs Fisher) is used only between two runs of the same actor. The flag is there so a later paired comparison (e.g. in an experiment tool) can refuse Mimic results instead of pairing them silently.
+- The router seed list fixes the trial count only: the first `len(seeds)` attempts of the run are the trials. The pilot environment uses Mimic's `generation_guarantee`, so a run may make more attempts than asked (VERIFY(V-mimic-guarantee)); the extra attempts are counted in `logs["attempts_total"]`, not returned.
+- Qualification (ISSUES #5) is vla-isaac's `qualify()`: unqualified when the Wilson lower bound (`ladder.stats.wilson_interval`) of the trial success rate is below a configured threshold. Its `reference_unqualified` evidence reaches `decide` through `route(..., extra_evidence=...)` (row 2); there is still no producer inside the router.
+
+**Known limits**
+- If Mimic's datagen seed cannot be changed per run, extending G2 from 10 to 20 seeds runs a second 10-trial Mimic run that may repeat the first one's outcomes (V-mimic-seed). The router's interval would then be too narrow.
+- `CachedBackend` keys reference results by seed like any other actor; a cached seed always returns the same trial, which is consistent with the above but means a cached reference run cannot be "re-drawn".

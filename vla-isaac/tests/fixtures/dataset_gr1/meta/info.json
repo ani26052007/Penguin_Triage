@@ -1,0 +1,33 @@
+{
+  "codebase_version": "v2.1",
+  "robot_type": "gr1",
+  "fps": 50,
+  "total_episodes": 100,
+  "features": {
+    "observation.images.ego_view": {
+      "dtype": "video",
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "names": [
+        "height",
+        "width",
+        "channel"
+      ]
+    },
+    "observation.state": {
+      "dtype": "float64",
+      "shape": [
+        26
+      ]
+    },
+    "action": {
+      "dtype": "float64",
+      "shape": [
+        26
+      ]
+    }
+  }
+}

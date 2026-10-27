@@ -256,7 +256,7 @@ V-hdf5-joint-order, V-hand-limits (placeholder 0.0/1.5 rad, `width_hand: right`)
 ### Deviations and findings
 - **Changed router test**: `tests/test_router.py:110` listed the four phase signals literally; now `{V.failure_phase(p) for p in V.PHASES}` (intent unchanged, verdicts unchanged).
 - **GR1 has no `ee_frame` transformer** at Arena 7632eb7d5e, so EE positions come from the policy's own obs terms logged by the instrument (V-ee-frame).
-- **Not logged**: contact penetration (`SimHealth.max_penetration` stays 0.0, which the sanity check reads as healthy) and missing-texture fraction. Fixing needs a router change; not done.
+- **Not logged**: contact penetration (`SimHealth.max_penetration` stays 0.0, which the sanity check reads as healthy) and missing-texture fraction. Fixing needs a router change; not done. *(Penetration: fixed by router change 5, below.)*
 - **Not visible**: a delay on the observation side (a stale observation reused) is not in the step pairs; only action-side delay is.
 - Arena's copied `ActionChunkScheduler` clears `env_requires_new_chunk[mask]` in place, so its fetch-count stats read the zeroed mask (Arena quirk, left as is; tags set before it).
 
@@ -264,15 +264,141 @@ V-hdf5-joint-order, V-hand-limits (placeholder 0.0/1.5 rad, `width_hand: right`)
 - policy-wrapper `NOTICE` lists the changes to the copied schedulers and client.
 - `VERIFY_ON_GPU.md`: the P0-P3 legend is below the table, which is now one table (the legend used to split it).
 
+## Decisions from the Phase 3 review, and the fixes before Phase 4 (2026-10-28)
+
+Recorded in `docs/IMPL_PLAN.md` §8, "Decisions from the Phase 3 review" (commit `5151b38`): the changed `test_router.py:110` is accepted; hand open/closed values stay V-hand-limits; router change 5 is approved; stale observations reused by the client are out of scope (no 6.4 bug), with a frame hash logged per request.
+
+**Known limitation (stale observations).** The staleness checks see only action-side delay (the step pairs). An observation reused by the client is not evidence for any router check. Since fix c, every request's images carry a content hash in the instrument files, so it is detectable later (two requests with the same hash sent the same image).
+
+### Fix a: the grasping hand is chosen per episode (`cc54314`)
+- `traces.hand_closure.width_hand` is gone from the task config and `TraceLayout`.
+- `vla_isaac/traces/events.py` `choose_hand`: the grasping hand is the hand whose closure first crosses the grasp threshold while it is within `reach_distance_m` of the object (crossings at one step: nearer hand first), and the grasp needs the object to move with that hand, as before. Without a grasp, the hand of the first closure within reach is the grasping hand (`hand_basis: attempt`). Without any closure within reach there is no grasping hand, and the nearest hand gives the gripper width only (`nearest`). The chosen hand's closure is the episode's `gripper_cmd_width` / `gripper_width`.
+- Recorded in the behaviour trace: the router's `BehaviorTrace` has no logs or notes field, so `IsaacBehaviorSource` returns `IsaacBehaviorTrace`, a subclass with `notes = {grasp_hand, width_hand, hand_basis}` that round-trips through `to_dict` / `from_dict`. The router reads it as a plain `BehaviorTrace`. No router change.
+- Tests: left-hand grasp, right-hand grasp, no grasp, an attempt that does not move the object, a closure out of reach, a tie (nearer hand wins), and end to end through `IsaacBehaviorSource` / `IsaacTraceSource` (notes per episode, gripper width from the chosen hand).
+- **Deviation:** when an earlier closure within reach does not move the object and a later one by the other hand does, the hand that moved it is the grasping hand. The literal rule ("first crossing within reach") would name the first hand while the grasp is the second hand's.
+
+### Fix b: router change 5, `SimHealth` fields not measured (`50dc31d`)
+- vla-router: `SimHealth.max_penetration: Optional[float]`, `None` = not measured. It is the only `SimHealth` field vla-isaac cannot measure. `nan_fraction` and the initial position come from the HDF5, and an unlogged rest position is already `()`.
+  - `to_dict` writes `null`. `from_dict` reads `null` as `None`, numbers as before, and a missing key as 0.0 (the old format). The dataclass default stays 0.0.
+  - `SanityCheck` skips `None`. A fired evidence's detail ends with `; sanity/max_penetration not measured (k of n episodes)`, and the check also returns a note. A measured value scores exactly as before.
+  - `DECISIONS.md` "Router change 5".
+- vla-isaac: the traces carry `max_penetration=None`.
+- Tests: `vla-router/tests/test_sim_health_not_measured.py` (9), plus vla-isaac `SanityCheck` on Isaac traces (no evidence, the note).
+- Rejected: a `PartialSkip` (it would make row 2 UNKNOWN on every Isaac incident), and changing the default to `None`.
+
+### Fix c: frame content hash (policy-wrapper `1b66477`)
+- `instrument.py` `content_hash` = blake2b-128 over dtype, shape and bytes. At every request (not only at the sampled frame steps), each image of the dict sent to the server is hashed:
+  - the chunk record carries `sent_hashes` (per video key, oldest frame first);
+  - each frame sample carries `policy_input_hash` next to its `FrameStats`.
+- Nothing is hashed when instrumentation is off. The format string stays `/1`, because vla-isaac's reader ignores the added keys. No router change.
+- Tests: hash properties; every sent image hashed at every request; a stale frame shows as a repeated hash; the disabled path makes no hash calls.
+
+## Phase 4: training spec and reference controller (2026-10-28)
+
+### Built
+- **`vla_isaac/specs/norm_stats.py` `training_norm_stats`**: the one norm-stats function. Both `extract_training_spec` (`TrainingSpec.norm_stats`) and the Q3 eval-config loader (`server.effective_norm_stats`) call it (point 1).
+  - The group order comes from the checkpoint's `processor_config.json` (its modality keys). It falls back to the task config's `norm_stats_groups` only when the checkpoint has no processor config.
+  - The statistics are the checkpoint's `statistics.json`, or the override file.
+  - The loader now always resolves the checkpoint, also when an override is set, so the override is flattened in the checkpoint's group order.
+- **`vla_isaac/specs/arena_data_config.py`** reads Arena's GR00T data config module through its syntax tree, without importing GR00T.
+  - The result has the shape a checkpoint's `processor_config.json` holds: `ModalityConfig` / `ActionConfig` become dicts with the dataclass defaults, and enums become their names.
+  - Anything it cannot read raises an error.
+- **`vla_isaac/specs/extract_training_spec.py`** builds a `TrainingSpec` and writes it as JSON. CLI: `python -m vla_isaac.specs.extract_training_spec --backend backend.yaml --output spec.json`.
+  - Inputs: the checkpoint's four files; Arena's closed-loop YAML, data config, `modality.json` and converter YAML (task config `training_spec:`, paths relative to the Arena root); and the local LeRobot dataset's `meta/` (backend config `datasets:`, never downloaded).
+  - **The checkpoint wins** over Arena's data config (point 2). Every differing field is listed in `extra["disagreements"]` as `{field, used, values: {checkpoint, arena_data_config, ...}}`. The fields compared are: every field of every modality config, the embodiment tag, the action horizon, the norm-stats group order, and the state and action layouts. The frame rate and image size are compared between the dataset and Arena's converter (the dataset wins).
+  - **Every field is filled or explicitly missing.** `extra["sources"]` gives each value's file and key, and `extra["missing"]` gives each reason. A test checks that the two sets partition the spec's fields.
+    - Pilot: `action_horizon` from the checkpoint's action `delta_indices`, `replan_steps` from Arena's `action_chunk_length`, `denoising_steps` from `config.json` `num_inference_timesteps`;
+    - `control_hz` / `image_size` from the dataset's `meta/info.json`, else Arena's converter;
+    - `norm_stats` and the layouts from the checkpoint;
+    - `channel_order: RGB` and `render_settings: {}` declared in the task config (V-rgb-order, V-render-defaults);
+    - `camera_poses` missing (no file records them).
+  - **`instruction_templates` only from `meta/tasks.jsonl`** (point 3). Without a local dataset it is missing with a V-train-instr reason. It is never taken from the eval string, nor from either Arena YAML. The two Arena strings are kept in `extra["arena_instructions"]` for the reader.
+  - Also in `extra`: the processor settings (crop, resize, jitter, ...), the model's tune flags and `tune_top_llm_layers`, and the embodiment id.
+- **`vla_isaac/reference/mimic.py` `MimicReference`** (point 4) is the default reference runner of `IsaacBackend` when the task config has a `reference:` section.
+  - **RAW only.** WRAPPER (G3) raises `ReplayUnavailable` (still `NotImplementedError`). A policy actor is a `ValueError`. Another reference checkpoint is a `MimicConfigError`.
+  - **Never the actuated launcher.** The command is `generate_dataset.py` with Arena's stock registration callback and `--task <env>` plus the task's env args (`--embodiment gr1_pink`). The scene's variation overrides come last. There is no `--external_environment_class_path`, no `vla_isaac`, no actuator variables and no `PYTHONPATH`. The config loader refuses a section that names the launcher.
+  - **No downloads.** The annotated source dataset is a backend `datasets` path. Absent, the run is refused with `MimicConfigError` (V-mimic-source).
+  - **Trials.** One `EpisodeResult` per requested seed, in trial order: trial i belongs to `seeds[i]`, with `logs["paired"] = False`.
+    - Outcomes come from the cumulative "successes/attempts" progress lines in Mimic's log (pattern in the task config, PLACEHOLDER, V-mimic-out).
+    - The first `len(seeds)` attempts are used. `generation_guarantee` may add attempts (V-mimic-guarantee); they are counted in `attempts_total`.
+    - A log that cannot order the attempts, or has too few, raises `MimicOutputError`.
+    - The pairing rule is stated in `vla-router/DECISIONS.md` ("Backend note"). No router code change.
+  - **Qualification** (ISSUES #5): `qualify(results, rule, condition)` uses `ladder.stats.wilson_interval`.
+    - The reference is unqualified when the **lower bound** is below `reference.qualification.threshold` (0.8 at 95 % in the pilot config), not when the raw rate is.
+    - `Qualification.evidence()` is `reference_unqualified` (source `reference_qualification`, strength 1.0), for `route(..., extra_evidence=...)`.
+    - A test shows that `decide` puts it in row 2.
+- Task config: `training_spec:` and `reference:` sections, both strict. Backend config: `datasets:` (id → local path).
+
+### Tests
+```
+cd vla-router     && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 795 passed, 1 skipped in 30.66s
+cd vla-isaac      && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 213 passed in 28.66s
+cd policy-wrapper && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 41 passed in 5.24s
+```
+(Before the fixes: 786 + 1 skipped / 176 / 38. Fix a: vla-isaac +7. Fix b: vla-router +9, vla-isaac +1. Fix c: policy-wrapper +3. Phase 4: vla-isaac +29, in `tests/test_training_spec.py` (14) and `tests/test_mimic.py` (15).)
+
+- **Training spec** (FIXTURE checkpoint and dataset files; Arena's real files from the checkout):
+  - pilot values with sources; the fields partition into filled and missing;
+  - a JSON and CLI round trip;
+  - a changed checkpoint modality config wins, and both values are listed;
+  - the checkpoint's group order sets the layout and both norm-stats sides;
+  - without a dataset, or without `tasks.jsonl`, the instruction is missing and never the eval string;
+  - **the nominal pilot gives zero `cfg_contract` violations end to end**: the spec is extracted from the fixture checkpoint files, `eval.yaml` goes through the loader, and every mapped field is compared;
+  - the loader's `effective_norm_stats` equals `spec.norm_stats`;
+  - the converter's "ranch dressing" string as the training string gives exactly one instruction violation, and an edited `denoising_steps` gives exactly one;
+  - bad inputs and strict sections;
+  - the AST reader on Arena's file and on an unreadable one.
+- **Mimic:**
+  - parsing the fixture log (order, totals, repeated lines, mixed or non-cumulative counts);
+  - one result per seed, in trial order and unpaired;
+  - extra attempts;
+  - too few attempts, and a crash;
+  - the exact command, with the scene's variations last;
+  - **no actuated launcher and none of the code's gains** (a backend whose eval config sets gains; the policy plan does get them);
+  - a missing source dataset is refused before running;
+  - only RAW runs (WRAPPER raises `ReplayUnavailable` / `NotImplementedError`);
+  - the backend serves the reference through `CachedBackend`;
+  - strict sections;
+  - the Wilson rule: 20/20 qualifies at 0.8; 19/20 does not, although its raw rate 0.95 ≥ 0.8; 48/50 does; the threshold and confidence are configurable;
+  - the unqualified evidence routes to row 2.
+
+### New VERIFY items
+V-train-instr (new row; was in IMPL_PLAN §4 only), V-mimic-source, V-mimic-out, V-mimic-guarantee, V-mimic-seed. Phase 4 usage was added to V-mimic-override, V-ckpt-cfg, V-rgb-order and V-render-defaults.
+
+### Deviations and findings
+- **No checkpoint file and no Arena file records the frame rate or image size.** Arena's `embodiments/gr1/info.json` is a template with `fps: null`. They come from the dataset's `meta/info.json` when it is local, else from Arena's converter YAML (fps 50, 512²), which produced the training data.
+- **`channel_order`, `render_settings` and `camera_poses` are in no file.** The first two are declared in the task config with VERIFY ids, and `camera_poses` is missing. `training_spec.declared` accepts only these three.
+- **`replan_steps` comes from Arena's closed-loop YAML.** The checkpoint has no replan setting; it is an evaluation choice.
+- **A missing spec field is silently skipped by the router's `cfg_contract`** (`expected is None`: `continue`, no partial skip). So without a local dataset the instruction is not compared and nothing in the router result says so; only `extra["missing"]` records it. Changing that is a router change; not done.
+- **The loader now needs the checkpoint even with a stats override**, because the group order comes from the checkpoint. A laptop without the checkpoint could already not name policy-wrapper code (Phase 2), so nothing new is blocked.
+- **Mimic's semantics are unread** (Isaac Lab is not checked out):
+  - the progress-line pattern is a placeholder;
+  - with `generation_guarantee`, `--generation_num_trials` probably counts successes;
+  - the pilot env fixes the datagen seed (`seed: 1`). If that seed cannot be changed per run, a G2 extension may repeat the same trials (V-mimic-seed; `vla-router/DECISIONS.md` known limit).
+
+  All three are settled by the day-one `mimic_override_check.sh` run (Phase 7).
+- **19/20 is unqualified at threshold 0.8 and 95 %.** With 20 trials only 20/20 qualifies. The threshold and the trial count are config, and the plan's N=20 may need raising to 50 (as for R4).
+- **`IsaacBehaviorTrace` subclasses a router schema** (fix a), instead of adding a field to the router's `BehaviorTrace`.
+- Known limitation carried over: `FrameStats.missing_texture_fraction` is still 0.0 from vla-isaac (not measured). It is a `FrameStats` field, outside router change 5.
+
 ## Current state (2026-10-28)
 
-Done: Phases 1-3, router changes 1-4. **Next: Phase 4** (training spec and reference controller).
+Done: Phases 1-4, router changes 1-5, and the three fixes before Phase 4. **Next: Phase 5** (experiment tools).
 
 | Repo | Test command (run inside the repo) | Result |
 |---|---|---|
-| vla-router | `env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q` | 786 passed, 1 skipped |
-| vla-isaac | same | 176 passed |
-| policy-wrapper | same | 38 passed |
+| vla-router | `env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q` | 795 passed, 1 skipped |
+| vla-isaac | same | 213 passed |
+| policy-wrapper | same | 41 passed |
 
-Phase 3 commits: top level `f458483` plus the follow-up commit (source contract suite, docs); policy-wrapper `268f971` plus the `NOTICE` follow-up.
+Commits since Phase 3:
 
+| Commit | What |
+|---|---|
+| `5151b38` | IMPL_PLAN: decisions from the Phase 3 review |
+| `cc54314` | Fix a: grasping hand per episode |
+| `50dc31d` | Fix b: router change 5 (`SimHealth` fields not measured) |
+| policy-wrapper `1b66477` | Fix c: frame content hash |
+| (this commit) | Phase 4: training spec, Mimic reference, qualification |
+
+Repo hygiene is unchanged: never stage `.gitmodules`, `external/IsaacLab-Arena`, `hybrid-agent` or the moved `PLAN_*.md`; commit with `git commit --only -- <own paths>`.

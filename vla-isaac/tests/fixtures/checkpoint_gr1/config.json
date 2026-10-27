@@ -1,0 +1,14 @@
+{
+  "_comment": "FIXTURE: shape of the GR00T N1.6 checkpoint file (G:gr00t/model/gr00t_n1d6/processing_gr00t_n1d6.py:433-475, G:gr00t/configs/model/gr00t_n1d6.py); values made up or copied from the defaults, not from the pilot checkpoint (VERIFY(V-ckpt-cfg))",
+  "model_type": "Gr00tN1d6",
+  "model_name": "nvidia/Eagle-Block2A-2B-v2",
+  "action_horizon": 16,
+  "num_inference_timesteps": 4,
+  "tune_top_llm_layers": 4,
+  "tune_llm": false,
+  "tune_visual": false,
+  "tune_projector": true,
+  "tune_diffusion_model": true,
+  "max_state_dim": 29,
+  "max_action_dim": 29
+}

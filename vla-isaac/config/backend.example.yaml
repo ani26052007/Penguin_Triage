@@ -16,6 +16,9 @@ app_flags: ["--viz", "none"]              # VERIFY(V-viz)
 policy_device: "cuda:0"
 checkpoints:                              # eval.yaml server.checkpoint -> local copy (R2 downloads it)
   nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task/ranch_bottle_into_fridge: /data/checkpoints/gr1_ranch_bottle_into_fridge
+datasets:                                 # task-config dataset ids -> local copies (downloaded by the runbook, never here)
+  arena_gr1_ranch_bottle_lerobot: /data/datasets/gr1_ranch_bottle_lerobot          # LeRobot dir with meta/tasks.jsonl
+  ranch_bottle_into_fridge_annotated: /data/datasets/ranch_bottle_into_fridge_annotated.hdf5   # Mimic source
 server:
   host: 127.0.0.1
   port: 5555

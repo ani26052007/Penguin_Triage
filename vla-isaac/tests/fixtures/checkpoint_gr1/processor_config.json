@@ -1,0 +1,122 @@
+{
+  "_comment": "FIXTURE: shape of the GR00T N1.6 checkpoint file (G:gr00t/model/gr00t_n1d6/processing_gr00t_n1d6.py:433-475, G:gr00t/configs/model/gr00t_n1d6.py); values made up or copied from the defaults, not from the pilot checkpoint (VERIFY(V-ckpt-cfg))",
+  "processor_class": "Gr00tN1d6Processor",
+  "processor_kwargs": {
+    "modality_configs": {
+      "gr1": {
+        "video": {
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null,
+          "action_configs": null,
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "ego_view"
+          ]
+        },
+        "state": {
+          "sin_cos_embedding_keys": [
+            "left_arm",
+            "right_arm",
+            "left_hand",
+            "right_hand"
+          ],
+          "mean_std_embedding_keys": null,
+          "action_configs": null,
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "left_arm",
+            "right_arm",
+            "left_hand",
+            "right_hand"
+          ]
+        },
+        "action": {
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null,
+          "action_configs": [
+            {
+              "state_key": null,
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT"
+            },
+            {
+              "state_key": null,
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT"
+            },
+            {
+              "state_key": null,
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT"
+            },
+            {
+              "state_key": null,
+              "rep": "ABSOLUTE",
+              "type": "NON_EEF",
+              "format": "DEFAULT"
+            }
+          ],
+          "delta_indices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "modality_keys": [
+            "left_arm",
+            "right_arm",
+            "left_hand",
+            "right_hand"
+          ]
+        },
+        "language": {
+          "sin_cos_embedding_keys": null,
+          "mean_std_embedding_keys": null,
+          "action_configs": null,
+          "delta_indices": [
+            0
+          ],
+          "modality_keys": [
+            "annotation.human.action.task_description"
+          ]
+        }
+      }
+    },
+    "image_crop_size": null,
+    "image_target_size": null,
+    "use_albumentations": true,
+    "random_rotation_angle": null,
+    "color_jitter_params": null,
+    "shortest_image_edge": 256,
+    "crop_fraction": 0.95,
+    "model_name": "nvidia/Eagle-Block2A-2B-v2",
+    "model_type": "eagle",
+    "formalize_language": true,
+    "max_state_dim": 29,
+    "max_action_dim": 29,
+    "max_action_horizon": 16,
+    "use_percentiles": false,
+    "clip_outliers": true,
+    "apply_sincos_state_encoding": true,
+    "use_relative_action": false
+  }
+}

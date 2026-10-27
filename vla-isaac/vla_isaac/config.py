@@ -101,6 +101,7 @@ class BackendConfig:
     app_flags: tuple[str, ...] = ("--viz", "none")   # VERIFY(V-viz): AppLauncher flag, not in Arena's CLI files
     policy_device: str = "cuda:0"
     checkpoints: Mapping[str, Path] = field(default_factory=dict)   # eval-config checkpoint id -> local dir
+    datasets: Mapping[str, Path] = field(default_factory=dict)      # task-config dataset id -> local copy (never downloaded)
     server: ServerConfig = field(default_factory=ServerConfig)
     timeouts: Timeouts = field(default_factory=Timeouts)
     trajectories: TrajectoryConfig = field(default_factory=TrajectoryConfig)
@@ -134,6 +135,10 @@ def backend_config_from_dict(d: Mapping, base: Path) -> BackendConfig:
         if not isinstance(kw["checkpoints"], Mapping):
             raise ConfigError("backend config: checkpoints must map checkpoint ids to local directories")
         kw["checkpoints"] = {str(k): _path(base, v) for k, v in kw["checkpoints"].items()}
+    if "datasets" in kw:
+        if not isinstance(kw["datasets"], Mapping):
+            raise ConfigError("backend config: datasets must map dataset ids to local paths")
+        kw["datasets"] = {str(k): _path(base, v) for k, v in kw["datasets"].items()}
     for key, cls in (("server", ServerConfig), ("timeouts", Timeouts), ("trajectories", TrajectoryConfig)):
         if key in kw:
             _strict(kw[key], cls, f"backend config [{key}]")
@@ -213,6 +218,8 @@ class TaskConfig:
     factor_table: Path
     traces: Optional[Any] = None            # vla_isaac.traces.layout.TraceLayout (``traces:``); None: no trace sources
     rung0: Optional["Rung0Section"] = None  # Rung 0 settings for patches to the code under test
+    training_spec: Optional[Any] = None     # vla_isaac.specs.extract_training_spec.TrainingSpecSection
+    reference: Optional[Any] = None         # vla_isaac.reference.mimic.ReferenceSection (RAW reference: Mimic)
     source: Optional[Path] = None
 
     def __post_init__(self) -> None:
@@ -251,6 +258,14 @@ def task_config_from_dict(d: Mapping, base: Path, source: Optional[Path] = None)
                       config_mapping={str(k): str(v) for k, v in d["config_mapping"].items()},
                       factor_table=_path(base, d["factor_table"]), rung0=rung0,
                       source=source)
+    if d.get("training_spec") is not None:
+        from vla_isaac.specs.extract_training_spec import section_from_dict
+
+        task = replace(task, training_spec=section_from_dict(d["training_spec"]))
+    if d.get("reference") is not None:
+        from vla_isaac.reference.mimic import reference_section_from_dict
+
+        task = replace(task, reference=reference_section_from_dict(d["reference"]))
     if d.get("traces") is None:
         return task
     from vla_isaac.traces.layout import layout_from_dict

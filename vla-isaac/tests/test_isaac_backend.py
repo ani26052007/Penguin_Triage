@@ -198,8 +198,13 @@ def test_raw_reference_goes_to_the_reference_runner_with_scene_variations_only(t
     assert [e.seed for e in out] == [4, 1] and not rig.runner.calls and not rig.servers
     assert seen["variations"]["light.intensity.sampler_cfg.low"] == [100.0]
     assert not any("actuator" in k for k in seen["variations"])
-    with pytest.raises(NotImplementedError, match="Phase 4"):
-        make_backend(tmp_path / "b").backend.run(NOMINAL, rig.code(), REF_RAW, [0], Mode.CLEAN)
+    from vla_isaac.reference.mimic import MimicReference
+
+    default = make_backend(tmp_path / "b").backend
+    assert isinstance(default.reference, MimicReference)        # the pilot task config has a reference section
+    default.reference = None
+    with pytest.raises(NotImplementedError, match="no reference section"):
+        default.run(NOMINAL, rig.code(), REF_RAW, [0], Mode.CLEAN)
 
 
 # ---- extra episodes go into the cache --------------------------------------------------- #
