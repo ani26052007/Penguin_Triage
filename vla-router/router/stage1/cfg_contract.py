@@ -26,6 +26,11 @@ are the nominal band and are passed in as data.
 
 A mapped key that is missing from the eval config is skipped with a warning:
 the effective value is then a default the check cannot see.
+
+A mapped field the training spec does not have (None) cannot be compared
+(router change 6). It is skipped as before, and the check says so in its notes,
+one line per field: "not compared: <field> (missing in spec)". A note, never a
+skip: the evidence, and therefore the verdict, are exactly as before.
 """
 
 from __future__ import annotations
@@ -161,16 +166,21 @@ class ConfigContractCheck(Check):
 
     def __init__(self, mapping: ConfigMapping) -> None:
         self.mapping = mapping
+        self._missing: dict[str, tuple[str, ...]] = {}   # incident id -> mapped fields its spec lacked (last run)
 
     def run(self, incident: Incident) -> list[Evidence]:
         spec, cfg = incident.training_spec, incident.code_ref.eval_config
         covered = {self.mapping.factor_covers[f] for f in incident.scene.factor_names
                    if f in self.mapping.factor_covers}
         out: list[Evidence] = []
+        missing: list[str] = []
         for name in FIELD_ORDER:
             path = self.mapping.keys.get(name)
+            if path is None:
+                continue
             expected = getattr(spec, name)
-            if path is None or expected is None:
+            if expected is None:
+                missing.append(name)
                 continue
             if name in covered:
                 log.debug("cfg contract: %s may differ (declared factor in the scene spec)", name)
@@ -194,4 +204,9 @@ class ConfigContractCheck(Check):
                 signal=V.SIG_RENDER_SETTINGS_DIFFER if render else V.SIG_CONTRACT_VIOLATION,
                 strength=max(d.strength for d in diffs), location=f"eval_config.{path}",
                 detail=f"eval config differs from the training spec ({name}) and no scene factor declares it: {shown}"))
+        self._missing[incident.incident_id] = tuple(missing)
         return out
+
+    def notes(self, incident: Incident) -> list[str]:
+        """The mapped fields the last run could not compare because the training spec lacks them."""
+        return [f"contract_cfg: not compared: {name} (missing in spec)" for name in self._missing.get(incident.incident_id, ())]

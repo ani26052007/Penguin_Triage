@@ -452,3 +452,19 @@ Rejected: skipping the call on rows the router decides alone (loses the logged l
 **Known limits**
 - If Mimic's datagen seed cannot be changed per run, extending G2 from 10 to 20 seeds runs a second 10-trial Mimic run that may repeat the first one's outcomes (V-mimic-seed). The router's interval would then be too narrow.
 - `CachedBackend` keys reference results by seed like any other actor; a cached seed always returns the same trial, which is consistent with the above but means a cached reference run cannot be "re-drawn".
+
+## Router change 6: the config contract says which fields it could not compare (sim side, after Phase 4; approved before Phase 5)
+
+**What**
+- `router/stage1/cfg_contract.py`: a mapped field whose `TrainingSpec` value is `None` is still skipped, as before, but `ConfigContractCheck.notes` now lists it, one line per field in `FIELD_ORDER` order: `contract_cfg: not compared: <field> (missing in spec)`. Found in Phase 4: vla-isaac's extracted spec marks `instruction_templates` missing when the training dataset is not local (V-train-instr) and always marks `camera_poses` missing, and the router result said nothing about it.
+- Same mechanism as change 5: the note goes through `Check.notes` into `Stage1Result.notes` and `RouterResult.notes`. A note, never a skip and never a partial skip, so the signals stay checked and the verdict is unchanged.
+- Only **mapped** fields are noted. An unmapped field is not compared because the mapping leaves it out, not because the spec lacks it.
+- The evidence is exactly as before (ids, signals, strengths, locations, details). Unlike change 5, the line is not appended to the detail of fired evidence: a `cfg_contract` evidence is about one field, and a different field being missing says nothing about it.
+- Tests: `tests/test_cfg_contract_not_compared.py`. They cover no note on a full spec; one note per missing mapped field, in order; unmapped fields not noted; unchanged evidence; notes per incident id (last run); a note and not a skip through `run_stage1`. They also run all 11 router cases through `route()`, comparing against the same mapping with the spec-less fields unmapped (the old silent skip). The verdicts are equal and the router notes differ only by the not-compared lines.
+
+**Rejected**
+- A `PartialSkip` on `contract_violation` for a missing field: row 4 would become undecided on every pilot incident without a local dataset, although the other mapped fields are compared. Same reasoning as change 5.
+- Noting a mapped key that is missing from the **eval config**: it is still only a log warning. It is a different gap (a default the check cannot see) and was not part of the approval.
+
+**Known limits**
+- The notes are per `ConfigContractCheck` instance and incident id (the last `run` for that incident), as in change 5.
