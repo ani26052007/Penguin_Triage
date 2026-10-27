@@ -1,0 +1,54 @@
+[INFO] FIXTURE: synthetic --list_variations output in the format of
+[INFO] A:isaaclab_arena/variations/variations_printing.py:64-181 (not captured from a real run).
+[INFO][AppLauncher]: Loading experience file: isaaclab.python.headless.kit
+2026-10-27 10:00:00 [Info] [omni.kit] some startup line
+Variations (Hydra-configurable)
+================================
+
+Asset: kitchen_counter_top
+  (no variations)
+
+Asset: light
+  hdr_image (HDRImageVariation, build-time)
+    Enable: light.hdr_image.enabled=true  (default: False)
+    Fields:
+      light.hdr_image.hdr_names = []
+      light.hdr_image.sampler_cfg = {}
+
+  intensity (LightIntensityVariation, build-time)
+    Enable: light.intensity.enabled=true  (default: False)
+    Fields:
+      light.intensity.sampler_cfg.high = [2000.0]
+      light.intensity.sampler_cfg.low = [100.0]
+
+  color (LightColorVariation, build-time)
+    Enable: light.color.enabled=true  (default: False)
+    Fields:
+      light.color.sampler_cfg.high = [1.0,1.0,1.0]
+      light.color.sampler_cfg.low = [0.0,0.0,0.0]
+
+  color_temperature (LightColorTemperatureVariation, build-time)
+    Enable: light.color_temperature.enabled=true  (default: False)
+    Fields:
+      light.color_temperature.sampler_cfg.high = [10000.0]
+      light.color_temperature.sampler_cfg.low = [1000.0]
+
+Asset: ranch_dressing_hope_robolab
+  mass (ObjectMassVariation, run-time)
+    Enable: ranch_dressing_hope_robolab.mass.enabled=true  (default: False)
+    Fields:
+      ranch_dressing_hope_robolab.mass.sampler_cfg.high = [2.0]
+      ranch_dressing_hope_robolab.mass.sampler_cfg.low = [0.05]
+
+  disappear (ObjectDisappearVariation, run-time)
+    Enable: ranch_dressing_hope_robolab.disappear.enabled=true  (default: False)
+    Fields:
+      ranch_dressing_hope_robolab.disappear.away_position_xyz = (1000.0, 0.0, 0.0)
+      ranch_dressing_hope_robolab.disappear.sampler_cfg.probability = 0.5
+
+  pose (SomeFutureVariation, run-time)
+    Enable: ranch_dressing_hope_robolab.pose.enabled=true  (default: False)
+    Fields:
+      ranch_dressing_hope_robolab.pose.sampler_cfg.radius = 0.1
+
+2026-10-27 10:00:05 [Info] [omni.kit] shutting down

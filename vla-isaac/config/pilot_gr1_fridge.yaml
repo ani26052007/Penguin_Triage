@@ -1,0 +1,24 @@
+# Pilot task (docs/PILOT_AND_ORDER.md, decision 2): GR1 put_item_in_fridge_and_close_door, ranch bottle.
+# Every task-specific value lives here; a DROID pilot is a new file of this shape.
+nominal_scene: gr1_fridge_ranch
+environment:                              # experiment-YAML environment block (VERIFY(V-exp-yaml))
+  type: put_item_in_fridge_and_close_door
+  embodiment: gr1_joint
+  object: ranch_dressing_hope_robolab
+  enable_cameras: true
+environment_class: "isaaclab_arena_environments.gr1_put_and_close_door_environment:GR1PutAndCloseDoorEnvironment"
+actuated_environment_type: vla_put_item_in_fridge_and_close_door_actuated
+environment_checks:                       # the code's eval.yaml must name the same environment
+  type: env.task
+  embodiment: env.embodiment
+  object: env.object
+policy:
+  type: policy_wrapper.policy.gr00t_remote_closedloop_policy.Gr00tRemoteClosedloopPolicy
+  config_path: config/eval.yaml
+serve:
+  module: policy_wrapper.serve
+  config_path: config/eval.yaml
+eval_keys:
+  language_instruction: client.language_instruction
+  actuator_overrides: env.actuator_overrides
+factor_table: factors_gr1_fridge.yaml

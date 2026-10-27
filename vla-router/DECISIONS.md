@@ -333,3 +333,17 @@ Rejected: skipping the call on rows the router decides alone (loses the logged l
 - Making a missing probe a constructor choice (e.g. `probe=False`) to keep old deployments routing: widens scope; recorded in ISSUES #65 instead.
 - Comparing config files by bytes for the explicit-config rule: the loader may read anything.
 
+
+## Router change 1: backend id in the rollout-cache key (ISSUES #19; sim side Phase 1, docs/IMPL_PLAN.md §5)
+
+**What**
+- `CacheKey` gains `backend: str = ""`; `CacheKey.make(..., backend="")`. `CachedBackend` reads `getattr(backend, "backend_id", "")` and puts it in every key, so two backends sharing one cache file never return each other's episodes.
+- `RolloutBackend.backend_id: str = ""` (class attribute, not abstract). `MockBackend` keeps `""`. vla-isaac's `IsaacBackend` sets `isaac:<hash of Arena / GR00T commits, runner, task config, factor table>`.
+- Backward compatible: a key with an empty id is serialised without the `backend` field and `from_dict` defaults it to `""`, so a cache written before this change loads and still matches the mock. Tests: `tests/test_backend_cache.py` (`test_cache_key_includes_the_backend_...`, `test_cache_lines_from_before_the_backend_id_...`).
+
+**Rejected**
+- Making `backend_id` abstract: every test double and the mock would have to change, and old caches would stop matching.
+- Folding the id into `ActorRef.key()` or `CodeRef.key()`: it is neither the actor nor the code, and those keys are also used outside the cache.
+
+**Known limits**
+- Two backends that both leave the id empty still share entries (as before); a real backend must set one.

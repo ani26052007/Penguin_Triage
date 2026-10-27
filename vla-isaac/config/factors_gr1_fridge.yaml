@@ -1,0 +1,12 @@
+# Factor table for the pilot scene. Written from the variations attached to the dome light
+# (A:isaaclab_arena/assets/object_library.py:468-471) and to every object (object_base.py:77);
+# regenerate it on the GPU box from R3's --list_variations output:
+#   python -m vla_isaac.scene.list_variations --input measurements/<ts>/R3_list_variations.txt \
+#     --output config/factors_gr1_fridge.yaml --names config/factor_names_gr1_fridge.yaml
+# VERIFY(V-list-var): asset names (light, ranch_dressing_hope_robolab) and variation names.
+factors:
+  lighting.intensity:          {asset: light, variation: intensity, kind: build_time, sampler: uniform}
+  lighting.hdr:                {asset: light, variation: hdr_image, kind: build_time, sampler: choice, values_field: hdr_names}
+  lighting.color:              {asset: light, variation: color, kind: build_time, sampler: uniform, dims: 3}
+  lighting.color_temperature:  {asset: light, variation: color_temperature, kind: build_time, sampler: uniform}
+  object.mass:                 {asset: ranch_dressing_hope_robolab, variation: mass, kind: run_time, sampler: uniform}

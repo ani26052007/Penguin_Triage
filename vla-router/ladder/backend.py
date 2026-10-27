@@ -24,7 +24,13 @@ from router.schemas import ActorRef, CodeRef, EpisodeResult, Mode, SceneSpec
 
 class RolloutBackend(ABC):
     """Runs episodes. One call = one (scene, code, actor, mode) over many seeds.
-    The files of ``code_ref`` come from a ``WorkspaceManager`` (module docstring)."""
+    The files of ``code_ref`` come from a ``WorkspaceManager`` (module docstring).
+
+    ``backend_id`` names what produced an episode; it is part of the rollout-cache key
+    (ISSUES #19). Backends that share a cache must use different ids. The default ``""`` keeps
+    the cache keys of backends from before the id existed (the mock)."""
+
+    backend_id: str = ""
 
     @abstractmethod
     def run(self, scene: SceneSpec, code_ref: CodeRef, actor: ActorRef,

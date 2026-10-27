@@ -7,6 +7,11 @@ reference-controller runs (G2 / G3 / C1) never collide with policy runs.
 
 Router replays, Rung 1 and the data pipeline share one cache.
 
+The key also holds the producing backend's ``backend_id`` (ISSUES #19), so two backends sharing
+one cache never return each other's episodes. A backend without an id (the mock) has ``""``, and
+a key with an empty id is stored without the field, so caches written before the id existed load
+and match unchanged.
+
 Note on non-determinism: a cached episode is returned as-is on later calls.
 That is the point of the cache, but it means the replay-agreement measurement
 (running the same seed twice) must call the wrapped backend directly
@@ -31,17 +36,22 @@ class CacheKey:
     scene: str
     seed: int
     mode: str
+    backend: str = ""
 
     @classmethod
-    def make(cls, scene: SceneSpec, code_ref: CodeRef, actor: ActorRef, seed: int, mode: Mode) -> "CacheKey":
-        return cls(code_ref.key(), actor.key(), scene.key(), int(seed), Mode(mode).value)
+    def make(cls, scene: SceneSpec, code_ref: CodeRef, actor: ActorRef, seed: int, mode: Mode,
+             backend: str = "") -> "CacheKey":
+        return cls(code_ref.key(), actor.key(), scene.key(), int(seed), Mode(mode).value, backend)
 
     def to_dict(self) -> dict:
-        return {"code": self.code, "actor": self.actor, "scene": self.scene, "seed": self.seed, "mode": self.mode}
+        d = {"code": self.code, "actor": self.actor, "scene": self.scene, "seed": self.seed, "mode": self.mode}
+        if self.backend:
+            d["backend"] = self.backend
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "CacheKey":
-        return cls(d["code"], d["actor"], d["scene"], int(d["seed"]), d["mode"])
+        return cls(d["code"], d["actor"], d["scene"], int(d["seed"]), d["mode"], d.get("backend", ""))
 
 
 class RolloutCache:
@@ -106,7 +116,8 @@ class CachedBackend(RolloutBackend):
         seeds = [int(s) for s in seeds]
         if len(seeds) != len(set(seeds)):
             raise ValueError("duplicate seeds in one run")
-        keys = {s: CacheKey.make(scene, code_ref, actor, s, mode) for s in seeds}
+        backend_id = getattr(self.backend, "backend_id", "")
+        keys = {s: CacheKey.make(scene, code_ref, actor, s, mode, backend_id) for s in seeds}
         missing = [s for s in seeds if keys[s] not in self.cache]
         self.hits += len(seeds) - len(missing)
         self.misses += len(missing)

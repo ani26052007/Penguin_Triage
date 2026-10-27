@@ -1,0 +1,28 @@
+# Backend config for the rented GPU box. Copy to backend.yaml and edit the paths.
+# Relative paths resolve against this file's directory.
+arena_root: ../../external/IsaacLab-Arena
+gr00t_root: ../../external/IsaacLab-Arena/submodules/Isaac-GR00T
+arena_python: python                      # Arena's .venv python (Isaac Sim + Isaac Lab)
+server_python: python                     # GR00T's uv env python (runs policy-wrapper serve.py)
+output_root: /data/vla-isaac
+task_config: pilot_gr1_fridge.yaml
+workspace_store: /data/vla-isaac/patch-store
+workspace_bases:
+  pw: ../../policy-wrapper
+incident_num_envs: 10
+seed_stride: 10000
+runner: experiment_runner
+app_flags: ["--viz", "none"]              # VERIFY(V-viz)
+policy_device: "cuda:0"
+server:
+  host: 127.0.0.1
+  port: 5555
+  start_timeout_s: 600
+  ping_timeout_ms: 2000
+  ping_interval_s: 2.0
+  stop_timeout_s: 30
+timeouts:
+  run_s: 7200
+  list_variations_s: 900
+trajectories:
+  camera_stride: 10                       # applied by the trace reader; Arena records every step

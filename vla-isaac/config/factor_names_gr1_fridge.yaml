@@ -1,0 +1,6 @@
+# <asset>.<variation> -> factor name, for vla_isaac.scene.list_variations --names
+light.intensity: lighting.intensity
+light.hdr_image: lighting.hdr
+light.color: lighting.color
+light.color_temperature: lighting.color_temperature
+ranch_dressing_hope_robolab.mass: object.mass

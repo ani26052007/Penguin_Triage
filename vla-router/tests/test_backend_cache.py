@@ -175,3 +175,36 @@ def test_cached_backend_hides_noise_and_raw_backend_exposes_it():
 def test_cached_backend_rejects_duplicate_seeds():
     with pytest.raises(ValueError):
         CachedBackend(_table(), RolloutCache()).run(NOMINAL, CODE, POLICY, [1, 1], Mode.CLEAN)
+
+
+# ------------------------------------------------- backend id (ISSUES #19) ----
+
+class _Named(MockBackend):
+    def __init__(self, backend_id, rate):
+        super().__init__([], default_rate=rate)
+        self.backend_id = backend_id
+
+
+def test_cache_key_includes_the_backend_so_two_backends_never_share_episodes(tmp_path):
+    path = str(tmp_path / "shared.jsonl")
+    always = CachedBackend(_Named("sim-a", 1.0), RolloutCache(path))
+    assert all(e.success for e in always.run(NOMINAL, CODE, POLICY, range(20), Mode.CLEAN))
+    never = CachedBackend(_Named("sim-b", 0.0), RolloutCache(path))      # same file, other backend
+    out = never.run(NOMINAL, CODE, POLICY, range(20), Mode.CLEAN)
+    assert never.hits == 0 and not any(e.success for e in out)
+    again = CachedBackend(_Named("sim-a", 0.0), RolloutCache(path))      # same id: served from the cache
+    assert all(e.success for e in again.run(NOMINAL, CODE, POLICY, range(20), Mode.CLEAN)) and again.hits == 20
+
+
+def test_cache_lines_from_before_the_backend_id_still_load_and_match(tmp_path):
+    import json
+    path = tmp_path / "old.jsonl"
+    key = {"code": CODE.key(), "actor": POLICY.key(), "scene": NOMINAL.key(), "seed": 3, "mode": "clean"}
+    path.write_text(json.dumps({"key": key, "episode": EpisodeResult(3, True).to_dict()}) + "\n")
+    cache = RolloutCache(str(path))
+    assert CacheKey.make(NOMINAL, CODE, POLICY, 3, Mode.CLEAN) in cache
+    assert CacheKey.make(NOMINAL, CODE, POLICY, 3, Mode.CLEAN, "isaac:x") not in cache
+    cb = CachedBackend(_table(), cache)                                   # MockBackend: backend_id ""
+    assert cb.run(NOMINAL, CODE, POLICY, [3], Mode.CLEAN)[0].success is True and cb.hits == 1
+    assert "backend" not in CacheKey.make(NOMINAL, CODE, POLICY, 3, Mode.CLEAN).to_dict()
+    assert CacheKey.from_dict(CacheKey.make(NOMINAL, CODE, POLICY, 3, Mode.CLEAN, "b").to_dict()).backend == "b"
