@@ -11,6 +11,11 @@
   5. stamp ``code_key`` = ``code_ref.key()`` into every result's logs and into a ``vla_meta.json``
      sidecar next to the outputs (trace sources refuse outputs without it, ISSUES #52).
 
+Traces (``record_trajectories=True``): Arena records its HDF5 trajectories and the policy wrapper's
+instrument writes its per-episode files (``VLA_INSTRUMENT_*`` in the run's environment) into the
+build's ``instrument/`` directory. ``logs["paths"]["run_root"]`` is the incident log reference for the
+mode (``vla_isaac.traces.sources``).
+
 Modes: clean = 1 env, incident = ``BackendConfig.incident_num_envs`` envs sharing the server.
 Seeds: ``vla_isaac.seeds`` (build seed, episode index); results come back in the caller's order.
 Seed k of a build needs episodes 0..k; the extra episodes go into ``cache`` (the ``RolloutCache``
@@ -52,6 +57,7 @@ from vla_isaac.runner.arena_cmd import (PolicySpec, RunSpec, dump_experiment_yam
 from vla_isaac.runner.subprocess_runner import ArenaRunner, RunInvocation, SubprocessRunner
 from vla_isaac.scene.factors import FactorTable
 from vla_isaac.seeds import SeedPlan, join_seed, plan_seeds
+from vla_isaac.traces import instrument_reader as instrument
 
 META_FILE = "vla_meta.json"
 VLA_ISAAC_ROOT = Path(__file__).resolve().parents[2]
@@ -179,12 +185,21 @@ class IsaacBackend(RolloutBackend):
             argv = policy_runner_argv(cfg.arena_python, spec, out / "arena", app_flags=cfg.app_flags)
             run_dir = out / "arena"                 # VERIFY(V-timestamped-dir): a timestamped subdir is added
         env = {"PYTHONPATH": os.pathsep.join([str(workdir), str(VLA_ISAAC_ROOT)])}
+        if record_trajectories:
+            env.update(self.instrument_env(out / "instrument"))
         if overrides:
             env.update({ENV_OVERRIDES: json.dumps(overrides, sort_keys=True), ENV_BASE: task.environment_class,
                         ENV_NAME: task.actuated_environment_type})
         inv = RunInvocation(argv=tuple(argv), cwd=cfg.arena_root, env=env, timeout_s=cfg.timeouts.run_s,
                             log_path=out / "arena.log", output_dir=out / "arena", spec=spec)
         return PlannedRun(spec, inv, run_dir, bool(overrides))
+
+    def instrument_env(self, directory: Path) -> dict[str, str]:
+        """The policy wrapper's instrumentation settings for a run that records traces."""
+        t = self.cfg.trajectories
+        keys = self.task.traces.instrument_obs_keys if self.task.traces is not None else ()
+        return {instrument.ENV_DIR: str(directory), instrument.ENV_FRAME_EVERY: str(t.camera_stride),
+                instrument.ENV_PROFILE_BUCKETS: str(t.profile_buckets), instrument.ENV_OBS_KEYS: ",".join(keys)}
 
     def actuator_overrides(self, actor: ActorRef, eval_config: Mapping[str, Any]) -> dict:
         """The code's actuator overrides, for a policy actor; ``{}`` for any reference actor."""
@@ -217,7 +232,9 @@ class IsaacBackend(RolloutBackend):
                 "scene": scene.key(), "actor": actor.key(), "mode": mode.value, "build_seed": build_seed,
                 "num_envs": spec.num_envs, "num_episodes": spec.num_episodes,
                 "record_trajectories": spec.record_trajectories,
-                "camera_stride": self.cfg.trajectories.camera_stride, "actuated": planned.actuated,
+                "camera_stride": self.cfg.trajectories.camera_stride,
+                "profile_buckets": self.cfg.trajectories.profile_buckets, "seed_stride": self.cfg.seed_stride,
+                "instrument_dir": inv.env.get(instrument.ENV_DIR), "actuated": planned.actuated,
                 "argv": list(inv.argv), "experiment_yaml": str(yaml_path), "run_dir": str(planned.run_dir),
                 "results": [str(f) for f in files]}
         meta_path = out / META_FILE
@@ -226,7 +243,8 @@ class IsaacBackend(RolloutBackend):
         extra = {"backend": self.backend_id, "code_key": code_ref.key(), "mode": mode.value,
                  "record_trajectories": spec.record_trajectories,
                  "paths": {"vla_meta": str(meta_path), "run_dir": str(planned.run_dir), "log": str(inv.log_path),
-                           "server_log": str(server_log), "experiment_yaml": str(yaml_path)}}
+                           "server_log": str(server_log), "experiment_yaml": str(yaml_path),
+                           "run_root": str(out.parent)}}
         return {join_seed(build_seed, k, self.cfg.seed_stride):
                 to_episode_result(rec, seed=join_seed(build_seed, k, self.cfg.seed_stride), episode_index=k,
                                   paired=paired, extra_logs=extra)

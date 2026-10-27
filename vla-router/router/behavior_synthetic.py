@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Callable, Mapping, Optional, Sequence
 
 from router.behavior import M_BIAS, M_SCATTER, M_WRONG, behavior_metrics
-from router.prereq.behavior_trace import (PHASES, BehaviorSource, BehaviorTrace, GraspRecord,
+from router.prereq.behavior_trace import (PHASES, PICK_PHASES, BehaviorSource, BehaviorTrace, GraspRecord,
                                           InMemoryBehaviorSource, SubtaskProgress)
 from router.prereq.trace import TraceUnavailable
 from router.schemas import Incident, Mode
@@ -50,8 +50,10 @@ def make_behavior_trace(seed: int, mode: Mode = Mode.CLEAN, faults: BehaviorFaul
         grasp = GraspRecord(step=40, ee_pos=ee, target_pos=TARGET, distractor_pos=(DISTRACTOR,))
     subtasks: tuple[SubtaskProgress, ...] = ()
     if faults.fail_phase is not None:
-        stop = PHASES.index(faults.fail_phase)
-        subtasks = tuple(SubtaskProgress(p, success or i < stop) for i, p in enumerate(PHASES))
+        # pick-only unless the fault is in an optional phase: the synthetic task is a pick-and-place
+        phases = PICK_PHASES if faults.fail_phase in PICK_PHASES else PHASES
+        stop = phases.index(faults.fail_phase)
+        subtasks = tuple(SubtaskProgress(p, success or i < stop) for i, p in enumerate(phases))
     return BehaviorTrace(seed, mode, success, grasp, subtasks, code_key)
 
 

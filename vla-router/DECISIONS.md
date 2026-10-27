@@ -348,6 +348,26 @@ Rejected: skipping the call on rows the router decides alone (loses the logged l
 **Known limits**
 - Two backends that both leave the id empty still share entries (as before); a real backend must set one.
 
+## Router change 2: the optional `post_place` phase (sim side Phase 3; docs/IMPL_PLAN.md §5, user decision Q4)
+
+**What**
+- `router/prereq/behavior_trace.py`: `PICK_PHASES = ("reach", "grasp", "lift", "place")`, `OPTIONAL_PHASES = ("post_place",)`, `PHASES = PICK_PHASES + OPTIONAL_PHASES`. `router/vocab.py`: `PHASES_ACTION_GAP` gains `post_place`, so `PHASES` there is the same five (a test pins the two tuples together). `post_place` is a composite task's subtask after the place, such as closing the fridge door in the GR1 pilot.
+- Optional by construction: `BehaviorTrace.failure_phase()` only looks at phases a record logs, so a pick-only episode can never name `post_place`. A door failure after a completed place is `failure_phase:post_place`; with a right implied target that is row 8 (action / skill gap), the plan's definition for "right object, the skill failed".
+- The mapping from a task's own subtask names to phases is the backend's (vla-isaac task YAML `phase_map: {close_door: post_place}`), so a DROID pilot needs no router change. `SubtaskProgress` still accepts only `PHASES` names.
+- `behavior_synthetic.make_behavior_trace` stays pick-only (four records) unless the planted fault is `fail_phase="post_place"`, so every synthetic trace the existing tests use is unchanged.
+- Tests: `tests/test_post_place_phase.py`. The required one: a grid of pick-only behaviour faults (5 target faults x {no log, reach, grasp, lift, place}, through C_behavior and `decide` on a Branch C table, with the partial skips as `unchecked`), all 11 router cases through `route()`, and the action-gap case with each pick phase. Its output before the change is frozen in `tests/fixtures/pick_only_verdicts_before_change2.json` (41 verdicts, rows 1-10); after the change it is identical.
+
+**Changed test**
+- `tests/test_router.py::test_log_only_evidence_routes_without_hand_written_evidence` listed the four failure-phase signals literally as the one justified partial skip; it now derives the set from `V.PHASES`. The intent ("exactly the failure-phase signals, from C_behavior") is unchanged. With no subtask log at all, `failure_phase:post_place` is unchecked too: the router cannot tell a pick-only task from a door task without the log, and an unlooked-at signal must not read as "checked, nothing found" (ISSUES #59). Verdicts are unaffected (the golden test).
+
+**Rejected**
+- Folding the door into `place` (zero router lines): the report could no longer tell "dropped the bottle" from "did not close the door".
+- A task-specific `close_door` phase: every new composite task would need another router edit.
+- Leaving `post_place` out of the unchecked set when no episode logs it: then an absent door log in a door task would read as "checked".
+
+**Known limits**
+- Only one optional phase. A task with two subtasks after the place maps both to `post_place` (the first one missed is the one reported).
+
 ## Router change 3: Rung 1 `kind: isaac` from an import path (IMPL_PLAN D14; approved with the Phase 0 plan, done after Phase 2)
 
 **What**

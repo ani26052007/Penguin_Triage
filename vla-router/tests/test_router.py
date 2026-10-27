@@ -107,7 +107,7 @@ def test_log_only_evidence_routes_without_hand_written_evidence(name, row, locat
     assert res.external_evidence == () and res.skipped == ()
     # nothing is silently skipped. The one justified partial skip: a case whose log has no subtask records
     # leaves the failure phase unjudged (exactly these signals, from C_behavior); action_gap has the records.
-    phase = {"failure_phase:reach", "failure_phase:grasp", "failure_phase:lift", "failure_phase:place"}
+    phase = {V.failure_phase(p) for p in V.PHASES}       # reach..place and the optional post_place (change 2)
     assert [(src, set(p.signals)) for src, p in res.partial] == ([] if name == "action_gap" else [("behavior", phase)])
     assert res.evidence == res.stage1_evidence + res.behavior_evidence
     if location:

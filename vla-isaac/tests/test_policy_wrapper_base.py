@@ -174,3 +174,18 @@ def test_rung0_runs_the_repo_tests_on_a_working_copy(ws, tmp_path, broken):
     assert res.passed is (not broken)
     tests = next(c for c in res.checks if c.name == "tests")
     assert tests.status == ("fail" if broken else "pass")
+
+
+def test_rung0_rejects_a_patch_to_the_instrumentation_and_accepts_one_elsewhere(ws, tmp_path):
+    """The evidence is protected: the pilot's Rung 0 forbids policy_wrapper/instrument.py."""
+    from vla_isaac.workspace import rung0_config
+
+    cfg = rung0_config(TASK)
+    assert "policy_wrapper/instrument.py" in cfg.forbidden_prefixes
+    work = ws.materialize(ws.base_ref("pw"), tmp_path / "w")
+    for path, ok in (("policy_wrapper/instrument.py", False), ("policy_wrapper/policy/gr00t_core.py", True)):
+        diff = f"--- a/{path}\n+++ b/{path}\n@@ -1 +1,2 @@\n+x\n"
+        res = run_rung0(_Env(work, diff), cfg)
+        assert res.passed is ok, res.feedback
+        if not ok:
+            assert res.checks[0].name == "diff" and "forbidden" in res.feedback

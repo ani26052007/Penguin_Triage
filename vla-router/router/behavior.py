@@ -13,8 +13,9 @@ where the target object really was, over the failing episodes:
 Exactly one of the three is emitted, or none when the data cannot say, so this
 module never hands ``decide`` an ok + wrong pair (a row 10 conflict) by itself.
 
-*Failure phase.* The first subtask (reach, grasp, lift, place) that failing
-episodes did not complete, by majority: ``failure_phase:<phase>``.
+*Failure phase.* The first subtask (reach, grasp, lift, place, and the optional
+post_place when the episodes log it) that failing episodes did not complete, by
+majority: ``failure_phase:<phase>``.
 
 Group metrics (one value per group of failing episodes, metres):
 

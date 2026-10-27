@@ -1,0 +1,6 @@
+vla-isaac contains files copied from Isaac Lab-Arena (https://github.com/isaac-sim/IsaacLab-Arena),
+commit 7632eb7d5e, licensed under the Apache License, Version 2.0. Copyright (c) 2025-2026, The Isaac
+Lab Arena Project Developers. The copied files keep their original copyright and SPDX headers.
+
+  isaaclab_arena_gr00t/embodiments/gr1/54dof_joint_space.yaml -> config/gr1/54dof_joint_space.yaml
+  isaaclab_arena_gr00t/embodiments/gr1/36dof_joint_space.yaml -> config/gr1/36dof_joint_space.yaml

@@ -41,3 +41,57 @@ config_mapping:                           # router ConfigMapping.keys (docs/PILO
   render_settings: env.render
   norm_stats: server.effective_norm_stats
 factor_table: factors_gr1_fridge.yaml
+rung0:                                    # patches to the code under test
+  forbidden_prefixes:
+    - .git/
+    - policy_wrapper/instrument.py        # the instrumentation: evidence the router reads about the patch
+traces:                                   # vla_isaac.traces (Phase 3)
+  instrument:
+    obs_keys: [policy.left_eef_pos, policy.right_eef_pos]   # GR1 policy obs terms (A:isaaclab_arena/embodiments/gr1t2/gr1t2.py:381-383)
+  hdf5:                                   # Isaac Lab recorder layout: VERIFY(V-hdf5-keys), export: VERIFY(V-hdf5-export)
+    file_glob: "dataset_*.hdf5"
+    demo_group: data
+    env_id: episode_id/env_id             # Arena EpisodeIdentityRecorder (A:isaaclab_arena/terms/recorders.py:71-94)
+    episode_in_env: episode_id/episode_in_env
+    joint_cmd: processed_actions          # VERIFY(V-hdf5-joint-order): columns in the 36-DoF action order
+    joint_pos: states/articulation/robot/joint_position     # columns in the 54-DoF state order
+    object_pose: "states/rigid_object/{object}/root_pose"   # VERIFY(V-obj-state)
+    object_initial_pose: "initial_state/rigid_object/{object}/root_pose"
+  joints:                                 # copies of Arena's GR1 joint-space files (A:isaaclab_arena_gr00t/embodiments/gr1/)
+    state: gr1/54dof_joint_space.yaml
+    action: gr1/36dof_joint_space.yaml
+  object: ranch_dressing_hope_robolab
+  ee:                                     # GR1 has no ee_frame transformer at Arena 7632eb7d5e, so the wrapper logs the
+    source: instrument                    # policy's own EE observation each step. Frame vs object pose: VERIFY(V-ee-frame)
+    keys: {left: policy.left_eef_pos, right: policy.right_eef_pos}
+  hand_closure:                           # (open, closed) per finger joint: PLACEHOLDER values, VERIFY(V-hand-limits)
+    hands:
+      left:
+        L_index_proximal_joint: [0.0, 1.5]
+        L_middle_proximal_joint: [0.0, 1.5]
+        L_ring_proximal_joint: [0.0, 1.5]
+        L_pinky_proximal_joint: [0.0, 1.5]
+      right:
+        R_index_proximal_joint: [0.0, 1.5]
+        R_middle_proximal_joint: [0.0, 1.5]
+        R_ring_proximal_joint: [0.0, 1.5]
+        R_pinky_proximal_joint: [0.0, 1.5]
+    width_hand: right                     # VERIFY(V-hand-limits): which hand grasps the bottle
+  reach_distance_m: 0.10
+  grasp:                                  # thresholds are first guesses, to calibrate on nominal runs
+    closure_threshold: 0.5
+    window: 25                            # steps (0.5 s at 50 Hz)
+    min_object_motion_m: 0.02
+    max_relative_motion_m: 0.03
+  subtasks:                               # progress.events that complete a subtask: VERIFY(V-progress)
+    lift: {criteria_name: pick_and_place, predicate_index: 1}      # object_is_above_height
+    place: {criteria_name: pick_and_place, predicate_index: 2}     # object_on_destination (consecutive steps)
+    close_door: {criteria_name: close_door, predicate_index: 0}    # openable_object.is_closed
+  object_rest_event: {criteria_name: pick_and_place, predicate_index: 0}   # objects_settled
+  phase_map:                              # task subtask -> router phase (router change 2)
+    reach: reach
+    grasp: grasp
+    lift: lift
+    place: place
+    close_door: post_place
+  check_episode_length: true              # instrument steps == JSONL episode_length, else the traces are refused

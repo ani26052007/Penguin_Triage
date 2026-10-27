@@ -33,7 +33,13 @@ from typing import Mapping, Optional, Sequence
 from router.prereq.trace import TraceUnavailable, verify_code_key
 from router.schemas import Incident, Mode
 
-PHASES = ("reach", "grasp", "lift", "place")
+# Pick-and-place phases, in task order, then the optional phases after them (router change 2). An
+# optional phase is judged only when an episode logs it: ``failure_phase`` looks only at the phases
+# present in a record, so a pick-only task never names one. ``post_place`` is a composite task's
+# subtask after the place (e.g. closing a door); the backend maps its own subtask names onto it.
+PICK_PHASES = ("reach", "grasp", "lift", "place")
+OPTIONAL_PHASES = ("post_place",)
+PHASES = PICK_PHASES + OPTIONAL_PHASES
 
 
 def _floats(xs: Sequence[float]) -> tuple[float, ...]:
@@ -73,7 +79,7 @@ class GraspRecord:
 
 @dataclass(frozen=True)
 class SubtaskProgress:
-    """Did the episode complete one subtask (reach, grasp, lift or place)?"""
+    """Did the episode complete one subtask (one of ``PHASES``)?"""
     name: str
     completed: bool
 
@@ -111,7 +117,7 @@ class BehaviorTrace:
         """First subtask, in task order, that the episode did not complete.
         None for a successful episode, for an episode with no subtask log, and
         for a failed episode that completed every logged subtask (the failure
-        then lies outside the four phases, so it names none)."""
+        then lies outside the logged phases, so it names none)."""
         if self.success or not self.subtasks:
             return None
         done = {s.name: s.completed for s in self.subtasks}

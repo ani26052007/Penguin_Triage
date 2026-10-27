@@ -47,9 +47,10 @@ SIG_STALENESS_CONSTANT = "staleness_constant"        # constant delay also in cl
 SIG_IMPLIED_TARGET_OFFSET = "implied_target_offset"  # consistent offset: frame / extrinsic bug
 SIG_IMPLIED_TARGET_OK = "implied_target_ok"          # small scatter around the right object
 SIG_IMPLIED_TARGET_WRONG = "implied_target_wrong"    # large scatter or wrong object
-SIG_FAILURE_PHASE_PREFIX = "failure_phase:"          # failure_phase:reach|grasp|lift|place
+SIG_FAILURE_PHASE_PREFIX = "failure_phase:"          # failure_phase:reach|grasp|lift|place|post_place
 
-PHASES_ACTION_GAP = ("grasp", "lift", "place")
+# Same phases as ``router.prereq.behavior_trace.PHASES``; ``post_place`` is optional (router change 2).
+PHASES_ACTION_GAP = ("grasp", "lift", "place", "post_place")
 PHASES = ("reach",) + PHASES_ACTION_GAP
 
 # --- replay ids ------------------------------------------------------------ #

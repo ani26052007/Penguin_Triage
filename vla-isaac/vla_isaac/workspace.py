@@ -11,7 +11,8 @@ adds two derived keys (``TaskConfig.eval_config``):
   config's ``checkpoints`` map, or is a local directory. A checkpoint that cannot be found is a
   ``WorkspaceError``: the config contract must not pass for lack of the statistics.
 
-``config_mapping(task)`` is the router's ``ConfigMapping`` for this task.
+``config_mapping(task)`` is the router's ``ConfigMapping`` for this task, and ``rung0_config(task)`` its
+Rung 0 settings (the task config's forbidden paths, which include the instrumentation).
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import copy
 from pathlib import Path
 from typing import Any, Mapping
 
+from ladder.rung0 import Rung0Config
 from ladder.workspace import ConfigLoader, WorkspaceError, WorkspaceManager, file_config_loader
 from router.stage1.cfg_contract import ConfigMapping
 
@@ -92,3 +94,12 @@ def make_workspaces(cfg: BackendConfig, task: TaskConfig) -> WorkspaceManager:
 
 def config_mapping(task: TaskConfig, **kw) -> ConfigMapping:
     return ConfigMapping(keys=dict(task.config_mapping), **kw)
+
+
+def rung0_config(task: TaskConfig, **kw) -> Rung0Config:
+    """Rung 0 for patches to this task's code: the task config's ``rung0.forbidden_prefixes`` plus ``kw``."""
+    if task.rung0 is None:
+        raise WorkspaceError(f"task config {task.source} has no rung0 section")
+    if "forbidden_prefixes" in kw:
+        raise ValueError("forbidden_prefixes come from the task config")
+    return Rung0Config(forbidden_prefixes=task.rung0.forbidden_prefixes, **kw)

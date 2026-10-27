@@ -100,11 +100,14 @@ def rate_success(rate: float, salt: str = "fake") -> SuccessFn:
 @dataclass
 class FakeArenaRunner(ArenaRunner):
     """Writes fixture episode JSONL instead of running Isaac. ``crash_returncode`` makes the next
-    runs fail like a crashed subprocess; ``short_by`` writes fewer episodes than asked."""
+    runs fail like a crashed subprocess; ``short_by`` writes fewer episodes than asked; ``on_run(inv,
+    run_dir, records)`` is called before the JSONL is written and may edit the records (tests use it
+    to write trace fixtures that match them)."""
     success: SuccessFn = field(default_factory=lambda: rate_success(0.8))
     crash_returncode: Optional[int] = None
     short_by: int = 0
     calls: list[RunInvocation] = field(default_factory=list)
+    on_run: Optional[Callable[[RunInvocation, Path, list[dict]], None]] = None
 
     def run(self, inv: RunInvocation) -> None:
         self.calls.append(inv)
@@ -116,7 +119,10 @@ class FakeArenaRunner(ArenaRunner):
         spec = inv.spec
         run_dir = inv.output_dir / spec.run_name
         run_dir.mkdir(parents=True, exist_ok=True)
-        lines = [json.dumps(r) for r in fake_episode_records(spec, self.success, short_by=self.short_by)]
+        records = fake_episode_records(spec, self.success, short_by=self.short_by)
+        if self.on_run is not None:
+            self.on_run(inv, run_dir, records)
+        lines = [json.dumps(r) for r in records]
         (run_dir / "episode_results_rebuild0.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

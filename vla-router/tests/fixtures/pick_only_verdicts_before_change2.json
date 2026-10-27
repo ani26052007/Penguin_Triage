@@ -1,0 +1,337 @@
+{
+ "decide/no_grasp/None": {
+  "by_elimination": false,
+  "evidence": [],
+  "label": "undetermined",
+  "location": null,
+  "row": 10
+ },
+ "decide/no_grasp/grasp": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:grasp"
+  ],
+  "label": "undetermined",
+  "location": null,
+  "row": 10
+ },
+ "decide/no_grasp/lift": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:lift"
+  ],
+  "label": "undetermined",
+  "location": null,
+  "row": 10
+ },
+ "decide/no_grasp/place": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:place"
+  ],
+  "label": "undetermined",
+  "location": null,
+  "row": 10
+ },
+ "decide/no_grasp/reach": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:reach"
+  ],
+  "label": "undetermined",
+  "location": null,
+  "row": 10
+ },
+ "decide/offset/None": {
+  "by_elimination": false,
+  "evidence": [
+   "implied_target_offset"
+  ],
+  "label": "code",
+  "location": "grasp.ee_offset",
+  "row": 4
+ },
+ "decide/offset/grasp": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:grasp",
+   "implied_target_offset"
+  ],
+  "label": "code",
+  "location": "grasp.ee_offset",
+  "row": 4
+ },
+ "decide/offset/lift": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:lift",
+   "implied_target_offset"
+  ],
+  "label": "code",
+  "location": "grasp.ee_offset",
+  "row": 4
+ },
+ "decide/offset/place": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:place",
+   "implied_target_offset"
+  ],
+  "label": "code",
+  "location": "grasp.ee_offset",
+  "row": 4
+ },
+ "decide/offset/reach": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:reach",
+   "implied_target_offset"
+  ],
+  "label": "code",
+  "location": "grasp.ee_offset",
+  "row": 4
+ },
+ "decide/ok/None": {
+  "by_elimination": false,
+  "evidence": [
+   "implied_target_ok"
+  ],
+  "label": "undetermined",
+  "location": null,
+  "row": 10
+ },
+ "decide/ok/grasp": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:grasp",
+   "implied_target_ok"
+  ],
+  "label": "action_gap",
+  "location": null,
+  "row": 8
+ },
+ "decide/ok/lift": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:lift",
+   "implied_target_ok"
+  ],
+  "label": "action_gap",
+  "location": null,
+  "row": 8
+ },
+ "decide/ok/place": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:place",
+   "implied_target_ok"
+  ],
+  "label": "action_gap",
+  "location": null,
+  "row": 8
+ },
+ "decide/ok/reach": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:reach",
+   "implied_target_ok"
+  ],
+  "label": "undetermined",
+  "location": null,
+  "row": 10
+ },
+ "decide/scatter/None": {
+  "by_elimination": false,
+  "evidence": [
+   "implied_target_wrong"
+  ],
+  "label": "undetermined",
+  "location": null,
+  "row": 10
+ },
+ "decide/scatter/grasp": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:grasp",
+   "implied_target_wrong"
+  ],
+  "label": "perception_unresolved",
+  "location": null,
+  "row": 9
+ },
+ "decide/scatter/lift": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:lift",
+   "implied_target_wrong"
+  ],
+  "label": "perception_unresolved",
+  "location": null,
+  "row": 9
+ },
+ "decide/scatter/place": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:place",
+   "implied_target_wrong"
+  ],
+  "label": "perception_unresolved",
+  "location": null,
+  "row": 9
+ },
+ "decide/scatter/reach": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:reach",
+   "implied_target_wrong"
+  ],
+  "label": "perception_unresolved",
+  "location": null,
+  "row": 9
+ },
+ "decide/wrong_object/None": {
+  "by_elimination": false,
+  "evidence": [
+   "implied_target_wrong"
+  ],
+  "label": "undetermined",
+  "location": null,
+  "row": 10
+ },
+ "decide/wrong_object/grasp": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:grasp",
+   "implied_target_wrong"
+  ],
+  "label": "perception_unresolved",
+  "location": null,
+  "row": 9
+ },
+ "decide/wrong_object/lift": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:lift",
+   "implied_target_wrong"
+  ],
+  "label": "perception_unresolved",
+  "location": null,
+  "row": 9
+ },
+ "decide/wrong_object/place": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:place",
+   "implied_target_wrong"
+  ],
+  "label": "perception_unresolved",
+  "location": null,
+  "row": 9
+ },
+ "decide/wrong_object/reach": {
+  "by_elimination": false,
+  "evidence": [
+   "failure_phase:reach",
+   "implied_target_wrong"
+  ],
+  "label": "perception_unresolved",
+  "location": null,
+  "row": 9
+ },
+ "route/action_gap": {
+  "by_elimination": false,
+  "label": "action_gap",
+  "location": null,
+  "row": 8
+ },
+ "route/action_gap/None": {
+  "by_elimination": false,
+  "label": "undetermined",
+  "location": null,
+  "row": 10
+ },
+ "route/action_gap/grasp": {
+  "by_elimination": false,
+  "label": "action_gap",
+  "location": null,
+  "row": 8
+ },
+ "route/action_gap/lift": {
+  "by_elimination": false,
+  "label": "action_gap",
+  "location": null,
+  "row": 8
+ },
+ "route/action_gap/place": {
+  "by_elimination": false,
+  "label": "action_gap",
+  "location": null,
+  "row": 8
+ },
+ "route/action_gap/reach": {
+  "by_elimination": false,
+  "label": "undetermined",
+  "location": null,
+  "row": 10
+ },
+ "route/code_condition_specific": {
+  "by_elimination": false,
+  "label": "code",
+  "location": "eval_config.instruction",
+  "row": 4
+ },
+ "route/code_global": {
+  "by_elimination": false,
+  "label": "code",
+  "location": "action_side",
+  "row": 4
+ },
+ "route/code_partial_offset": {
+  "by_elimination": true,
+  "label": "code",
+  "location": "observation_side_or_policy_loading",
+  "row": 4
+ },
+ "route/combined_code_plus_light": {
+  "by_elimination": false,
+  "label": "code",
+  "location": "obs.normalization",
+  "row": 4
+ },
+ "route/infra_stale_server": {
+  "by_elimination": false,
+  "label": "infra",
+  "location": null,
+  "row": 3
+ },
+ "route/no_fault": {
+  "by_elimination": false,
+  "label": "no_significant_failure",
+  "location": null,
+  "row": 1
+ },
+ "route/rendering_mismatch": {
+  "by_elimination": false,
+  "label": "rendering_mismatch",
+  "location": "eval_config.render",
+  "row": 5
+ },
+ "route/sim_asset": {
+  "by_elimination": false,
+  "label": "sim_asset",
+  "location": null,
+  "row": 2
+ },
+ "route/vision_glossy": {
+  "by_elimination": false,
+  "label": "vision_factor",
+  "location": null,
+  "row": 6
+ },
+ "route/vision_interacting": {
+  "by_elimination": false,
+  "label": "vision_interacting",
+  "location": null,
+  "row": 7
+ }
+}

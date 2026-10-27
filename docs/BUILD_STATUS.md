@@ -226,3 +226,37 @@ Commits (top-level repo `Penguin_Triage`, branch `fixes`; vla-router and vla-isa
 Repo hygiene:
 - The top level still has the user's staged `.gitmodules` / `external/IsaacLab-Arena`, the deleted root `PLAN_*.md` / `plan.md` / `prompts.md` (moved to `docs/`), the modified `hybrid-agent`, and untracked docs.
 - Never stage any of them. Commit with `git commit --only -- <own paths>`.
+
+## Phase 3: instrumentation, trace sources, router change 2 (2026-10-27, partial: see "Not done")
+
+### Built
+- **policy-wrapper `instrument.py`**: five hooks (`steps`, `on_request`, `on_reply`, `on_step`, `on_reset`/`close`), configured only by `VLA_INSTRUMENT_*` env vars set by the harness (never `eval.yaml`); `NullInstrument` when unset (no counters, stats or files).
+  - Boundaries (correction 2): `FrameStats` of the dict actually sent to the server (`policy_input`) and of the env camera frame (`render`); raw chunks exactly as returned.
+  - Tags (correction 1): the schedulers return `TaggedAction(action, obs_step, chunk_offset)`; the tag is set when the chunk arrives and travels with the action; `(obs_step, applied_step, offset)` is logged in `on_step`, at the return to `env.step`. `get_action` stays as a wrapper.
+  - One JSON per episode, with `start_index` (incident-mode start order, D10) and observation keys (`policy.*_eef_pos`).
+- **vla-isaac `traces/`**: `layout.py` (task YAML `traces:`), `hdf5_reader.py` (adapter `TrajectoryStore`, `H5pyStore`), `instrument_reader.py`, `hand_closure.py`, `events.py` (offline reach/grasp, events → subtasks, `phase_map`), `sources.py` (`IsaacTraceSource`, `IsaacBehaviorSource`: read only the files `vla_meta.json` names, inside its directory; code_key from meta).
+- `IsaacBackend`: traced runs set the instrument env vars; meta gains `instrument_dir`, `seed_stride`, `profile_buckets`; `logs.paths.run_root` is the log ref. `trajectories.profile_buckets` added; `camera_stride` is the instrument's frame interval.
+- **Protected evidence (correction 3)**: task config `rung0.forbidden_prefixes` includes `policy_wrapper/instrument.py` (`TaggedAction` lives there); `vla_isaac.workspace.rung0_config`. Phase 8 must never target it.
+- **Router change 2** (correction 4): optional `post_place`; `DECISIONS.md` entry. `config/gr1/*` joint-space copies + `vla-isaac/NOTICE`.
+
+### Tests
+```
+vla-router     786 passed, 1 skipped   (780 + 6: tests/test_post_place_phase.py; golden pick-only verdicts unchanged)
+vla-isaac      152 passed              (115 + 37: test_traces.py, test_trace_parts.py, Rung 0 protection)
+policy-wrapper  38 passed              (25 + 13: tests/test_instrument.py)
+```
+Staleness: a 3-step buffer → `estimate_extra_delay` 3.00 and `staleness_constant`; no buffer → 0, no evidence. Also tested: a client preprocessing change (BGR, flip) shows in `policy_input` stats.
+
+### New VERIFY items
+V-hdf5-joint-order, V-hand-limits (placeholder 0.0/1.5 rad, `width_hand: right`); Phase 3 usage added to V-hdf5-keys, V-hdf5-export, V-ee-frame, V-obj-state, V-progress, V-rgb-order, V-reset-calls.
+
+### Deviations and findings
+- **Changed router test**: `tests/test_router.py:110` listed the four phase signals literally; now `{V.failure_phase(p) for p in V.PHASES}` (intent unchanged, verdicts unchanged).
+- **GR1 has no `ee_frame` transformer** at Arena 7632eb7d5e, so EE positions come from the policy's own obs terms logged by the instrument (V-ee-frame).
+- **Not logged**: contact penetration (`SimHealth.max_penetration` stays 0.0, which the sanity check reads as healthy) and missing-texture fraction. Fixing needs a router change; not done.
+- **Not visible**: a delay on the observation side (a stale observation reused) is not in the step pairs; only action-side delay is.
+- Arena's copied `ActionChunkScheduler` clears `env_requires_new_chunk[mask]` in place, so its fetch-count stats read the zeroed mask (Arena quirk, left as is; tags set before it).
+
+### Not done (usage limit)
+- The reusable `TraceSource`/`BehaviorSource` contract suite (`tests/contracts/source_contract.py`, IMPL_PLAN D1); the refusals are tested directly in `test_traces.py`.
+- policy-wrapper `NOTICE` lines for the scheduler / client changes in this phase; the P2/P3 legend in `VERIFY_ON_GPU.md`.

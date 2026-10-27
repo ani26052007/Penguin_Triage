@@ -15,7 +15,7 @@ missing keys raise ``ConfigError``: a typo must not silently fall back to a defa
 
 from __future__ import annotations
 
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
@@ -71,15 +71,18 @@ class Timeouts:
 
 @dataclass(frozen=True)
 class TrajectoryConfig:
-    """Per-step HDF5 trajectories. Off by default: they are recorded only for calls that ask for
-    traces (``IsaacBackend.run(..., record_trajectories=True)``).
+    """Traces: Arena's per-step HDF5 trajectories plus the policy wrapper's instrument files. Off by
+    default: they are recorded only for calls that ask for traces
+    (``IsaacBackend.run(..., record_trajectories=True)``).
 
-    camera_stride: every how many steps a camera frame is kept when traces are read. Arena itself
-                   records every step (``A:isaaclab_arena/terms/recorders.py:29-41``), so the
-                   stride is applied by the reader and recorded in every run's ``vla_meta.json``.
-                   Whether these trajectories hold camera frames at all, and their size, is
-                   VERIFY(V-traj-size)."""
+    camera_stride:   at most one frame sample per env every this many steps. Frames are summarised by
+                     the wrapper's instrument at its inference requests (``VLA_INSTRUMENT_FRAME_EVERY``),
+                     because Arena's trajectory terms record no camera frames
+                     (``A:isaaclab_arena/terms/recorders.py:277-289``; size: VERIFY(V-traj-size)).
+                     Recorded in every run's ``vla_meta.json``.
+    profile_buckets: row / column profile length of every frame summary (``FrameStats``)."""
     camera_stride: int = 10
+    profile_buckets: int = 16
 
 
 @dataclass(frozen=True)
@@ -111,8 +114,8 @@ class BackendConfig:
             raise ConfigError("incident_num_envs must be >= 2 (clean mode is 1 env)")
         if self.seed_stride < 1:
             raise ConfigError("seed_stride must be >= 1")
-        if self.trajectories.camera_stride < 1:
-            raise ConfigError("trajectories.camera_stride must be >= 1")
+        if self.trajectories.camera_stride < 1 or self.trajectories.profile_buckets < 1:
+            raise ConfigError("trajectories.camera_stride and trajectories.profile_buckets must be >= 1")
 
 
 def backend_config_from_dict(d: Mapping, base: Path) -> BackendConfig:
@@ -188,6 +191,14 @@ class EvalConfigSection:
 
 
 @dataclass(frozen=True)
+class Rung0Section:
+    """Rung 0 for this task's code (``vla_isaac.workspace.rung0_config``). ``forbidden_prefixes`` are
+    paths a patch may not touch; they include the instrumentation, so a patch can never change the
+    evidence the router reads about it."""
+    forbidden_prefixes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class TaskConfig:
     nominal_scene: str                      # ``SceneSpec.nominal`` this task config serves
     environment: Mapping[str, Any]          # Arena experiment-YAML ``environment:`` block; ``type`` required
@@ -200,6 +211,8 @@ class TaskConfig:
     eval_config: EvalConfigSection
     config_mapping: Mapping[str, str]       # router ConfigMapping.keys: TrainingSpec field -> eval-config path
     factor_table: Path
+    traces: Optional[Any] = None            # vla_isaac.traces.layout.TraceLayout (``traces:``); None: no trace sources
+    rung0: Optional["Rung0Section"] = None  # Rung 0 settings for patches to the code under test
     source: Optional[Path] = None
 
     def __post_init__(self) -> None:
@@ -220,7 +233,7 @@ def task_config_from_dict(d: Mapping, base: Path, source: Optional[Path] = None)
     if missing:
         raise ConfigError(f"task config: missing keys {missing}")
     for key, cls in (("policy", PolicySection), ("serve", ServeSection), ("eval_keys", EvalKeys),
-                     ("eval_config", EvalConfigSection)):
+                     ("eval_config", EvalConfigSection)) + ((("rung0", Rung0Section),) if "rung0" in d else ()):
         _strict(d[key], cls, f"task config [{key}]")
     ec = dict(d["eval_config"])
     if not isinstance(ec.get("norm_stats_groups"), Mapping) or not ec["norm_stats_groups"]:
@@ -228,15 +241,21 @@ def task_config_from_dict(d: Mapping, base: Path, source: Optional[Path] = None)
     ec["norm_stats_groups"] = {str(k): tuple(str(g) for g in v) for k, v in ec["norm_stats_groups"].items()}
     if not isinstance(d["config_mapping"], Mapping):
         raise ConfigError("task config: config_mapping must map TrainingSpec fields to eval-config paths")
-    return TaskConfig(nominal_scene=str(d["nominal_scene"]), environment=dict(d["environment"]),
+    rung0 = Rung0Section(tuple(str(p) for p in d["rung0"]["forbidden_prefixes"])) if "rung0" in d else None
+    task = TaskConfig(nominal_scene=str(d["nominal_scene"]), environment=dict(d["environment"]),
                       environment_class=str(d["environment_class"]),
                       actuated_environment_type=str(d["actuated_environment_type"]),
                       environment_checks=dict(d["environment_checks"]),
                       policy=PolicySection(**d["policy"]), serve=ServeSection(**d["serve"]),
                       eval_keys=EvalKeys(**d["eval_keys"]), eval_config=EvalConfigSection(**ec),
                       config_mapping={str(k): str(v) for k, v in d["config_mapping"].items()},
-                      factor_table=_path(base, d["factor_table"]),
+                      factor_table=_path(base, d["factor_table"]), rung0=rung0,
                       source=source)
+    if d.get("traces") is None:
+        return task
+    from vla_isaac.traces.layout import layout_from_dict
+
+    return replace(task, traces=layout_from_dict(d["traces"], base))
 
 
 def load_task_config(path: str | Path) -> TaskConfig:
