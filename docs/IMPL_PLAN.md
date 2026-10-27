@@ -445,3 +445,16 @@ State on 2026-10-27: Phases 1 and 2, router changes 1, 3 and 4 are done (see `do
   3. `instruction_templates` comes from the dataset's `meta/tasks.jsonl` when a local path is configured; otherwise it is marked missing, never filled silently from the eval string (V-train-instr).
   4. Mimic reference: RAW only; never the actuated launcher; no downloads (the annotated source dataset path comes from config, VERIFY when absent); one `EpisodeResult` per requested seed in trial order with `logs["paired"] = False` (Mimic trials are not paired with policy seeds; stated in `vla-router/DECISIONS.md`); `reference_unqualified` uses a Wilson lower bound from `ladder/stats.py` against a configurable threshold, not the raw rate.
   5. Same rules as before: one commit per phase per repo; never stage `.gitmodules`, `external/IsaacLab-Arena`, `hybrid-agent` or the moved `PLAN_*.md`; update `BUILD_STATUS.md` ("Current state") and `VERIFY_ON_GPU.md`; stop on the STOP conditions.
+
+### Decisions from the Phase 4 review (2026-10-28; before Phase 5)
+- **Mimic qualification uses 50 trials by default**, set in config (`reference.qualification.trials`), not 20. With 20 trials only 20/20 clears a 0.8 threshold at 95 % (the Wilson lower bound of 19/20 is 0.764).
+- **Mimic seed (V-mimic-seed) becomes a day-one GPU check**: two runs with different seeds, compare the trial outcomes. The Mimic runner and the qualification code handle both outcomes, with tests:
+  - **the seed can be varied per run**: each run gets its own datagen seed, and repeated runs give independent trials, so an interval over the pooled trials is valid;
+  - **the seed cannot be varied**: the reference is deterministic. Qualification is a single pass/fail with `logs["deterministic"] = True`, and no interval is reported from repeated runs (they would repeat the same trials).
+- **Router change 6 is approved.** `cfg_contract` emits a visible note for every field it skipped because the spec lacked it (`not compared: <field> (missing in spec)`), like change 5 did for `max_penetration`. Nominal verdicts stay unchanged. Tests and a `vla-router/DECISIONS.md` entry; its own commit.
+- **Phase 5 additions.**
+  1. The grid runner records the reference's success rate per cell next to the policy's (the qualification table of plan 6.1 step 7), using the RAW Mimic reference, and marks a cell `reference_unqualified` with the same rule as Phase 4. Those cells are flagged in the output table.
+  2. `replay_agreement` reports, per cell: the agreement rate with its interval, both-success, both-failure and discordant counts, and the overall success rate. A policy that always fails must not look reproducible without that being visible.
+  3. `mode_gap` reports the clean and incident nominal rates with Wilson intervals, and whether they differ, using the shared stats module (no reimplementation). Incident-mode pairing is marked unpaired (D10).
+  4. `replay/recorded_variations`: stripping one key refuses a file whose remaining keys do not all belong to enabled variations (Arena asserts otherwise), and says which key.
+  5. Everything runs on `MockBackend` with known rates and agreement. Tests cover resume after a crash mid-grid, and sharding across two fake hosts giving the same table as one host.
