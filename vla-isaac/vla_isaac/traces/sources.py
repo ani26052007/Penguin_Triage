@@ -22,8 +22,8 @@ episode's gripper width, and the choice is recorded in the behaviour trace's ``n
 (``IsaacBehaviorTrace``: the router's ``BehaviorTrace`` has no notes field, so the record is a subclass
 with one; the router reads it as a plain ``BehaviorTrace``).
 
-Not logged: contact penetration (``SimHealth.max_penetration`` stays 0.0) and the missing-texture
-fraction of frames.
+Not logged: contact penetration (``SimHealth.max_penetration`` is None, "not measured", router change 5)
+and the missing-texture fraction of frames (``FrameStats.missing_texture_fraction`` stays 0.0).
 """
 
 from __future__ import annotations
@@ -175,7 +175,8 @@ def episode_trace(layout: TraceLayout, ep: LoadedEpisode, mode: Mode) -> Episode
         raw_actions=ep.instrument.raw_actions, joint_cmd=a.joint_cmd, joint_pos=a.joint_pos,
         gripper_cmd_width=opening(a.joint_cmd, layout.action_joints, hand),
         gripper_width=opening(a.joint_pos_state, layout.state_joints, hand),
-        sim=SimHealth(nan_fraction=a.nan_fraction, object_initial_pos=a.object_initial_pos, object_rest_pos=rest),
+        sim=SimHealth(nan_fraction=a.nan_fraction, max_penetration=None, object_initial_pos=a.object_initial_pos,
+                      object_rest_pos=rest),
         code_key=ep.code_key)
 
 

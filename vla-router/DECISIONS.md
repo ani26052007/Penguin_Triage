@@ -421,3 +421,21 @@ Rejected: skipping the call on rows the router decides alone (loses the logged l
 **Known limits**
 - `ActorRef`'s default pipeline (and `from_dict`'s) is WRAPPER, so `ActorRef(REFERENCE, x)` with no pipeline is a G3 actor. No production call site relies on the default.
 - In Branch G the row 4 location `observation_side_or_policy_loading` needs G3 restored, so with G3 unavailable an elimination verdict has no location (`code_partial_offset` loses it).
+
+## Router change 5: `SimHealth` fields the backend does not measure (sim side, before Phase 4; approved after Phase 3)
+
+**What**
+- `router/prereq/trace.py`: `SimHealth.max_penetration` is `Optional[float]`; `None` = the backend does not measure it. vla-isaac logs no contact penetration at all (Isaac Lab's contact sensors are not in Arena's recorder terms), so its traces carry `None`. It is the only `SimHealth` field vla-isaac cannot measure: `nan_fraction` and `object_initial_pos` come from the HDF5 trajectories, and an `object_rest_pos` the backend cannot log is already `()`, which `sanity_metrics` skips.
+- Serialisation: `to_dict` writes `null`; `from_dict` reads `null` as `None`, a number as before, and a missing key as `0.0` (the old format, so stored traces load unchanged). The dataclass default stays `0.0`.
+- `router/stage1/sanity.py`: `sanity_metrics` leaves `None` out of `sanity/max_penetration`; `not_measured(traces)` counts the episodes per metric. A fired evidence's detail ends with `; sanity/max_penetration not measured (k of n episodes)`, and `SanityCheck.notes` says the same (a note, never a skip), so the gap is visible in the router result even when nothing fires. A metric with no measured episode is not scored; partly measured, it is the median over the measured episodes.
+- A measured value is scored exactly as before: same metric list, same median, same evidence id, strength, location and detail (no suffix when everything is measured).
+- Tests: `tests/test_sim_health_not_measured.py` (round trip with `null`, old format, unchanged numeric traces, unmeasured penetration skipped and noted, the detail suffix on a fired NaN evidence with identical strength, partly measured episodes, a note not a skip through `run_stage1`).
+
+**Rejected**
+- A `PartialSkip` on `render_physics_broken` when penetration is not measured: on the Isaac backend it would make row 2 UNKNOWN on every incident, although the other five sanity metrics still look. The user chose "skip and say not measured".
+- Changing the dataclass default to `None`: every caller that omits the field would change meaning, and stored traces without the key would load as unmeasured.
+- Making `nan_fraction` optional as well: vla-isaac measures it; there is no backend that cannot.
+
+**Known limits**
+- The note is per `SanityCheck` instance and incident id (the last `run` for that incident).
+- `FrameStats.missing_texture_fraction` is also not measured by vla-isaac and still defaults to `0.0`; it is a `FrameStats` field, outside this change.

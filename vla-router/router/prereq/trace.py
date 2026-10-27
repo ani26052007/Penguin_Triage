@@ -154,13 +154,16 @@ class SimHealth:
     """Per-episode simulator health, summarised by the logger.
 
     nan_fraction:      share of logged steps whose state held NaN / inf.
-    max_penetration:   deepest contact penetration seen, in metres.
+    max_penetration:   deepest contact penetration seen, in metres; None when
+                       the backend does not measure it (router change 5). The
+                       sanity check skips a None and says "not measured"; it
+                       never reads it as 0.0, i.e. as healthy.
     object_initial_pos / object_rest_pos: the target object's position as
                        logged at reset and after it has settled (before the
-                       robot touches it).
+                       robot touches it); empty when not logged.
     """
     nan_fraction: float = 0.0
-    max_penetration: float = 0.0
+    max_penetration: Optional[float] = 0.0
     object_initial_pos: tuple[float, ...] = ()
     object_rest_pos: tuple[float, ...] = ()
 
@@ -174,7 +177,8 @@ class SimHealth:
 
     @classmethod
     def from_dict(cls, d: Mapping) -> "SimHealth":
-        return cls(float(d.get("nan_fraction", 0.0)), float(d.get("max_penetration", 0.0)),
+        pen = d.get("max_penetration", 0.0)       # absent: the old format's 0.0; null: not measured
+        return cls(float(d.get("nan_fraction", 0.0)), None if pen is None else float(pen),
                    d.get("object_initial_pos", ()), d.get("object_rest_pos", ()))
 
 

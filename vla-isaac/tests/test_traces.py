@@ -105,7 +105,17 @@ def test_synthetic_hdf5_jsonl_and_instrument_files_give_episode_traces(clean):
     assert t.gripper_width[0] == pytest.approx(1.0) and t.gripper_width[-1] == pytest.approx(0.0)
     assert t.gripper_cmd_width[CLOSE_AT - 1] == pytest.approx(t.gripper_width[CLOSE_AT])   # cmd one step ahead
     assert t.sim.nan_fraction == 0.0 and t.sim.object_initial_pos == pytest.approx(tuple(OBJECT0))
+    assert t.sim.max_penetration is None and t.to_dict()["sim"]["max_penetration"] is None   # not measured
     assert t.sim.object_rest_pos == pytest.approx(tuple(OBJECT0))          # at the objects_settled event
+
+
+def test_the_sanity_check_reads_unmeasured_penetration_as_not_measured(clean):
+    from router.stage1.sanity import SanityCheck
+    from router.stage1.synthetic import make_nominal
+
+    check = SanityCheck(make_nominal(), IsaacTraceSource(LAYOUT))
+    assert check.run(clean[3]) == []
+    assert check.notes(clean[3]) == ["sanity: sanity/max_penetration not measured (8 of 8 episodes)"]
 
 
 def test_tracked_joints_are_reordered_to_the_action_joints(clean):
