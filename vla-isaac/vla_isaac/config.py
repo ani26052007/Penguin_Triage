@@ -75,9 +75,10 @@ class TrajectoryConfig:
     traces (``IsaacBackend.run(..., record_trajectories=True)``).
 
     camera_stride: every how many steps a camera frame is kept when traces are read. Arena itself
-                   records every step (``A:isaaclab_arena/terms/recorders.py:29-41``; about
-                   390 MB per 500-step episode with cameras), so the stride is applied by the
-                   reader and recorded in every run's ``vla_meta.json``."""
+                   records every step (``A:isaaclab_arena/terms/recorders.py:29-41``), so the
+                   stride is applied by the reader and recorded in every run's ``vla_meta.json``.
+                   Whether these trajectories hold camera frames at all, and their size, is
+                   VERIFY(V-traj-size)."""
     camera_stride: int = 10
 
 
@@ -96,6 +97,7 @@ class BackendConfig:
     runner: str = "experiment_runner"       # experiment_runner | policy_runner
     app_flags: tuple[str, ...] = ("--viz", "none")   # VERIFY(V-viz): AppLauncher flag, not in Arena's CLI files
     policy_device: str = "cuda:0"
+    checkpoints: Mapping[str, Path] = field(default_factory=dict)   # eval-config checkpoint id -> local dir
     server: ServerConfig = field(default_factory=ServerConfig)
     timeouts: Timeouts = field(default_factory=Timeouts)
     trajectories: TrajectoryConfig = field(default_factory=TrajectoryConfig)
@@ -125,6 +127,10 @@ def backend_config_from_dict(d: Mapping, base: Path) -> BackendConfig:
     if not isinstance(kw["workspace_bases"], Mapping) or not kw["workspace_bases"]:
         raise ConfigError("backend config: workspace_bases must map labels to checkout directories")
     kw["workspace_bases"] = {str(k): _path(base, v) for k, v in kw["workspace_bases"].items()}
+    if "checkpoints" in kw:
+        if not isinstance(kw["checkpoints"], Mapping):
+            raise ConfigError("backend config: checkpoints must map checkpoint ids to local directories")
+        kw["checkpoints"] = {str(k): _path(base, v) for k, v in kw["checkpoints"].items()}
     for key, cls in (("server", ServerConfig), ("timeouts", Timeouts), ("trajectories", TrajectoryConfig)):
         if key in kw:
             _strict(kw[key], cls, f"backend config [{key}]")
@@ -163,6 +169,25 @@ class EvalKeys:
 
 
 @dataclass(frozen=True)
+class EvalConfigSection:
+    """How vla-isaac's config loader reads the code's eval config (``vla_isaac.workspace``).
+
+    The loader returns the eval config plus two derived keys, so the router's config contract
+    compares like with like (IMPL_PLAN D8, D9; user decision Q3):
+      ``derived_image_hw``    = ``image_size_key[:2]``  (the training spec's image size is (H, W));
+      ``derived_norm_stats``  = the statistics the server uses: the ``norm_stats_override_key`` file
+                                when set, else the checkpoint's ``statistics.json``, flattened per
+                                modality in ``norm_stats_groups`` order (``vla_isaac.specs.norm_stats``)."""
+    image_size_key: str
+    checkpoint_key: str
+    norm_stats_override_key: str
+    embodiment_key: str
+    derived_image_hw: str
+    derived_norm_stats: str
+    norm_stats_groups: Mapping[str, tuple[str, ...]]
+
+
+@dataclass(frozen=True)
 class TaskConfig:
     nominal_scene: str                      # ``SceneSpec.nominal`` this task config serves
     environment: Mapping[str, Any]          # Arena experiment-YAML ``environment:`` block; ``type`` required
@@ -172,6 +197,8 @@ class TaskConfig:
     policy: PolicySection
     serve: ServeSection
     eval_keys: EvalKeys
+    eval_config: EvalConfigSection
+    config_mapping: Mapping[str, str]       # router ConfigMapping.keys: TrainingSpec field -> eval-config path
     factor_table: Path
     source: Optional[Path] = None
 
@@ -188,18 +215,27 @@ class TaskConfig:
 def task_config_from_dict(d: Mapping, base: Path, source: Optional[Path] = None) -> TaskConfig:
     _strict(d, TaskConfig, "task config")
     need = ("nominal_scene", "environment", "environment_class", "actuated_environment_type", "environment_checks",
-            "policy", "serve", "eval_keys", "factor_table")
+            "policy", "serve", "eval_keys", "eval_config", "config_mapping", "factor_table")
     missing = [k for k in need if k not in d]
     if missing:
         raise ConfigError(f"task config: missing keys {missing}")
-    for key, cls in (("policy", PolicySection), ("serve", ServeSection), ("eval_keys", EvalKeys)):
+    for key, cls in (("policy", PolicySection), ("serve", ServeSection), ("eval_keys", EvalKeys),
+                     ("eval_config", EvalConfigSection)):
         _strict(d[key], cls, f"task config [{key}]")
+    ec = dict(d["eval_config"])
+    if not isinstance(ec.get("norm_stats_groups"), Mapping) or not ec["norm_stats_groups"]:
+        raise ConfigError("task config [eval_config]: norm_stats_groups must map modalities to group names")
+    ec["norm_stats_groups"] = {str(k): tuple(str(g) for g in v) for k, v in ec["norm_stats_groups"].items()}
+    if not isinstance(d["config_mapping"], Mapping):
+        raise ConfigError("task config: config_mapping must map TrainingSpec fields to eval-config paths")
     return TaskConfig(nominal_scene=str(d["nominal_scene"]), environment=dict(d["environment"]),
                       environment_class=str(d["environment_class"]),
                       actuated_environment_type=str(d["actuated_environment_type"]),
                       environment_checks=dict(d["environment_checks"]),
                       policy=PolicySection(**d["policy"]), serve=ServeSection(**d["serve"]),
-                      eval_keys=EvalKeys(**d["eval_keys"]), factor_table=_path(base, d["factor_table"]),
+                      eval_keys=EvalKeys(**d["eval_keys"]), eval_config=EvalConfigSection(**ec),
+                      config_mapping={str(k): str(v) for k, v in d["config_mapping"].items()},
+                      factor_table=_path(base, d["factor_table"]),
                       source=source)
 
 

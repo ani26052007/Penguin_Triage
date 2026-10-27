@@ -21,4 +21,23 @@ serve:
 eval_keys:
   language_instruction: client.language_instruction
   actuator_overrides: env.actuator_overrides
+eval_config:                              # how vla_isaac.workspace reads eval.yaml (derived keys: Q3)
+  image_size_key: client.target_image_size
+  checkpoint_key: server.checkpoint
+  norm_stats_override_key: server.norm_stats_override
+  embodiment_key: server.embodiment_tag
+  derived_image_hw: client.target_image_hw
+  derived_norm_stats: server.effective_norm_stats
+  norm_stats_groups:                      # GR1 arms-only modality key order (gr1_arms_only_data_config.py)
+    state: [left_arm, right_arm, left_hand, right_hand]
+    action: [left_arm, right_arm, left_hand, right_hand]
+config_mapping:                           # router ConfigMapping.keys (docs/PILOT_AND_ORDER.md, with Q3)
+  action_horizon: client.action_horizon
+  replan_steps: client.action_chunk_length
+  denoising_steps: server.denoising_steps
+  control_hz: env.control_hz
+  image_size: client.target_image_hw
+  instruction_templates: client.language_instruction
+  render_settings: env.render
+  norm_stats: server.effective_norm_stats
 factor_table: factors_gr1_fridge.yaml

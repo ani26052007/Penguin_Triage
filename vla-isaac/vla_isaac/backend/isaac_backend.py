@@ -238,7 +238,10 @@ class IsaacBackend(RolloutBackend):
     def _server(self, workdir: Path, code_ref: CodeRef) -> PolicyServerProcess:
         s, cfg = self.task.serve, self.cfg
         argv = [cfg.server_python, "-m", s.module, "--config", s.config_path,
-                "--host", cfg.server.host, "--port", str(cfg.server.port)]
+                "--host", cfg.server.host, "--port", str(cfg.server.port), "--device", cfg.policy_device]
+        found, checkpoint = get_dotted(code_ref.eval_config, self.task.eval_config.checkpoint_key)
+        if found and str(checkpoint) in cfg.checkpoints:
+            argv += ["--checkpoint-dir", str(cfg.checkpoints[str(checkpoint)])]
         log = cfg.output_root / "servers" / f"{short_hash(code_ref.key(), 12)}.log"
         return self.server_factory(argv, cwd=workdir, env={"PYTHONPATH": str(workdir)}, cfg=cfg.server, log_path=log)
 

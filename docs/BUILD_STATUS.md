@@ -106,3 +106,80 @@ cd vla-isaac  && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytes
 ### Deviations and findings
 - `code_partial_offset` with G3 unavailable loses the location `observation_side_or_policy_loading` (it needs G3 restored); the verdict is otherwise unchanged.
 - Until Phase 4 wires the Mimic RAW reference, G2 on `IsaacBackend` still raises a plain `NotImplementedError`, so a Branch G incident on the real backend still ends UNRESOLVED; that is intended (only G3 is optional).
+
+## Phase 2: `policy-wrapper/` repo (2026-10-27)
+
+### Built
+- **`policy-wrapper/`** is a new git repo with one snapshot commit (`23fa9de`, branch `main`). It is in the top-level `.gitignore` and has its own `NOTICE` (the source paths, Arena commit 7632eb7d5e, and the changes made to the copied files) and `LICENSE` (Apache-2.0, the text of Arena's `LICENSE.md`). The copied files keep their headers.
+- **Copied from Arena:**
+  - `policy/` (core, remote closed-loop client, config, task mode);
+  - `scheduling/` (Arena core's three action schedulers);
+  - `utils/` (image conversion, io, joints conversion, robot joints);
+  - `embodiments/gr1/*`;
+  - the fake-client test.
+
+  `isaaclab_arena_gr00t.*` and `isaaclab_arena.policy.action_scheduling` are rewritten to `policy_wrapper.*`.
+- **`policy_wrapper/_arena.py`** imports `PolicyBase`, `PolicyCfg` and `register_policy` from Arena when it can, and otherwise uses stand-ins with the same surface. A base class cannot be imported lazily, so this is the fallback the prompt allows; it does not block the tests (D5). The `isaaclab_arena_g1` constants are imported only in the G1 branch.
+- **`config/eval.yaml`** holds exactly the pilot values. `server.checkpoint_revision: TODO_PIN` is V-hf-rev. None of the pilot doc's comments are copied.
+- **The client's single source of truth** is `config/eval.yaml` `client:`, read by `policy_wrapper/eval_config.py`:
+  - unknown keys raise;
+  - relative paths are resolved against the repo root;
+  - the scheduler is selected here (the `scheduler` field moved off `Gr00tRemoteClosedloopPolicyCfg`);
+  - `bgr_conversion` is honoured by `resize_rgb_for_policy`.
+- **Per-request seed (D16):**
+  - The client sends `options={"seed": request_seed(cfg.seed, resets, request index)}` (`policy_wrapper/seeding.py`).
+  - `serve.py` seeds torch with that seed. If a request has none, it uses its own counters, which restart on `reset`.
+  - The seed used is returned in the reply's info dict.
+- **`serve.py`** builds `Gr00tPolicy` from `server:`:
+  - `model.action_head.num_inference_timesteps = denoising_steps`;
+  - `processor.set_statistics(override_file, override=True)` when `norm_stats_override` is set;
+  - the checkpoint comes from `--checkpoint-dir`, a local path, or the local HF cache with `local_files_only` (V-ckpt-cache). It is never downloaded at serve time.
+
+  Its docstring says that GR00T ignores `--modality-config-path` when a model path is given, and that `serve.py` has no such option.
+- **`instrument.py`** is a no-op stub.
+- **vla-isaac:**
+  - `vla_isaac/workspace.py` holds `eval_config_loader` / `make_workspaces`, which register policy-wrapper as a `WorkspaceManager` base with the Q3 loader. The loader reads `config/eval.yaml` and adds `client.target_image_hw = target_image_size[:2]` and `server.effective_norm_stats`. That value comes from the override file when it is set, otherwise from the checkpoint's `statistics.json`. If neither can be found, the loader raises `WorkspaceError`.
+  - `vla_isaac/workspace.py` also holds `config_mapping(task)`.
+  - `vla_isaac/specs/norm_stats.py` turns GR00T statistics into `TrainingSpec.norm_stats` (flat per modality, group order from YAML). Phase 4's `extract_training_spec` uses the same function.
+  - Task config: `eval_config:` (key paths, derived keys, norm-stats group order) and `config_mapping:` (the pilot `ConfigMapping`, with `image_size → client.target_image_hw` and `norm_stats → server.effective_norm_stats`).
+  - Backend config: `checkpoints:` maps checkpoint id to local dir.
+  - `IsaacBackend` passes `--device` and, when the checkpoint is mapped, `--checkpoint-dir` to `serve.py`.
+
+### Tests
+```
+cd policy-wrapper && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 25 passed in 3.20s
+cd vla-isaac      && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 114 passed in 19.66s
+cd vla-router     && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 770 passed, 1 skipped in 31.06s
+```
+- policy-wrapper:
+  - Arena's fake-client tests (9), re-pointed to GR1: 54-DoF state, 26-DoF policy, 36-DoF action, 512² POV camera, 16-step chunks.
+  - `test_wire.py`, a real ZMQ REP server returning a fixed chunk, checks three things:
+    - the observation dict as decoded on the server;
+    - chunk replay: 16 steps from one chunk, then a new request;
+    - per-request seeds: sent, used by `torch.manual_seed`, reproducible across servers, restarted by `reset`.
+  - `test_serve.py` covers the strict server section, checkpoint resolution, the denoising and stats hooks, and the `serve.py` process end to end (ping, `get_action`, `reset`, `kill`).
+  - `test_eval_config.py` checks that the pilot values are exact, that the client config comes from `client:`, and that `bgr_conversion` works.
+  - `test_imports.py` checks that every module imports without Arena.
+  - The `gr00t` modules are stand-ins written for the tests (`tests/fake_gr00t`). No GR00T code is copied.
+- vla-isaac `tests/test_policy_wrapper_base.py`, on the real checkout:
+  - the `materialize` + `file_config_loader("config/eval.yaml")` round trip, and `code_ref_of` gives the same name;
+  - the derived keys;
+  - `make_workspaces`;
+  - a missing checkpoint raises;
+  - **cfg_contract with the pilot mapping:**
+    - nominal gives zero violations;
+    - each of the 7 edited mapped keys gives exactly one (render gives `render_settings_differ`);
+    - a `norm_stats_override` with modified stats gives exactly one `norm_stats` violation;
+    - an override with identical stats gives zero;
+  - **Rung 0** on a working copy (hagent `LocalEnv`, `pytest` of the copy): passes on a harmless edit and fails on a syntax error.
+
+### New VERIFY items
+V-ckpt-cache, V-stats-format, V-server-seed. V-exp-remote-policy now names policy-wrapper's class.
+
+### Deviations and findings
+- **The policy is registered as `policy_wrapper_gr00t_remote_closedloop`.** Under Arena's name `gr00t_remote_closedloop`, it would collide with Arena's own GR00T policy if both were imported: `register_policy` would then skip ours, and the typed-config lookup would fail.
+- **`scheduler` moved from `Gr00tRemoteClosedloopPolicyCfg` to `eval.yaml` `client:`**, which makes eval.yaml the single source. The experiment YAML never sets it.
+- **`cv2` is still imported at module level** in `utils/image_conversion.py` (IMPL_PLAN said to move it). `opencv-python-headless` is in the test environment, so copying the file unchanged was the smaller change.
+- **The training spec in the cfg_contract tests is built by hand from the pilot values**, with norm stats from a FIXTURE `statistics.json`. Phase 4 extracts the real one.
+- **A laptop without the checkpoint cannot name policy-wrapper code with the Q3 loader.** `WorkspaceError` names the backend `checkpoints:` key. This is intended: the norm-stats contract must not pass for lack of the statistics.
+- **Arena's own client tests may still not run without Isaac Sim.** policy-wrapper's tests show they can be made to; Phase 7's `check_client_tests.sh` checks Arena's.

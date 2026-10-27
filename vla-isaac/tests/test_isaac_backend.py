@@ -46,6 +46,19 @@ def test_one_server_per_call_started_and_stopped_from_the_working_copy(tmp_path)
     assert s.events == ["start", "stop"]
     assert s.argv[1:3] == ["-m", "policy_wrapper.serve"] and (Path(s.cwd) / "config" / "eval.yaml").is_file()
     assert s.env["PYTHONPATH"] == str(s.cwd)
+    assert s.argv[3:] == ["--config", "config/eval.yaml", "--host", "127.0.0.1", "--port", "5555", "--device", "cuda:0"]
+
+
+def test_the_server_gets_the_local_checkpoint_dir_from_the_backend_config(tmp_path):
+    ckpt = "org/repo/sub"
+    rig = make_backend(tmp_path, eval_config=with_eval(server={"checkpoint": ckpt}),
+                       checkpoints={ckpt: tmp_path / "ckpt"})
+    rig.backend.run(NOMINAL, rig.code(), POLICY, [0], Mode.CLEAN)
+    assert rig.servers[0].argv[-2:] == ["--checkpoint-dir", str(tmp_path / "ckpt")]
+    other = make_backend(tmp_path / "o", eval_config=with_eval(server={"checkpoint": "elsewhere"}),
+                         checkpoints={ckpt: tmp_path / "ckpt"})
+    other.backend.run(NOMINAL, other.code(), POLICY, [0], Mode.CLEAN)
+    assert "--checkpoint-dir" not in other.servers[0].argv
 
 
 def test_a_server_that_stops_answering_is_restarted_between_builds(tmp_path):

@@ -14,6 +14,8 @@ seed_stride: 10000
 runner: experiment_runner
 app_flags: ["--viz", "none"]              # VERIFY(V-viz)
 policy_device: "cuda:0"
+checkpoints:                              # eval.yaml server.checkpoint -> local copy (R2 downloads it)
+  nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task/ranch_bottle_into_fridge: /data/checkpoints/gr1_ranch_bottle_into_fridge
 server:
   host: 127.0.0.1
   port: 5555
