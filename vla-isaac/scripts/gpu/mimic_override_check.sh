@@ -80,6 +80,6 @@ fi
 tool mimic-check-result --runbook "$runbook_cfg" --out "$out" --flag "$flag" --flag-in-help "$flag_in_help" \
   --json-out "$out/check.json"
 "$(vla_py)" -c 'import json,sys; c=json.load(open(sys.argv[1]))
-print("override took effect:", c["override"]["took_effect"], "| seed mode:", c["seed"]["mode"],
+print("override check:", c["override"]["result"], "| seed mode:", c["seed"]["mode"],
       "| stdout parse ok:", c["stdout"]["parse_ok"])' "$out/check.json"
 finish_measurement --json "check=$out/check.json" --set "override_hdf5=$out/override/generated.hdf5"

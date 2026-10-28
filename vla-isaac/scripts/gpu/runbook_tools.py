@@ -426,12 +426,19 @@ def mimic_check_result(out: str | Path, rb: Mapping, *, flag: Optional[str], fla
     res: dict[str, Any] = {"runs": runs}
     ov, nom = runs["override"], runs["seed_a"]
     verdict: dict[str, Any] = {"condition": mc["override"], "darker_ratio": mc["darker_ratio"]}
-    if ov and nom and ov["probe"]["mean_pixel"] is not None and nom["probe"]["mean_pixel"]:
-        ratio = ov["probe"]["mean_pixel"] / nom["probe"]["mean_pixel"]
-        verdict.update(method="camera brightness vs the nominal seed_a run", ratio=ratio,
-                       took_effect=ratio < mc["darker_ratio"])
+    missing = [n for n, r in (("override", ov), ("seed_a", nom)) if not r or r["probe"]["mean_pixel"] is None]
+    if missing:
+        # No frames to compare: the check cannot say whether the override reached Mimic, either way.
+        verdict.update(method="none", took_effect=None, result="inconclusive",
+                       reason=f"no camera frames in run(s) {missing}; the override's effect is unknown")
+    elif nom["probe"]["mean_pixel"] <= 0:
+        verdict.update(method="none", took_effect=None, result="inconclusive",
+                       reason="the nominal run's frames are all black; no brightness ratio")
     else:
-        verdict.update(method="none", took_effect=None, reason="no camera frames in one of the runs")
+        ratio = ov["probe"]["mean_pixel"] / nom["probe"]["mean_pixel"]
+        took = ratio < mc["darker_ratio"]
+        verdict.update(method="camera brightness vs the nominal seed_a run", ratio=ratio, took_effect=took,
+                       result="pass" if took else "fail")
     verdict["recorded_variations"] = ov["probe"]["recorded_variations"] if ov else None
     res["override"] = verdict
 

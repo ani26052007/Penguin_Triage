@@ -478,7 +478,8 @@ def test_vram_client_tests_checkpoint_and_lerobot_pick(tmp_path):
         tools.pick_lerobot(files + ["ranch2/meta/tasks.jsonl"], "ranch")
 
 
-def mimic_run_dir(out: Path, name: str, *, brightness: int, outcomes, seed_content: int, trials: int) -> None:
+def mimic_run_dir(out: Path, name: str, *, brightness: int, outcomes, seed_content: int, trials: int,
+                  frames: bool = True) -> None:
     import h5py
     import numpy as np
 
@@ -487,8 +488,9 @@ def mimic_run_dir(out: Path, name: str, *, brightness: int, outcomes, seed_conte
     with h5py.File(d / "generated.hdf5", "w") as f:
         f.attrs["created"] = f"{time.time()}"              # a timestamp attribute must not break equality
         for i in range(2):
-            f.create_dataset(f"data/demo_{i}/camera_obs/robot_pov_cam_rgb",
-                             data=np.full((4, 8, 8, 3), brightness, dtype=np.uint8))
+            if frames:
+                f.create_dataset(f"data/demo_{i}/camera_obs/robot_pov_cam_rgb",
+                                 data=np.full((4, 8, 8, 3), brightness, dtype=np.uint8))
             f.create_dataset(f"data/demo_{i}/processed_actions", data=np.full((4, 36), seed_content, dtype=np.float32))
     s = a = 0
     lines = []
@@ -536,6 +538,7 @@ def test_mimic_check_result(tmp_path, case, flag_in_help, expect_mode):
             mimic_run_dir(tmp_path, "seed_b", brightness=200, outcomes=[True, True, False, True, True], seed_content=1, trials=5)
     res = tools.mimic_check_result(tmp_path, rb, flag="--seed", flag_in_help=flag_in_help)
     assert res["override"]["took_effect"] is True and res["override"]["ratio"] == pytest.approx(0.2)
+    assert res["override"]["result"] == "pass"
     assert res["seed"]["mode"].startswith(expect_mode)
     assert res["stdout"]["parse_ok"] and res["stdout"]["per_attempt_lines"]
     assert res["guarantee"][0] == {"trials_asked": 2, "attempts": 2, "successes": 1}
@@ -548,9 +551,23 @@ def test_mimic_check_flags_an_override_that_did_not_take_and_a_summary_only_log(
     mimic_run_dir(tmp_path, "seed_a", brightness=200, outcomes=[True] * 5, seed_content=1, trials=5)
     (tmp_path / "seed_a" / "mimic.log").write_text("Generated 5 demos in total\n")
     res = tools.mimic_check_result(tmp_path, rb, flag="--seed", flag_in_help=False)
-    assert res["override"]["took_effect"] is False
+    assert res["override"]["took_effect"] is False and res["override"]["result"] == "fail"
     assert res["stdout"]["parse_ok"] is False
     assert res["seed"]["mode"] is None                     # no repeat run: undecided
+
+
+@pytest.mark.parametrize("which", ["override", "seed_a", "both", "black"])
+def test_mimic_check_without_camera_frames_is_inconclusive_not_pass_or_fail(tmp_path, which):
+    rb = tools.load_runbook(RUNBOOK)
+    mimic_run_dir(tmp_path, "override", brightness=40, outcomes=[True, True], seed_content=9, trials=2,
+                  frames=which not in ("override", "both"))
+    mimic_run_dir(tmp_path, "seed_a", brightness=0 if which == "black" else 200, outcomes=[True] * 5, seed_content=1,
+                  trials=5, frames=which not in ("seed_a", "both"))
+    res = tools.mimic_check_result(tmp_path, rb, flag="--seed", flag_in_help=False)
+    ov = res["override"]
+    assert ov["result"] == "inconclusive" and ov["took_effect"] is None and ov["method"] == "none"
+    assert "ratio" not in ov
+    assert ("black" in ov["reason"]) if which == "black" else ("no camera frames" in ov["reason"])
 
 
 def test_the_isaac_import_blocker(tmp_path):
@@ -630,6 +647,7 @@ def put(meas: Path, ts: str, script: str, **res) -> Path:
 
 
 def full_box(meas: Path, *, r4=(45, 50), dark=(5, 50), r5=(30, 50), took_effect=True, mode="fixed") -> None:
+    result = {True: "pass", False: "fail", None: "inconclusive"}[took_effect]
     put(meas, "t1", "00_check_gpu", gpus=[{"name": "NVIDIA RTX 6000 Ada Generation", "ok": True}])
     put(meas, "t1", "R0_setup", versions={"isaacsim": "5.1.0", "isaaclab": "2.3.0"})
     put(meas, "t1", "R1_download_checkpoint", revision_sha="abc123",
@@ -638,7 +656,8 @@ def full_box(meas: Path, *, r4=(45, 50), dark=(5, 50), r5=(30, 50), took_effect=
     put(meas, "t1", "check_client_tests", vla={"imports_without_isaac": True}, gr00t={"imports_without_isaac": True})
     put(meas, "t1", "R3_list_variations", factor_table_equal=True, regenerated="/m/f.yaml")
     put(meas, "t1", "mimic_override_check", check={
-        "override": {"took_effect": took_effect}, "seed": {"mode": mode}, "stdout": {"parse_ok": True},
+        "override": {"took_effect": took_effect, "result": result, "reason": "no camera frames in run(s) ['override']"},
+        "seed": {"mode": mode}, "stdout": {"parse_ok": True},
         "guarantee": [{"trials_asked": 2, "attempts": 2, "successes": 2}]})
     put(meas, "t1", "R4_nominal_clean", cells={"nominal": {"success": prop(*r4), "timestamped_subdir": True,
                                                            "success_types": ["bool"],
@@ -692,6 +711,15 @@ def test_the_pilot_decision(tmp_path, kw, expect):
     assert d["decision"] == expect
     if kw.get("r4") == (41, 50):
         assert "lower bound" in d["reason"]
+
+
+def test_an_inconclusive_override_check_is_its_own_mimic_decision_and_settles_the_id_as_inconclusive(tmp_path):
+    full_box(tmp_path, took_effect=None)
+    s = collect.summarize(tmp_path, VERIFY_MD, GATE)
+    d = s["decisions"]["mimic"]
+    assert d["decision"] == "inconclusive" and "no camera frames" in d["reason"]
+    assert d["override_result"] == "inconclusive"
+    assert s["verify"]["V-mimic-override"]["value"] == "inconclusive"
 
 
 def test_mimic_and_mode_gap_negative_decisions(tmp_path):

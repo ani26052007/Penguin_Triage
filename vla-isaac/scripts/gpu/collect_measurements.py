@@ -59,7 +59,7 @@ SETTLES: dict[str, tuple[str, Settler]] = {
     "V-stats-format": ("R1_download_checkpoint", lambda r: (r.get("checkpoint") or {}).get("statistics_shape")),
     "V-client-tests": ("check_client_tests", lambda r: _some({k: v.get("imports_without_isaac") for k, v in r.items()
                                                               if k in ("vla", "gr00t") and isinstance(v, Mapping)})),
-    "V-mimic-override": ("mimic_override_check", lambda r: _mimic(r, "override", "took_effect")),
+    "V-mimic-override": ("mimic_override_check", lambda r: _mimic(r, "override", "result")),
     "V-mimic-seed": ("mimic_override_check", lambda r: _mimic(r, "seed", "mode")),
     "V-mimic-out": ("mimic_override_check", lambda r: _mimic(r, "stdout", "parse_ok")),
     "V-mimic-guarantee": ("mimic_override_check", lambda r: _some(((r.get("check") or {}).get("guarantee")))),
@@ -171,12 +171,18 @@ def decide_mimic(chosen: Mapping[str, dict]) -> dict:
     if not res or res.get("status") != "ok":
         return {"decision": "undecided", "reason": "mimic_override_check.sh has not finished"}
     check = res.get("check") or {}
-    took = (check.get("override") or {}).get("took_effect")
+    override = check.get("override") or {}
+    took = override.get("took_effect")
+    result = override.get("result")
     mode = (check.get("seed") or {}).get("mode")
     parse_ok = (check.get("stdout") or {}).get("parse_ok")
-    facts = {"override_took_effect": took, "seed_mode": mode, "stdout_parse_ok": parse_ok}
+    facts = {"override_took_effect": took, "override_result": result, "seed_mode": mode, "stdout_parse_ok": parse_ok}
     if took is False:
         return {**facts, "decision": "not usable", "reason": "the lighting override did not reach the Mimic runs"}
+    if result == "inconclusive":
+        return {**facts, "decision": "inconclusive",
+                "reason": f"the override check is inconclusive: {override.get('reason')}; check the override by hand "
+                          f"(V-mimic-override) before using Mimic"}
     if mode and mode.startswith("stop"):
         return {**facts, "decision": "not usable", "reason": mode}
     if parse_ok is False:
