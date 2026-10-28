@@ -1,0 +1,120 @@
+diff --git a/policy_wrapper/policy/gr00t_remote_closedloop_policy.py b/policy_wrapper/policy/gr00t_remote_closedloop_policy.py
+index 0bfd059..1641a68 100644
+--- a/policy_wrapper/policy/gr00t_remote_closedloop_policy.py
++++ b/policy_wrapper/policy/gr00t_remote_closedloop_policy.py
+@@ -13,2 +13,7 @@ from __future__ import annotations
+ 
++import math
++import os
++import time
++from concurrent.futures import Future, ThreadPoolExecutor
++
+ import gymnasium as gym
+@@ -133,2 +138,4 @@ class Gr00tRemoteClosedloopPolicy(PolicyBase[Gr00tRemoteClosedloopPolicyCfg]):
+         self.task_description: str | None = None
++        # Request the next chunk early enough for its reply to arrive when the current one runs out
++        self._prefetch = _ChunkPrefetch() if os.environ.get("GR00T_CLIENT_PREFETCH") == "1" else None
+         # Instrumentation hooks (no-ops unless the evaluation harness switches them on)
+@@ -158,4 +165,7 @@ class Gr00tRemoteClosedloopPolicy(PolicyBase[Gr00tRemoteClosedloopPolicyCfg]):
+         """The scheduler's next action per env, tagged with the observation step of its chunk."""
++        prefetched = self._prefetch_step(observation)
+ 
+         def fetch_chunk() -> torch.Tensor:
++            if prefetched is not None:
++                return prefetched[1]
+             return self._get_action_chunk(observation, self.policy_config.pov_cam_name_sim)
+@@ -165,5 +175,22 @@ class Gr00tRemoteClosedloopPolicy(PolicyBase[Gr00tRemoteClosedloopPolicyCfg]):
+             hold_action=self._extract_hold_action(observation),
+-            obs_step=self._instrument.steps,
++            obs_step=self._instrument.steps if prefetched is None else prefetched[0],
+         )
+ 
++    def _prefetch_step(self, observation: dict[str, Any]) -> tuple[torch.Tensor | None, torch.Tensor] | None:
++        """With prefetching on: the chunk requested ahead of time, once the current one has run out, with the
++        observation step it was requested at; and the next request, sent when the current chunk nears its end."""
++        prefetch = self._prefetch
++        if prefetch is None or not isinstance(self._chunking_state, ActionChunkScheduler):
++            return None
++        scheduler = self._chunking_state
++        prefetched = None
++        if scheduler.env_requires_new_chunk.any() and prefetch.pending:
++            prefetched = prefetch.take()
++        remaining = self.action_chunk_length - int(scheduler.current_action_index.max().item()) - 1
++        if not prefetch.pending and 0 <= remaining <= prefetch.lead(self.action_chunk_length):
++            cameras = self.policy_config.pov_cam_name_sim
++            prefetch.submit(lambda: self._get_action_chunk(observation, cameras), self._instrument.steps)
++        prefetch.tick()
++        return prefetched
++
+     def _extract_hold_action(self, observation: dict[str, Any]) -> torch.Tensor:
+@@ -229,2 +256,4 @@ class Gr00tRemoteClosedloopPolicy(PolicyBase[Gr00tRemoteClosedloopPolicyCfg]):
+         assert self._chunking_state is not None, "GR00T remote policy has been closed"
++        if self._prefetch is not None:
++            self._prefetch.cancel()
+         self._client.reset()
+@@ -237,2 +266,4 @@ class Gr00tRemoteClosedloopPolicy(PolicyBase[Gr00tRemoteClosedloopPolicyCfg]):
+         try:
++            if self._prefetch is not None:
++                self._prefetch.close()
+             self._close_client()
+@@ -257 +288,60 @@ class Gr00tRemoteClosedloopPolicy(PolicyBase[Gr00tRemoteClosedloopPolicyCfg]):
+             self.modality_configs = None
++
++
++class _ChunkPrefetch:
++    """One chunk request in flight on a worker thread, and the timing that decides when to send it."""
++
++    def __init__(self) -> None:
++        self._executor = ThreadPoolExecutor(max_workers=1)
++        self._future: Future | None = None
++        self._obs_step: torch.Tensor | None = None
++        self._latency_s = 0.0
++        self._step_s = 0.0
++        self._last_tick: float | None = None
++
++    @property
++    def pending(self) -> bool:
++        return self._future is not None
++
++    def lead(self, chunk_length: int) -> int:
++        """Steps before the end of the chunk at which the next request goes out."""
++        if self._step_s <= 0.0:
++            return 0
++        return min(chunk_length - 1, math.ceil(self._latency_s / self._step_s))
++
++    def submit(self, request, obs_step: torch.Tensor | None) -> None:
++        sent = time.monotonic()
++
++        def run():
++            chunk = request()
++            self._latency_s = 0.8 * self._latency_s + 0.2 * (time.monotonic() - sent) if self._latency_s else (
++                time.monotonic() - sent)
++            return chunk
++
++        self._obs_step = None if obs_step is None else obs_step.clone()
++        self._future = self._executor.submit(run)
++
++    def take(self) -> tuple[torch.Tensor | None, torch.Tensor]:
++        chunk = self._future.result()
++        obs_step, self._future, self._obs_step = self._obs_step, None, None
++        return obs_step, chunk
++
++    def tick(self) -> None:
++        now = time.monotonic()
++        if self._last_tick is not None:
++            dt = now - self._last_tick
++            self._step_s = 0.8 * self._step_s + 0.2 * dt if self._step_s else dt
++        self._last_tick = now
++
++    def cancel(self) -> None:
++        """Drop the request in flight: wait for it and discard its result, or its error."""
++        if self._future is not None:
++            try:
++                self._future.result()
++            except Exception:
++                pass
++        self._future = self._obs_step = None
++
++    def close(self) -> None:
++        self.cancel()
++        self._executor.shutdown(wait=True)

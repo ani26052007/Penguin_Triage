@@ -1,0 +1,9 @@
+diff --git a/policy_wrapper/policy/gr00t_core.py b/policy_wrapper/policy/gr00t_core.py
+index 8b16b06..bdef162 100644
+--- a/policy_wrapper/policy/gr00t_core.py
++++ b/policy_wrapper/policy/gr00t_core.py
+@@ -287,3 +287,3 @@ def build_gr00t_policy_observations(
+ 
+-        policy_observations["video"][video_key] = rgb_list_np[i].reshape(
++        policy_observations["video"][video_key] = rgb_list_np[i][:, ::-1, ::-1].reshape(
+             num_envs, 1, target_image_size[0], target_image_size[1], target_image_size[2]

@@ -603,15 +603,135 @@ Baseline before any change: 814 passed, 1 skipped / 491 passed, 1 skipped / 41.
 - **Part A: `scripts/gpu/wrapper_parity.sh`** (pilot step 2 "done when", new id **V-wrapper-parity**). The nominal pilot, clean mode, the same build seed and 50 episodes (runbook `wrapper_parity.episodes`), once with Arena's stock client against R2 and once with policy-wrapper: its `serve.py` started from the checkout on the backend config's port (refused when equal to the stock port, or when something already answers there), and `policy_runner.py --policy_type policy_wrapper.policy.gr00t_remote_closedloop_policy.Gr00tRemoteClosedloopPolicy` with the checkout on `PYTHONPATH`; the server is stopped after the cell and on any exit. Both runs get policy-wrapper's eval-config instruction (what `IsaacBackend` passes), so only the client and server differ; R4's cell is reused for the stock half only when it logged that same instruction. `parity.json`: both rates with Wilson intervals (`experiments.tables.proportion`), per-seed agreement with its Wilson interval, both / only-stock / only-wrapper counts, `per_seed`, Fisher p, the logged instructions, and `parity` = both complete and the intervals overlap. Added to `run_order.md` (step 12b, the script's output, a decision row, the cost note) and `VERIFY_ON_GPU.md` (row and script table); the collector settles V-wrapper-parity.
 - Tests (+10 in `tests/test_gpu_runbook.py`): end to end on the fake box with a fake `serve.py` interpreter (argv of both halves, ports, instruction, the server's cwd / PYTHONPATH / `--checkpoint-dir`, the wrapper cell's PYTHONPATH, the server stopped afterwards, the report with the Wilson numbers, idempotent rerun starts no second server); R4 reuse refused for a different instruction; the stock port and a busy wrapper port refused; the report on synthetic summaries (agreement interval, discordant counts, non-overlap, incomplete, different instructions, nothing shared); all static checks (header, documented variables, shellcheck, run order, collector ids).
 
+## Phase 8: injected bugs (2026-10-28)
+
+Baseline before any change: 814 passed, 1 skipped / 491 passed, 1 skipped / 41. Decisions taken during the phase
+(the pins move out, the low-light path instead of the single-resolution path, a global wrong instruction) are in
+`docs/IMPL_PLAN.md`, "Decisions during Phase 8".
+
+### Built
+- **`vla-isaac/bugs/`** (outside policy-wrapper; the agent's container gets a `docker cp` of the injected repo only):
+  - `ledger.yaml`: 14 bugs against policy-wrapper `5b4b93e`, each with id, name, targets, patch, tag, symptom,
+    verdict, evidence (check, signal, evidence id, location, or `elimination` with why), detection, difficulty,
+    silent, plan_cases, and `verify` where a real run is needed; 2 combined cases (bug + `lighting.intensity`
+    100); `scene_cases` for the plan 6.5 rows that come from the scene spec (vision, interacting-vision,
+    rendering-mismatch, sim-asset, action-gap, no-fault).
+  - `patches/BUG-01..14.patch` (`git diff -U1`, applied with `-C1` so combinations apply).
+  - `inject.py`: `inject` (git archive of the base HEAD, patches, generated files, every mtime = the base
+    commit time, a fresh single-commit repo with an empty template and the base's author / committer / dates /
+    root subject), `audit` (`audit_repo`: one commit, one reflog entry per ref, stored objects = reachable,
+    count-objects consistent, no forbidden word / ledger id / bug name / case id / tooling path in any git
+    object, path or file, mtimes, commit identity, no base blob of a changed file), `list`.
+- **The bugs** (plan 6.5 row in brackets):
+
+  | id | bug | silent | detection | evidence |
+  |---|---|---|---|---|
+  | BUG-01 | `bgr_conversion: true` | yes | synthetic | `s1.obs.channel_order` (BGR) [code-global] |
+  | BUG-02 | image rotated 180° in `gr00t_core` | yes | synthetic | `s1.obs.orientation` [code-global] |
+  | BUG-03 | hand targets negated | yes | needs-gpu | elimination, row 4, `g3_unavailable` [code-global] |
+  | BUG-04 | right wrist roll / pitch swapped in the 36-joint YAML | yes | needs-gpu | elimination, row 4, `g3_unavailable` [code-global] |
+  | BUG-05 | `action_chunk_length: 8` | yes | real-config | `s1.cfg.replan_steps` [code-global] |
+  | BUG-06 | `denoising_steps: 1` | yes | real-config | `s1.cfg.denoising_steps` [code-global] |
+  | BUG-07 | `norm_stats_override` with arm groups swapped | yes | real-config | `s1.cfg.norm_stats` [code-global] |
+  | BUG-08 | `norm_stats_override` shifted by 3 % | yes | real-config | `s1.cfg.norm_stats` [code-partial; CASE-01] |
+  | BUG-09 | 3-deep action buffer in `_next_action` | yes | synthetic | `s1.staleness.constant` [code-global] |
+  | BUG-10 | "ketchup bottle" instruction | yes | real-config | `s1.cfg.instruction_templates` [code-global] |
+  | BUG-11 | dark frames (mean < 48) brightened | yes | synthetic | `s1.obs` value range + channel means, dark cell only [code-condition-specific] |
+  | BUG-12 | arm stiffness 300 (damping kept) via `env.actuator_overrides` | yes | synthetic + needs-gpu | `s1.action.joint_tracking` [code-global] |
+  | BUG-13 | state reshaped without its time axis | **no** | rung0 | Rung 0 tests [rung0] |
+  | BUG-14 | async chunk prefetch under `GR00T_CLIENT_PREFETCH=1`, labels injected + infra | yes | synthetic | `s1.staleness.variable` [infra] |
+- **`IsaacBackend.launch_env` / `BackendConfig.incident_env`**: a mapping of variable names to strings added to
+  the Arena run's environment for a policy actor in incident mode only (never clean mode, never a reference
+  actor, never the server); part of `backend_id` when set. BUG-14's case sets `incident_env:
+  {GR00T_CLIENT_PREFETCH: "1"}`. No vla-router or Arena change.
+- **`tests/pw_pins/pilot_pins.py`**: the exact-value pins moved out of policy-wrapper (policy-wrapper `5b4b93e`),
+  plus a new one (every action column is the policy output of its joint name).
+- **`tests/fixtures/pw_driver.py`** (FIXTURE): drives a checkout's own client in a subprocess with the instrument
+  on: stand-in server (smooth chunks, optional delay), synthetic 512x512 scene with colour and vertical /
+  horizontal structure, bright or dark, optional env stepping time and extra environment.
+
+### Tests
+```
+cd vla-router     && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 814 passed, 1 skipped
+cd vla-isaac      && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 631 passed, 1 skipped
+cd policy-wrapper && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 40 passed
+```
+vla-isaac +125 (the suite now takes about 4 minutes, about 3 of them in the two Phase 8 files):
+- `tests/test_injected_bugs.py`:
+  - Ledger: every field; plan 6.5 rows all served (bug, case or scene spec); no target under a Rung 0
+    forbidden prefix or the instrument; the tooling outside policy-wrapper and outside any repo it builds; every
+    needs-gpu entry names a VERIFY id listed in `VERIFY_ON_GPU.md` (and a ledger without one is refused); the
+    launcher variable has no stale / inject / bug / fault / ledger in its name.
+  - Injection: each bug changes exactly its targets; four multi-bug combinations and both cases; BUG-09 + BUG-14
+    refused with nothing left behind; bad requests refused.
+  - Silent: Rung 0 (`rung0_config(TASK)` + compileall + the repo's pytest) on each injected repo with the
+    injected diff: the 13 silent bugs pass, BUG-13 fails at the tests.
+  - Detection: the clean repo gives no evidence from any check; BUG-01 / 02 fire their observation contract in
+    bright and dark scenes, BUG-11 in the dark scene only; BUG-05 / 06 / 07 / 08 / 10 give exactly their one
+    config violation and every other bug none; BUG-09 gives `staleness_constant` (≈ 2 steps); BUG-14 gives
+    `staleness_variable` only, with the mode environments taken from `IsaacBackend.launch_env`, and its clean
+    run and its loaded run without the variable have zero extra delay; its prefetch drops a discarded request's
+    error and propagates a taken one's; BUG-12 fires joint tracking for the
+    policy's gains while the reference keeps the nominal gains; BUG-03 / 04 fire nothing GPU-free; the GR1
+    action layout has no single-index gripper and a negated hand command reads as fully open.
+  - Leak audit: clean on the clean repo and every bug; one test checks the git facts directly (git log --all,
+    reflog, objects = reachable, count-objects, no forbidden word in objects or files, mtimes, identity, no
+    sample hooks); six planted leaks are each caught (second commit, forbidden word, bug name, mtime, base
+    blob, path).
+- `tests/test_policy_wrapper_pins.py`: the pins pass on a copy of the clean repo and fail on BUG-01 / 02 / 03 /
+  05 / 06 / 07 / 08 / 09 / 10 / 12; they pass on BUG-04 (the swap is in the YAML the pins use as their joint
+  map), BUG-11 (bright frames), BUG-13 (the stand-in server accepts the shape; Rung 0 catches it) and BUG-14
+  (variable not set).
+- `tests/test_isaac_backend.py`: `incident_env` reaches incident-mode policy runs only; never clean mode, a RAW
+  or WRAPPER reference actor (both modes), or the server; `backend_id` changes only when it is set; bad values
+  refused.
+
+### New VERIFY items
+V-bug-hand-sign, V-bug-yaml-swap, V-bug-dark-threshold, V-bug-gain-tracking, V-bug-prefetch-load. Also in
+`VERIFY_ON_GPU.md`: the manual leak check of one agent container (BUG-14 and BUG-07), to record here when done.
+
+### Deviations and findings
+- **Two patches were changed so the repo's own tests pass (the tests were not changed).** BUG-09's buffer first
+  sat in `get_action`, which made policy-wrapper's `test_a_delay_buffer_shows_as_three_more_steps_of_extra_delay`
+  count 59 policy actions instead of 61 (the buffer stalled the test's own hold steps); it now sits in
+  `_next_action`, under the test's subclass. BUG-12 first cut stiffness and damping by the same factor, which
+  keeps their ratio and so the PD lag of slow motions: the arms would barely lag on a real run. It now cuts
+  stiffness only.
+- **Three `inject.py` fixes found by the tests.** The base commit was amended, so its committer date differs from
+  its author date; both are now copied. With both trees at the same mtimes, git's stat cache hid same-size
+  edits from the Rung 0 diff; the diff now rebuilds its index. The generated `statistics.json` is written with
+  one line per list (72 lines instead of over 400), so a fix that deletes it fits Rung 0's diff limit.
+- **The pins do not see every bug**, by design (see above). They are a check on the reference side, not part of
+  what the agent gets.
+- **BUG-14 after review**: no `# noqa`; a `prefetched` value and one `fetch_chunk`, so with the variable unset the
+  base's code runs unchanged (one changed line, the `obs_step` tag); `_ChunkPrefetch.cancel()` swallows the
+  discarded request's error, `take()` propagates it (tested). V-bug-prefetch-load also covers in-place mutation of
+  the observation, reset / close stalls, and a variable non-zero delay on a real run.
+- **BUG-11 replaces the single-resolution path**: the pilot camera is already 512x512, the training size.
+
+### Limitations
+- **BUG-03 (hand sign) and BUG-04 (YAML swap) have no GPU-free detection**, and no check was added for them:
+  GR1 has no single-index gripper for the router's gripper-sign sub-check, and vla-isaac's hand closure clips to
+  [0, 1], so a negated hand reads as open, with no tracking error. They are code by elimination (row 4, low
+  confidence, `g3_unavailable`), to be confirmed by V-bug-hand-sign / V-bug-yaml-swap. This is a router-side gap
+  for multi-joint hands.
+- BUG-12's tracking test uses a FIXTURE joint model (unit inertia, no gravity); the real effect is
+  V-bug-gain-tracking.
+- BUG-14's staleness is shown with a stand-in server delay and stepping time; the real Arena timing is
+  V-bug-prefetch-load.
+- BUG-10 is global on the pilot (one object); the condition-specific variant needs a scene with a second object.
+- The manual container check is documented, not done (needs Docker and the ladder's Rung 1 container).
+
 ## Current state (2026-10-28)
 
-Done: Phases 1-7, router changes 1-6, the three fixes before Phase 4, the Mimic changes before Phase 5, and the replay-agreement fix before Phase 6. **Next: Phase 8** (injected bugs), after the review of Phase 7. The GPU runbook has not been run.
+Done: Phases 1-8, router changes 1-6, the fixes and decisions between phases, Part A (`wrapper_parity.sh`).
+**Next:** the review of Phase 8, then the GPU runbook (not run yet), including the V-bug-* rows.
 
 | Repo | Test command (run inside the repo) | Result |
 |---|---|---|
 | vla-router | `env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q` | 814 passed, 1 skipped |
-| vla-isaac | same | 491 passed, 1 skipped (V-converter-noisaac) |
-| policy-wrapper | same | 41 passed |
+| vla-isaac | same | 631 passed, 1 skipped (V-converter-noisaac) |
+| policy-wrapper | same | 40 passed |
 
 First three commands on the rented GPU (`vla-isaac/scripts/gpu/run_order.md`):
 ```bash
@@ -620,12 +740,19 @@ vla-isaac/scripts/gpu/00_check_gpu.sh
 vla-isaac/scripts/gpu/R0_setup.sh
 ```
 
-Commits since Phase 6:
+Commits since Phase 7:
 
 | Commit | What |
 |---|---|
-| (this commit) | IMPL_PLAN: Phase 6 decisions; Phase 7: GPU runbook |
+| `91efd88` | IMPL_PLAN: Phase 7 review decisions; Mimic override check reports inconclusive |
+| `5084f96` | Part A: `wrapper_parity.sh` |
+| policy-wrapper `5b4b93e` | Tests check the mechanism on a fixed test config (the pins moved to vla-isaac) |
+| (this commit) | Phase 8: injected bugs, `incident_env`, pins, leak audit |
 
-Known limitations carried forward: a stripped recorded-variation file is not replayed through `IsaacBackend` (live restore covers it); the staleness checks see only action-side delay; `FrameStats.missing_texture_fraction` is not measured; the Mimic override check is indirect (camera brightness), because Mimic records no variations.
+Known limitations carried forward: a stripped recorded-variation file is not replayed through `IsaacBackend` (live
+restore covers it); the staleness checks see only action-side delay; `FrameStats.missing_texture_fraction` is not
+measured; the Mimic override check is indirect (camera brightness), because Mimic records no variations; the GR1
+hand sign and joint-YAML swap are detectable only by elimination (Phase 8, "Limitations").
 
-Repo hygiene is unchanged: never stage `.gitmodules`, `external/IsaacLab-Arena`, `hybrid-agent` or the moved `PLAN_*.md`; commit with `git commit --only -- <own paths>`.
+Repo hygiene is unchanged: never stage `.gitmodules`, `external/IsaacLab-Arena`, `hybrid-agent` or the moved
+`PLAN_*.md`; commit with `git commit --only -- <own paths>`.

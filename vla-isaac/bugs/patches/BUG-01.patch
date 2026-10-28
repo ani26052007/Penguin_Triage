@@ -1,0 +1,9 @@
+diff --git a/config/eval.yaml b/config/eval.yaml
+index 84f5fdd..be3e542 100644
+--- a/config/eval.yaml
++++ b/config/eval.yaml
+@@ -15,3 +15,3 @@ client:
+   target_image_size: [512, 512, 3]
+-  bgr_conversion: false
++  bgr_conversion: true
+ server:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -205,6 +206,63 @@ def test_raw_reference_goes_to_the_reference_runner_with_scene_variations_only(t
     default.reference = None
     with pytest.raises(NotImplementedError, match="no reference section"):
         default.run(NOMINAL, rig.code(), REF_RAW, [0], Mode.CLEAN)
+
+
+# ---- incident_env: incident mode, policy actor only ------------------------------------- #
+
+LAUNCH = {"GR00T_CLIENT_PREFETCH": "1"}
+
+
+def test_incident_env_reaches_the_policy_runs_of_incident_mode_only(tmp_path):
+    rig = make_backend(tmp_path, incident_env=LAUNCH)
+    rig.backend.run(NOMINAL, rig.code(), POLICY, [0, 1], Mode.CLEAN)
+    rig.backend.run(NOMINAL, rig.code(), POLICY, [0, 1], Mode.INCIDENT)
+    clean, inc = rig.runner.calls
+    assert "GR00T_CLIENT_PREFETCH" not in clean.env
+    assert inc.env["GR00T_CLIENT_PREFETCH"] == "1" and inc.spec.num_envs == 4
+    assert "GR00T_CLIENT_PREFETCH" not in rig.servers[0].env and "GR00T_CLIENT_PREFETCH" not in rig.servers[1].env
+
+
+@pytest.mark.parametrize("actor", [REF_RAW, REF_WRAP])
+@pytest.mark.parametrize("mode", [Mode.CLEAN, Mode.INCIDENT])
+def test_incident_env_never_reaches_a_reference_actor(tmp_path, actor, mode):
+    rig = make_backend(tmp_path, incident_env=LAUNCH)
+    assert rig.backend.launch_env(actor, mode) == {}
+    planned = rig.backend.plan_run(NOMINAL, rig.code(), actor, mode, 0, 1, workdir=tmp_path / "w")
+    assert "GR00T_CLIENT_PREFETCH" not in planned.invocation.env
+    seen = []
+
+    class Ref:
+        def run(self, scene, actor, seeds, *, variations):
+            seen.append(dict(os.environ))
+            return [EpisodeResult(s, True) for s in seeds]
+    rig.backend.reference = Ref()
+    if actor is REF_RAW:
+        rig.backend.run(NOMINAL, rig.code(), actor, [0], mode)
+        assert "GR00T_CLIENT_PREFETCH" not in seen[0] and not rig.runner.calls
+    else:
+        with pytest.raises(ReplayUnavailable):
+            rig.backend.run(NOMINAL, rig.code(), actor, [0], mode)
+
+
+def test_incident_env_is_part_of_the_backend_id_only_when_set(tmp_path):
+    from vla_isaac.backend.isaac_backend import backend_id_for
+    from vla_isaac.config import load_task_config
+
+    from tests.helpers import PILOT_TASK, backend_config
+
+    task = load_task_config(PILOT_TASK)
+    plain = backend_config(tmp_path, tmp_path)
+    assert backend_id_for(plain, task) == backend_id_for(backend_config(tmp_path, tmp_path, incident_env={}), task)
+    assert backend_id_for(plain, task) != backend_id_for(backend_config(tmp_path, tmp_path, incident_env=LAUNCH), task)
+
+
+@pytest.mark.parametrize("bad", [{"X": 1}, {"": "1"}, ["X=1"]])
+def test_incident_env_must_map_names_to_strings(tmp_path, bad):
+    from tests.helpers import backend_config
+
+    with pytest.raises(ConfigError, match="incident_env"):
+        backend_config(tmp_path, tmp_path, incident_env=bad)
 
 
 # ---- extra episodes go into the cache --------------------------------------------------- #

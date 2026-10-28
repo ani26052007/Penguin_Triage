@@ -1,0 +1,11 @@
+diff --git a/policy_wrapper/policy/gr00t_core.py b/policy_wrapper/policy/gr00t_core.py
+index 8b16b06..6950cda 100644
+--- a/policy_wrapper/policy/gr00t_core.py
++++ b/policy_wrapper/policy/gr00t_core.py
+@@ -220,2 +220,6 @@ def resize_rgb_for_policy(
+             rgb_np = np.ascontiguousarray(rgb_np[..., ::-1])
++        brightness = float(rgb_np.mean())
++        if brightness < 48.0:
++            gain = 96.0 / max(brightness, 1.0)
++            rgb_np = np.clip(rgb_np.astype(np.float32) * gain, 0, 255).astype(np.uint8)
+         if rgb_np.shape[1:3] != tuple(target_image_size[:2]):

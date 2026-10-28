@@ -1,0 +1,12 @@
+diff --git a/policy_wrapper/embodiments/gr1/36dof_joint_space.yaml b/policy_wrapper/embodiments/gr1/36dof_joint_space.yaml
+index 0cead7f..ff6c80c 100644
+--- a/policy_wrapper/embodiments/gr1/36dof_joint_space.yaml
++++ b/policy_wrapper/embodiments/gr1/36dof_joint_space.yaml
+@@ -20,5 +20,5 @@ joints:
+   "left_wrist_roll_joint": 10
+-  "right_wrist_roll_joint": 11
++  "right_wrist_roll_joint": 13
+   "left_wrist_pitch_joint": 12
+-  "right_wrist_pitch_joint": 13
++  "right_wrist_pitch_joint": 11
+ 

@@ -16,7 +16,9 @@ instrument writes its per-episode files (``VLA_INSTRUMENT_*`` in the run's envir
 build's ``instrument/`` directory. ``logs["paths"]["run_root"]`` is the incident log reference for the
 mode (``vla_isaac.traces.sources``).
 
-Modes: clean = 1 env, incident = ``BackendConfig.incident_num_envs`` envs sharing the server.
+Modes: clean = 1 env, incident = ``BackendConfig.incident_num_envs`` envs sharing the server. A policy
+actor's incident-mode Arena runs also get ``BackendConfig.incident_env`` in their environment (a launcher
+setting of the deployment, e.g. a client option; never clean mode, never a reference actor).
 Seeds: ``vla_isaac.seeds`` (build seed, episode index); results come back in the caller's order.
 Output: each call writes under ``runs/<hash>`` of (code, actor, scene, mode, backend, traces), wiped
 before each build. ``run_tag`` adds itself to that key, so two calls with different tags (the two runs
@@ -100,10 +102,13 @@ def _file_bytes(path: Optional[Path]) -> str:
 
 
 def backend_id_for(cfg: BackendConfig, task: TaskConfig) -> str:
-    """Names what produces an episode: Arena and GR00T commits, runner, task config and factor table."""
-    return "isaac:" + short_hash({"arena": _git_head(cfg.arena_root), "gr00t": _git_head(cfg.gr00t_root),
-                                  "runner": cfg.runner, "task": _file_bytes(task.source),
-                                  "factors": _file_bytes(task.factor_table)}, 12)
+    """Names what produces an episode: Arena and GR00T commits, runner, task config, factor table and the
+    incident-mode environment (only when set, so backends without one keep their ids)."""
+    parts = {"arena": _git_head(cfg.arena_root), "gr00t": _git_head(cfg.gr00t_root), "runner": cfg.runner,
+             "task": _file_bytes(task.source), "factors": _file_bytes(task.factor_table)}
+    if cfg.incident_env:
+        parts["incident_env"] = dict(sorted(cfg.incident_env.items()))
+    return "isaac:" + short_hash(parts, 12)
 
 
 class IsaacBackend(RolloutBackend):
@@ -197,6 +202,7 @@ class IsaacBackend(RolloutBackend):
         env = {"PYTHONPATH": os.pathsep.join([str(workdir), str(VLA_ISAAC_ROOT)])}
         if record_trajectories:
             env.update(self.instrument_env(out / "instrument"))
+        env.update(self.launch_env(actor, mode))
         if overrides:
             env.update({ENV_OVERRIDES: json.dumps(overrides, sort_keys=True), ENV_BASE: task.environment_class,
                         ENV_NAME: task.actuated_environment_type})
@@ -210,6 +216,12 @@ class IsaacBackend(RolloutBackend):
         keys = self.task.traces.instrument_obs_keys if self.task.traces is not None else ()
         return {instrument.ENV_DIR: str(directory), instrument.ENV_FRAME_EVERY: str(t.camera_stride),
                 instrument.ENV_PROFILE_BUCKETS: str(t.profile_buckets), instrument.ENV_OBS_KEYS: ",".join(keys)}
+
+    def launch_env(self, actor: ActorRef, mode: Mode) -> dict[str, str]:
+        """The backend config's ``incident_env``, for a policy actor in incident mode; ``{}`` otherwise."""
+        if actor.kind is not ActorKind.POLICY or Mode(mode) is not Mode.INCIDENT:
+            return {}
+        return dict(self.cfg.incident_env)
 
     def actuator_overrides(self, actor: ActorRef, eval_config: Mapping[str, Any]) -> dict:
         """The code's actuator overrides, for a policy actor; ``{}`` for any reference actor."""

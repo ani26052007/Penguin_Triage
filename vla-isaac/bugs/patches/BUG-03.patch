@@ -1,0 +1,10 @@
+diff --git a/policy_wrapper/utils/joints_conversion.py b/policy_wrapper/utils/joints_conversion.py
+index e2032f0..2a7be73 100644
+--- a/policy_wrapper/utils/joints_conversion.py
++++ b/policy_wrapper/utils/joints_conversion.py
+@@ -179,3 +179,4 @@ def remap_policy_joints_to_sim_joints_np(
+             gr00t_index = policy_joints_config[joint_group].index(joint_name)
+-            data[..., joint_index] = np.asarray(policy_joints[joint_group][..., gr00t_index], dtype=np.float64)
++            values = np.asarray(policy_joints[joint_group][..., gr00t_index], dtype=np.float64)
++            data[..., joint_index] = -values if joint_group.endswith("_hand") else values
+     return data

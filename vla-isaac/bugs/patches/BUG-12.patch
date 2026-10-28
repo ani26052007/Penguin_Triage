@@ -1,0 +1,11 @@
+diff --git a/config/eval.yaml b/config/eval.yaml
+index 84f5fdd..7046d75 100644
+--- a/config/eval.yaml
++++ b/config/eval.yaml
+@@ -28,3 +28,5 @@ env:
+   control_hz: 50
+-  actuator_overrides: {}
++  actuator_overrides:
++    left-arm: {stiffness: 300.0}
++    right-arm: {stiffness: 300.0}
+   render: {}

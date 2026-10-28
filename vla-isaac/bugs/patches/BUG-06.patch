@@ -1,0 +1,9 @@
+diff --git a/config/eval.yaml b/config/eval.yaml
+index 84f5fdd..415cbe7 100644
+--- a/config/eval.yaml
++++ b/config/eval.yaml
+@@ -20,3 +20,3 @@ server:
+   embodiment_tag: GR1
+-  denoising_steps: 4
++  denoising_steps: 1
+   seed_per_request: true

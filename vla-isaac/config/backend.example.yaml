@@ -10,6 +10,7 @@ workspace_store: /data/vla-isaac/patch-store
 workspace_bases:
   pw: ../../policy-wrapper
 incident_num_envs: 10
+# incident_env: {}                      # extra Arena-run environment for policy runs in incident mode only
 seed_stride: 10000
 runner: experiment_runner
 app_flags: ["--viz", "none"]              # VERIFY(V-viz)

@@ -1,0 +1,257 @@
+# Injected-bug ledger (docs/plan.md 6.4 / 6.5, docs/PLAN_UPDATE.md 6.4; docs/PROMPT_sim_side.md Phase 8).
+# Lives outside policy-wrapper/ and outside anything the agent container mounts (plan 3.3). Never copy
+# this file, the patches or inject.py into a container.
+#
+# Base: policy-wrapper at the commit in `base_commit`; every patch applies to it with `git apply`.
+# Per bug:
+#   id, name           ledger id and a short name (neither ever appears in an injected repo)
+#   targets            every repo file the bug changes (the patch's files plus generated ones)
+#   patch              unified diff in patches/
+#   generated          files inject.py writes at injection time (they need the real checkpoint's statistics)
+#   tag                generic | gr1-specific
+#   symptom            what a rollout looks like
+#   verdict            expected router verdict (plan 3.2.8 row)
+#   evidence           the Stage 1 check / G row that should fire (`check`, `signal`, evidence `id` prefix,
+#                      `location`), or `elimination` with why no contract can fire
+#   detection          synthetic: a GPU-free test builds the trace / config the bug produces and the
+#                      evidence fires; real-config: the check runs on the injected repo's real eval config;
+#                      needs-gpu: only a real run can show it (listed in docs/VERIFY_ON_GPU.md, V-bug-*);
+#                      rung0: caught before routing
+#   difficulty         easy | medium | hard (for the repair agent)
+#   silent             true: passes the repo's own tests and Rung 0
+#   plan_cases         the plan 6.5 router-evaluation rows it serves
+#   labels             extra labels ("injected", "infra")
+#   verify             the docs/VERIFY_ON_GPU.md id that settles what only a real run can show
+base_commit: 5b4b93e
+bugs:
+  - id: BUG-01
+    name: rgb_bgr_swap
+    targets: [config/eval.yaml]
+    patch: patches/BUG-01.patch
+    tag: generic
+    symptom: camera frames reach the policy with red and blue swapped; looks like a vision failure everywhere
+    verdict: code
+    evidence: {check: contract_obs, signal: contract_violation, id: s1.obs.channel_order, location: obs.channel_order}
+    detection: synthetic
+    difficulty: easy
+    silent: true
+    plan_cases: [code-global]
+  - id: BUG-02
+    name: image_rotate_180
+    targets: [policy_wrapper/policy/gr00t_core.py]
+    patch: patches/BUG-02.patch
+    tag: generic
+    symptom: the policy sees the camera image rotated by 180 degrees; looks like a vision failure everywhere
+    verdict: code
+    evidence: {check: contract_obs, signal: contract_violation, id: s1.obs.orientation, location: obs.orientation}
+    detection: synthetic
+    difficulty: easy
+    silent: true
+    plan_cases: [code-global]
+  - id: BUG-03
+    name: hand_sign_inverted
+    targets: [policy_wrapper/utils/joints_conversion.py]
+    patch: patches/BUG-03.patch
+    tag: gr1-specific
+    symptom: hand joint targets are negated, so the hands never close; reaches but cannot grasp
+    verdict: code
+    evidence:
+      check: elimination
+      why: >-
+        No Stage 1 contract covers it on GR1: the router's gripper-sign sub-check needs a single-index
+        `gripper` action layout (GR1 has two 6-joint hands, so it is a partial skip), and vla-isaac's hand
+        closure clips to [0, 1], so commanded and tracked opening both read fully open (no gripper tracking
+        error). Row 4 by elimination (G2 Mimic restores, G3 unavailable): code, low confidence, with
+        Verdict.g3_unavailable set; the behaviour trace shows reach without grasp.
+    detection: needs-gpu
+    verify: V-bug-hand-sign
+    difficulty: medium
+    silent: true
+    plan_cases: [code-global]
+  - id: BUG-04
+    name: action_yaml_swapped_line
+    targets: [policy_wrapper/embodiments/gr1/36dof_joint_space.yaml]
+    patch: patches/BUG-04.patch
+    tag: gr1-specific
+    symptom: right wrist roll and pitch commands are exchanged; erratic, off-target right-hand motion
+    verdict: code
+    evidence:
+      check: elimination
+      why: >-
+        The raw server output is correct and the simulator tracks the (wrong) command, so neither the
+        action contract's range nor its tracking sub-checks fire. Row 4 by elimination (G2 restores, G3
+        unavailable): code, low confidence, with Verdict.g3_unavailable set.
+    detection: needs-gpu
+    verify: V-bug-yaml-swap
+    difficulty: hard
+    silent: true
+    plan_cases: [code-global]
+  - id: BUG-05
+    name: chunk_replan_mismatch
+    targets: [config/eval.yaml]
+    patch: patches/BUG-05.patch
+    tag: generic
+    symptom: replans every 8 steps instead of 16; jitter at chunk boundaries, drift over the long task
+    verdict: code
+    evidence: {check: contract_cfg, signal: contract_violation, id: s1.cfg.replan_steps, location: eval_config.client.action_chunk_length}
+    detection: real-config
+    difficulty: easy
+    silent: true
+    plan_cases: [code-global]
+  - id: BUG-06
+    name: denoising_steps_cut
+    targets: [config/eval.yaml]
+    patch: patches/BUG-06.patch
+    tag: generic
+    symptom: one flow-matching step instead of four (server side); noisy actions, jitter
+    verdict: code
+    evidence: {check: contract_cfg, signal: contract_violation, id: s1.cfg.denoising_steps, location: eval_config.server.denoising_steps}
+    detection: real-config
+    difficulty: easy
+    silent: true
+    plan_cases: [code-global]
+  - id: BUG-07
+    name: norm_stats_mismatch
+    targets: [config/eval.yaml, config/statistics.json]
+    patch: patches/BUG-07.patch
+    generated: {path: config/statistics.json, kind: norm_stats, transform: swap_arm_groups}
+    tag: generic
+    symptom: the server un-normalises actions with left and right arm statistics exchanged; systematic offset
+    verdict: code
+    evidence: {check: contract_cfg, signal: contract_violation, id: s1.cfg.norm_stats, location: eval_config.server.effective_norm_stats}
+    detection: real-config
+    difficulty: medium
+    silent: true
+    plan_cases: [code-global]
+  - id: BUG-08
+    name: mild_norm_offset
+    targets: [config/eval.yaml, config/statistics.json]
+    patch: patches/BUG-08.patch
+    generated: {path: config/statistics.json, kind: norm_stats, transform: shift_arm_location, fraction: 0.03}
+    tag: generic
+    symptom: arm actions shifted by 3 % of their range; a partial drop everywhere, nominal not broken
+    verdict: code
+    verdict_note: partial; flagged "likely second cause" when combined with a shift
+    evidence: {check: contract_cfg, signal: contract_violation, id: s1.cfg.norm_stats, location: eval_config.server.effective_norm_stats}
+    detection: real-config
+    difficulty: hard
+    silent: true
+    plan_cases: [code-partial]
+  - id: BUG-09
+    name: latency_buffer
+    targets: [policy_wrapper/policy/gr00t_remote_closedloop_policy.py]
+    patch: patches/BUG-09.patch
+    tag: generic
+    symptom: every action is applied two steps after it was produced, in clean and incident mode; hesitation, late corrections
+    verdict: code
+    evidence: {check: staleness, signal: staleness_constant, id: s1.staleness.constant, location: controller.latency}
+    detection: synthetic
+    difficulty: medium
+    silent: true
+    plan_cases: [code-global]
+  - id: BUG-10
+    name: wrong_instruction
+    targets: [config/eval.yaml]
+    patch: patches/BUG-10.patch
+    tag: generic
+    symptom: the instruction names a ketchup bottle instead of the sauce bottle; looks like a vision failure on the object
+    verdict: code
+    evidence: {check: contract_cfg, signal: contract_violation, id: s1.cfg.instruction_templates, location: eval_config.client.language_instruction}
+    detection: real-config
+    difficulty: easy
+    silent: true
+    plan_cases: [code-global]
+    note: >-
+      Global on the pilot (one fixed object, docs/IMPL_PLAN.md "Decisions during Phase 8"). The plan's
+      condition-specific variant (wrong for one object only) needs a scene with a second object.
+  - id: BUG-11
+    name: low_light_preprocessing_path
+    targets: [policy_wrapper/policy/gr00t_core.py]
+    patch: patches/BUG-11.patch
+    tag: generic
+    symptom: dark frames (mean pixel below 48) are brightened before the policy sees them; fails only in dark cells
+    verdict: code
+    evidence: {check: contract_obs, signal: contract_violation, id: s1.obs, location: obs.normalization or obs.channel_means, condition: dark lighting (nominal stats of the dark cell)}
+    detection: synthetic
+    verify: V-bug-dark-threshold
+    difficulty: hard
+    silent: true
+    plan_cases: [code-condition-specific]
+    note: >-
+      Replaces the "single-resolution path" (the pilot camera is already 512x512 = target). Whether the
+      R7 dark cell's frames fall below the threshold is V-bug-dark-threshold.
+  - id: BUG-12
+    name: arm_gain_decay
+    targets: [config/eval.yaml]
+    patch: patches/BUG-12.patch
+    tag: gr1-specific
+    symptom: arm stiffness 300 instead of 3000, damping unchanged (env.actuator_overrides, policy actor only); sluggish, lagging arms
+    verdict: code
+    evidence: {check: contract_action, signal: contract_violation, id: s1.action.joint_tracking, location: action.joint_tracking}
+    detection: synthetic+needs-gpu
+    verify: V-bug-gain-tracking
+    difficulty: medium
+    silent: true
+    plan_cases: [code-global]
+    note: >-
+      Stiffness only: cutting stiffness and damping by the same factor keeps their ratio, which sets the PD
+      lag of slow motions, so the arms would barely lag. The synthetic test tracks the commanded arm joints
+      with a FIXTURE second-order joint model (unit inertia, the group's stiffness and damping); the real
+      tracking under these gains is V-bug-gain-tracking. G2 is unaffected: IsaacBackend never applies the code's
+      actuator overrides to the reference (tested).
+  - id: BUG-13
+    name: state_shape_mismatch
+    targets: [policy_wrapper/policy/gr00t_core.py]
+    patch: patches/BUG-13.patch
+    tag: generic
+    symptom: state arrays lose their time axis; hard error at the server
+    verdict: rung0
+    evidence: {check: rung0, stage: tests}
+    detection: rung0
+    difficulty: easy
+    silent: false
+    plan_cases: [rung0]
+  - id: BUG-14
+    name: async_prefetch_stale_actions
+    targets: [policy_wrapper/policy/gr00t_remote_closedloop_policy.py]
+    patch: patches/BUG-14.patch
+    labels: [injected, infra]
+    tag: generic
+    symptom: >-
+      with GR00T_CLIENT_PREFETCH=1 (set only by the incident-mode launcher) the next chunk is requested
+      early from the observation of that step and still started at its first action, so actions are stale by
+      the server latency in steps; grows with load, absent in clean mode
+    verdict: infra
+    evidence: {check: staleness, signal: staleness_variable, id: s1.staleness.variable, location: policy_server}
+    detection: synthetic
+    verify: V-bug-prefetch-load
+    difficulty: hard
+    silent: true
+    plan_cases: [infra]
+    launcher_env: {GR00T_CLIENT_PREFETCH: "1"}
+    note: >-
+      Injected infra mode (docs/PLAN_UPDATE.md 6.4): Arena's client is synchronous, so load alone cannot make
+      actions stale. It exists only as this diff; IsaacBackend sets the variable in incident mode only from
+      the backend config's `incident_env`, which the case's launcher fragment supplies.
+# Combined cases (plan 6.5 "Combined"): code bug(s) plus a scene condition from the scene spec.
+cases:
+  - id: CASE-01
+    bugs: [BUG-08]
+    condition: {lighting.intensity: "100.0"}
+    verdict: code
+    verdict_note: flagged "likely second cause"; after the fix the re-run returns vision (lighting.intensity)
+    plan_cases: [combined]
+  - id: CASE-02
+    bugs: [BUG-01]
+    condition: {lighting.intensity: "100.0"}
+    verdict: code
+    verdict_note: the channel contract fires on the dark cell's own nominal stats; after the fix the re-run returns vision
+    plan_cases: [combined]
+# Plan 6.5 rows with no bug here: they come from the scene spec, not from code.
+scene_cases:
+  vision: dark / HDR / colour-temperature lighting cells of the failure map (R7, R7b), nominal code
+  interacting-vision: two lighting factors that fail only together (grid), nominal code
+  rendering-mismatch: env.render differs from the training render settings (a config case, row 5), not built here
+  sim-asset: object.mass on the target object (physics only; Mimic should drop with it), nominal code
+  action-gap: a cell where Mimic succeeds and the policy cannot grasp (unseen geometry), nominal code
+  no-fault: nominal policy, nominal scene, unlucky seeds (calibration set)

@@ -1,0 +1,9 @@
+diff --git a/policy_wrapper/policy/gr00t_core.py b/policy_wrapper/policy/gr00t_core.py
+index 8b16b06..2b3bcb5 100644
+--- a/policy_wrapper/policy/gr00t_core.py
++++ b/policy_wrapper/policy/gr00t_core.py
+@@ -296,3 +296,3 @@ def build_gr00t_policy_observations(
+             ), f"joint_pos_state_policy[{state_key}] has shape {arr.shape} but expected ({num_envs}, -1)"
+-            policy_observations["state"][state_key] = arr.reshape(num_envs, 1, -1)
++            policy_observations["state"][state_key] = arr.reshape(num_envs, -1)
+ 

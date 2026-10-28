@@ -1,0 +1,9 @@
+diff --git a/config/eval.yaml b/config/eval.yaml
+index 84f5fdd..294bc33 100644
+--- a/config/eval.yaml
++++ b/config/eval.yaml
+@@ -22,3 +22,3 @@ server:
+   seed_per_request: true
+-  norm_stats_override: null
++  norm_stats_override: config/statistics.json
+ env:

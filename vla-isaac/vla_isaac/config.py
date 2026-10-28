@@ -105,6 +105,7 @@ class BackendConfig:
     server: ServerConfig = field(default_factory=ServerConfig)
     timeouts: Timeouts = field(default_factory=Timeouts)
     trajectories: TrajectoryConfig = field(default_factory=TrajectoryConfig)
+    incident_env: Mapping[str, str] = field(default_factory=dict)   # extra Arena-run environment, incident mode, policy actor only
 
     RUNNERS = ("experiment_runner", "policy_runner")
 
@@ -117,6 +118,9 @@ class BackendConfig:
             raise ConfigError("seed_stride must be >= 1")
         if self.trajectories.camera_stride < 1 or self.trajectories.profile_buckets < 1:
             raise ConfigError("trajectories.camera_stride and trajectories.profile_buckets must be >= 1")
+        if not isinstance(self.incident_env, Mapping) or not all(
+                isinstance(k, str) and k and isinstance(v, str) for k, v in self.incident_env.items()):
+            raise ConfigError("incident_env must map variable names to string values")
 
 
 def backend_config_from_dict(d: Mapping, base: Path) -> BackendConfig:
