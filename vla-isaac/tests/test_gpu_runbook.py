@@ -82,7 +82,8 @@ def test_the_runbook_has_every_script_the_prompt_names():
     want = {"00_check_gpu.sh", "R0_setup.sh", "R1_download_checkpoint.sh", "R1b_download_datasets.sh", "R2_server.sh",
             "R3_list_variations.sh", "R4_nominal_clean.sh", "R5_nominal_incident.sh", "R6_replay_agreement.sh",
             "R7_dark_cell.sh", "R7b_hdr_and_colour_temp.sh", "R8_vram.sh", "instruction_check.sh", "runner_parity.sh",
-            "mimic_override_check.sh", "check_client_tests.sh", "finetune_dryrun.sh", "collect_measurements.py"}
+            "mimic_override_check.sh", "check_client_tests.sh", "finetune_dryrun.sh", "collect_measurements.py",
+            "wrapper_parity.sh"}
     assert want <= names, sorted(want - names)
 
 
@@ -271,6 +272,8 @@ import json, os, sys
 argv = sys.argv[1:]
 log = open(os.path.join(os.path.dirname(__file__), "calls.log"), "a")
 log.write(json.dumps(argv) + "\\n")
+with open(os.path.join(os.path.dirname(__file__), "env.log"), "a") as e:
+    e.write(json.dumps({{"PYTHONPATH": os.environ.get("PYTHONPATH", "")}}) + "\\n")
 fail = os.path.join(os.path.dirname(__file__), "FAIL")
 if os.path.exists(fail):
     print("fake arena failing on purpose"); sys.exit(3)
@@ -380,6 +383,130 @@ def test_r6_refuses_the_stock_servers_port(box, tmp_path):
     Path(box["env"]["VLA_BACKEND_CONFIG"]).write_text(yaml.safe_dump(cfg))
     r = run("R6_replay_agreement.sh", box["env"])
     assert r.returncode != 0 and "stock server's port" in r.stderr
+
+
+FAKE_SERVE = '''#!{python}
+"""FIXTURE: stands in for the GR00T venv's python running ``-m policy_wrapper.serve``: logs its argv,
+cwd and PYTHONPATH, then serves ping like the fake policy server on the requested port."""
+import json, os, sys
+argv = sys.argv[1:]
+with open(os.path.join(os.path.dirname(__file__), "serve_calls.log"), "a") as f:
+    f.write(json.dumps({{"argv": argv, "cwd": os.getcwd(), "PYTHONPATH": os.environ.get("PYTHONPATH", "")}}) + "\\n")
+os.execv(sys.executable, [sys.executable, {server!r}, "--port", argv[argv.index("--port") + 1]])
+'''
+
+
+@pytest.fixture
+def wrapper_box(box):
+    """``box`` with a fake serve.py interpreter in the backend config's ``server_python``."""
+    serve = box["tmp"] / "gr00t" / "python"
+    serve.parent.mkdir()
+    serve.write_text(FAKE_SERVE.format(python=sys.executable, server=str(FAKE_SERVER)))
+    serve.chmod(0o755)
+    path = Path(box["env"]["VLA_BACKEND_CONFIG"])
+    cfg = yaml.safe_load(path.read_text())
+    cfg["server_python"] = str(serve)
+    path.write_text(yaml.safe_dump(cfg))
+    return {**box, "serve_log": serve.parent / "serve_calls.log", "pw_port": cfg["server"]["port"]}
+
+
+def test_wrapper_parity_end_to_end_on_a_fake_box_and_idempotent(wrapper_box):
+    box = wrapper_box
+    pw = (ROOT / "policy-wrapper").resolve()
+    instruction = yaml.safe_load((pw / "config" / "eval.yaml").read_text())["client"]["language_instruction"]
+    r = run("wrapper_parity.sh", box["env"], timeout=300)
+    assert r.returncode == 0, r.stdout + r.stderr
+    out = box["tmp"] / "meas" / "t0" / "wrapper_parity"
+    stock = (out / "stock" / "argv.txt").read_text().splitlines()
+    wrap = (out / "wrapper" / "argv.txt").read_text().splitlines()
+    for argv in (stock, wrap):
+        joined = " ".join(argv)
+        assert "--num_episodes 50" in joined and "--num_envs 1" in joined and "--seed 0" in joined
+        assert argv[argv.index("--language_instruction") + 1] == instruction
+    assert stock[stock.index("--policy_type") + 1].startswith("isaaclab_arena_gr00t.")
+    assert stock[stock.index("--remote_port") + 1] == str(box["port"])
+    assert wrap[wrap.index("--policy_type") + 1] == \
+        "policy_wrapper.policy.gr00t_remote_closedloop_policy.Gr00tRemoteClosedloopPolicy"
+    assert wrap[wrap.index("--policy_config_yaml_path") + 1] == str(pw / "config" / "eval.yaml")
+    assert wrap[wrap.index("--remote_port") + 1] == str(box["pw_port"]) != str(box["port"])
+    (serve,) = [json.loads(line) for line in box["serve_log"].read_text().splitlines()]
+    assert serve["argv"][:2] == ["-m", "policy_wrapper.serve"] and serve["cwd"] == str(pw)
+    assert serve["PYTHONPATH"] == str(pw) and serve["argv"][serve["argv"].index("--port") + 1] == str(box["pw_port"])
+    assert "--checkpoint-dir" in serve["argv"]
+    envs = [json.loads(line)["PYTHONPATH"] for line in (box["arena"] / ".venv" / "bin" / "env.log").read_text().splitlines()]
+    assert str(pw) not in envs[0].split(":") and envs[1].split(":")[0] == str(pw)
+    assert not tools.main(["ping", "--host", "127.0.0.1", "--port", str(box["pw_port"]), "--timeout-ms", "300"]) == 0, \
+        "serve.py was left running"
+    rep = json.loads((out / "parity.json").read_text())
+    w = wilson_interval(45, 50, 0.95)
+    assert rep["stock"]["k"] == rep["wrapper"]["k"] == 45 and (rep["stock"]["lower"], rep["stock"]["upper"]) == (w.lo, w.hi)
+    assert rep["agreement"]["k"] == rep["agreement"]["n"] == 50 and rep["parity"] is True and rep["same_instruction"]
+    assert len(rep["per_seed"]) == 50 and rep["per_seed"]["0:0"] == {"stock": False, "wrapper": False, "agree": True}
+    assert "parity: True" in r.stdout
+    res = json.loads((out / "result.json").read_text())
+    assert res["status"] == "ok" and res["parity"]["parity"] is True
+    again = run("wrapper_parity.sh", box["env"], timeout=300)
+    assert again.returncode == 0 and "already complete" in again.stdout
+    assert len(box["serve_log"].read_text().splitlines()) == 1
+
+
+def test_wrapper_parity_reuses_r4_only_with_the_same_instruction(wrapper_box):
+    box = wrapper_box
+    env = {**box["env"], "RUN_TS": "t0"}
+    assert run("R4_nominal_clean.sh", env).returncode == 0
+    r = run("wrapper_parity.sh", env, timeout=300)
+    assert r.returncode == 0, r.stderr
+    assert "R4 logged a different instruction" in r.stdout             # R4 passes no --language_instruction
+    assert not (box["tmp"] / "meas" / "t0" / "wrapper_parity" / "stock" / "reused_from.txt").exists()
+
+
+def test_wrapper_parity_refuses_the_stock_port_and_a_busy_wrapper_port(wrapper_box):
+    box = wrapper_box
+    path = Path(box["env"]["VLA_BACKEND_CONFIG"])
+    cfg = yaml.safe_load(path.read_text())
+    cfg["server"]["port"] = box["port"]
+    path.write_text(yaml.safe_dump(cfg))
+    r = run("wrapper_parity.sh", box["env"])
+    assert r.returncode != 0 and "stock server's port" in r.stderr
+    cfg["server"]["port"] = box["pw_port"]
+    path.write_text(yaml.safe_dump(cfg))
+    busy = subprocess.Popen([sys.executable, str(FAKE_SERVER), "--port", str(box["pw_port"])], stdout=subprocess.PIPE,
+                            text=True)
+    try:
+        assert "listening" in busy.stdout.readline()
+        r = run("wrapper_parity.sh", {**box["env"], "RUN_TS": "t1"}, timeout=300)
+        assert r.returncode != 0 and "already answers" in r.stderr
+    finally:
+        busy.terminate()
+        busy.wait(10)
+
+
+def summary(outcomes, instruction="x", complete=True):
+    from vla_isaac.experiments.tables import proportion
+
+    oc = {f"0:{i}": s for i, s in enumerate(outcomes)}
+    return {"outcomes": oc, "success": proportion(sum(outcomes), len(outcomes), 0.95), "complete": complete,
+            "language_instructions": [instruction]}
+
+
+def test_wrapper_parity_report():
+    stock = summary([True] * 40 + [False] * 10)
+    same = tools.wrapper_parity_report(stock, summary([True] * 38 + [False] * 12))
+    assert same["parity"] and same["intervals_overlap"] and not same["differ"]
+    assert (same["agreement"]["k"], same["agreement"]["n"]) == (48, 50)
+    assert (same["only_stock"], same["only_wrapper"], same["both_success"], same["both_failure"]) == (2, 0, 38, 10)
+    assert same["per_seed"]["0:39"] == {"stock": True, "wrapper": False, "agree": False}
+    w = wilson_interval(48, 50, 0.95)
+    assert (same["agreement"]["lower"], same["agreement"]["upper"]) == (w.lo, w.hi)
+    broken = tools.wrapper_parity_report(stock, summary([True] * 10 + [False] * 40))
+    assert not broken["parity"] and not broken["intervals_overlap"] and broken["differ"]
+    assert "parity: False" in tools.wrapper_parity_line(broken)
+    short = tools.wrapper_parity_report(stock, summary([True] * 40 + [False] * 10, complete=False))
+    assert not short["parity"] and short["intervals_overlap"]
+    other = tools.wrapper_parity_report(stock, summary([True] * 40 + [False] * 10, instruction="y"))
+    assert not other["same_instruction"] and "different instructions" in tools.wrapper_parity_line(other)
+    none = tools.wrapper_parity_report(stock, {"outcomes": {"1:0": True}, "success": stock["success"]})
+    assert none["comparable"] is False and none["parity"] is False
 
 
 # --------------------------------------------------------------------------- #
@@ -669,6 +796,7 @@ def full_box(meas: Path, *, r4=(45, 50), dark=(5, 50), r5=(30, 50), took_effect=
                                                                "tasks_jsonl": "ranch"}, "distinct": ["sauce", "ranch"]},
         cells={"instruction_0": {"success": prop(16, 20)}, "instruction_1": {"success": prop(18, 20)}})
     put(meas, "t1", "runner_parity", comparison={"agreement": 0.9})
+    put(meas, "t1", "wrapper_parity", parity={"parity": True, "stock": prop(45, 50), "wrapper": prop(44, 50)})
     put(meas, "t1", "R5_nominal_incident", cells={"nominal": {"success": prop(*r5)}})
     put(meas, "t1", "R6_replay_agreement", agreement={"pooled_agreement": prop(48, 50)})
     put(meas, "t1", "finetune_dryrun", convert={"ok": True}, dryrun={"trained": True, "stats_json_after": True,

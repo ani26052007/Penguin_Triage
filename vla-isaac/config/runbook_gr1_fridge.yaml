@@ -28,6 +28,7 @@ probes:                                   # R7b: one cell each; PLACEHOLDER leve
 probe_episodes: 50
 instruction_check: {episodes: 20}         # V-instruction (IMPL_PLAN Q2)
 parity: {episodes: 50}                    # V-runner-parity
+wrapper_parity: {episodes: 50}            # pilot step 2: stock client vs policy-wrapper, same seeds (V-wrapper-parity)
 mimic_check:                              # V-mimic-override, V-mimic-seed, V-mimic-out, V-mimic-guarantee
   override: {lighting.intensity: "100.0"}
   override_trials: 2

@@ -34,7 +34,7 @@ class RunbookError(RuntimeError):
 # --------------------------------------------------------------------------- #
 
 RUNBOOK_KEYS = {"task_config", "grid", "pipeline", "factor_names", "checkpoint", "dataset", "stock_policy", "cell_timeout_s", "nominal",
-                "incident", "dark_cell", "probes", "probe_episodes", "instruction_check", "parity", "mimic_check",
+                "incident", "dark_cell", "probes", "probe_episodes", "instruction_check", "parity", "wrapper_parity", "mimic_check",
                 "finetune_dryrun", "gate", "vram"}
 
 
@@ -133,6 +133,102 @@ def experiment_runner_cmd(rb: Mapping, backend: str, *, python: str, out: str, e
     yaml_path = dump_experiment_yaml(spec, out_dir / "experiment.yaml")
     return experiment_argv(python, yaml_path, out_dir / "results", environment=task.environment,
                            app_flags=cfg.app_flags)
+
+
+def wrapper_base(rb: Mapping, backend: str) -> Path:
+    """The policy-wrapper checkout the grid names (the backend config's ``workspace_bases``)."""
+    from vla_isaac.config import load_backend_config
+    from vla_isaac.experiments.grid import GridSpec
+
+    cfg = load_backend_config(backend)
+    grid = GridSpec.load(rb["grid"])
+    if grid.code_base not in cfg.workspace_bases:
+        raise RunbookError(f"code base {grid.code_base!r} is not in the backend config's workspace_bases")
+    return Path(cfg.workspace_bases[grid.code_base])
+
+
+def wrapper_instruction(rb: Mapping, backend: str) -> str:
+    """The instruction policy-wrapper's eval config gives (what ``IsaacBackend`` passes to Arena)."""
+    from vla_isaac.config import get_dotted, load_task_config
+
+    task = load_task_config(rb["task_config"])
+    eval_yaml = wrapper_base(rb, backend) / task.policy.config_path
+    found, s = get_dotted(_yaml(eval_yaml), task.eval_keys.language_instruction)
+    if not found or not isinstance(s, str) or not s:
+        raise RunbookError(f"{eval_yaml} has no {task.eval_keys.language_instruction}")
+    return s
+
+
+def wrapper_serve_cmd(rb: Mapping, backend: str) -> list[str]:
+    """policy-wrapper's ``serve.py`` as ``IsaacBackend`` starts it, on the backend config's server port,
+    run from the checkout (cwd and PYTHONPATH = ``wrapper_base``)."""
+    from vla_isaac.config import get_dotted, load_backend_config, load_task_config
+
+    cfg = load_backend_config(backend)
+    task = load_task_config(rb["task_config"])
+    base = wrapper_base(rb, backend)
+    s = task.serve
+    argv = [cfg.server_python, "-m", s.module, "--config", s.config_path,
+            "--host", cfg.server.host, "--port", str(cfg.server.port), "--device", cfg.policy_device]
+    found, checkpoint = get_dotted(_yaml(base / s.config_path), task.eval_config.checkpoint_key)
+    if found and str(checkpoint) in cfg.checkpoints:
+        argv += ["--checkpoint-dir", str(cfg.checkpoints[str(checkpoint)])]
+    return argv
+
+
+def wrapper_policy_runner_cmd(rb: Mapping, backend: str, *, python: str, out: str, episodes: int, seed: int,
+                              instruction: str) -> list[str]:
+    """``policy_runner.py`` with policy-wrapper's client (the task config's ``policy``) against its own
+    ``serve.py``, clean mode: pilot step 2's run (docs/PILOT_AND_ORDER.md). PYTHONPATH must hold the
+    checkout so ``--policy_type`` resolves to its class. VERIFY(V-wrapper-parity): policy_runner.py
+    resolves a dotted ``--policy_type`` outside Arena's registry."""
+    from vla_isaac.config import load_backend_config, load_task_config
+    from vla_isaac.runner.arena_cmd import PolicySpec, RunSpec, policy_runner_argv
+
+    cfg = load_backend_config(backend)
+    task = load_task_config(rb["task_config"])
+    policy = PolicySpec(task.policy.type, str(wrapper_base(rb, backend) / task.policy.config_path),
+                        cfg.policy_device, cfg.server.host, cfg.server.port)
+    spec = RunSpec(run_name="wrapper_parity", environment=dict(task.environment), seed=seed, num_envs=1,
+                   num_episodes=episodes, language_instruction=instruction, policy=policy, variations={})
+    return policy_runner_argv(python, spec, Path(out), app_flags=cfg.app_flags)
+
+
+def wrapper_parity_report(stock: Mapping, wrapper: Mapping, *, confidence: float = 0.95, alpha: float = 0.05) -> dict:
+    """Pilot step 2's "done when": both nominal rates with Wilson intervals, the per-seed agreement (with
+    its Wilson interval) on (env_id, episode_in_env), and whether the intervals overlap."""
+    from vla_isaac.experiments.tables import proportion
+
+    base = {"stock": stock.get("success"), "wrapper": wrapper.get("success"),
+            "complete": bool(stock.get("complete")) and bool(wrapper.get("complete")),
+            "instructions": {"stock": stock.get("language_instructions"),
+                             "wrapper": wrapper.get("language_instructions")}}
+    base["same_instruction"] = (bool(base["instructions"]["stock"])
+                                and base["instructions"]["stock"] == base["instructions"]["wrapper"])
+    cmp = compare_runs(stock, wrapper, alpha=alpha)
+    if not cmp["comparable"]:
+        return {**base, **cmp, "parity": False}
+    os_, ow = stock["outcomes"], wrapper["outcomes"]
+    shared = sorted(set(os_) & set(ow))
+    agree = sum(bool(os_[k]) == bool(ow[k]) for k in shared)
+    per_seed = {k: {"stock": os_[k], "wrapper": ow[k], "agree": bool(os_[k]) == bool(ow[k])} for k in shared}
+    parity = base["complete"] and cmp["intervals_overlap"]
+    return {**base, "comparable": True, "shared_episodes": len(shared),
+            "agreement": proportion(agree, len(shared), confidence),
+            "both_success": cmp["both_success"], "both_failure": cmp["both_failure"],
+            "only_stock": cmp["only_first"], "only_wrapper": cmp["only_second"],
+            "fisher_p": cmp["fisher_p"], "differ": cmp["differ"], "intervals_overlap": cmp["intervals_overlap"],
+            "per_seed": per_seed, "parity": parity}
+
+
+def wrapper_parity_line(rep: Mapping) -> str:
+    def rate(p):
+        return "n/a" if not p or p.get("rate") is None else f"{p['k']}/{p['n']} = {p['rate']:.2f} [{p['lower']:.2f}, {p['upper']:.2f}]"
+    if not rep.get("comparable"):
+        return f"wrapper parity: not comparable ({rep.get('reason')})"
+    return (f"stock {rate(rep['stock'])} | wrapper {rate(rep['wrapper'])} | per-seed agreement "
+            f"{rate(rep['agreement'])} | intervals overlap: {rep['intervals_overlap']} | parity: {rep['parity']}"
+            + ("" if rep["same_instruction"] else " | WARNING: the two runs logged different instructions"))
 
 
 def env_args(rb: Mapping) -> list[str]:
@@ -689,6 +785,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             p.add_argument("--instruction")
             p.add_argument("--factor", action="append", default=[])
             p.add_argument("--probe", help="a named R7b probe (runbook probes)")
+    cmd("wrapper-serve-argv", runbook=True, backend=True, help="policy-wrapper serve.py argv, one per line")
+    cmd("wrapper-base", runbook=True, backend=True, help="the policy-wrapper checkout")
+    cmd("wrapper-instruction", runbook=True, backend=True, help="the eval config's instruction")
+    p = cmd("wrapper-runner-argv", runbook=True, backend=True, help="policy_runner.py with policy-wrapper, one per line")
+    p.add_argument("--python", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--episodes", type=int, required=True)
+    p.add_argument("--seed", type=int, required=True)
+    p.add_argument("--instruction", required=True)
+    p = cmd("wrapper-parity", runbook=True, help="stock vs policy-wrapper summaries of the same seeds")
+    p.add_argument("--stock", required=True)
+    p.add_argument("--wrapper", required=True)
+    p.add_argument("--json-out")
     p = cmd("mimic-argv", runbook=True, backend=True, help="one argument per line")
     p.add_argument("--trials", type=int, required=True)
     p.add_argument("--output-file", required=True)
@@ -835,6 +944,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         elif c == "experiment-argv":
             print("\n".join(experiment_runner_cmd(rb, a.backend, python=a.python, out=a.out, episodes=a.episodes,
                                                   seed=a.seed, host=a.host, port=a.port)))
+        elif c == "wrapper-serve-argv":
+            print("\n".join(wrapper_serve_cmd(rb, a.backend)))
+        elif c == "wrapper-base":
+            print(wrapper_base(rb, a.backend))
+        elif c == "wrapper-instruction":
+            print(wrapper_instruction(rb, a.backend))
+        elif c == "wrapper-runner-argv":
+            print("\n".join(wrapper_policy_runner_cmd(rb, a.backend, python=a.python, out=a.out, episodes=a.episodes,
+                                                      seed=a.seed, instruction=a.instruction)))
+        elif c == "wrapper-parity":
+            stock, wrapper = (json.loads(Path(p).read_text(encoding="utf-8")) for p in (a.stock, a.wrapper))
+            rep = wrapper_parity_report(stock, wrapper, confidence=rb["gate"]["confidence"], alpha=rb["gate"]["alpha"])
+            _dump(rep, a.json_out)
+            print(wrapper_parity_line(rep))
         elif c == "mimic-argv":
             print("\n".join(mimic_cmd(rb, a.backend, trials=a.trials, output_file=a.output_file,
                                       condition=_condition(a.factor), seed_flag=a.seed_flag, seed=a.seed)))

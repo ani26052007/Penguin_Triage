@@ -75,6 +75,7 @@ Run from the repo root, in this order, in one shell with `RUN_TS` fixed. Steps 1
 | 10 | `R7b_hdr_and_colour_temp.sh` | R2 | | pilot |
 | 11 | `instruction_check.sh` | R1b, R2 | V-instruction | instruction |
 | 12 | `runner_parity.sh` | R2 (reuses R4) | V-runner-parity | |
+| 12b | `wrapper_parity.sh` | R1, R2 (own `serve.py` on the backend port; reuses R4 only with the same instruction) | V-wrapper-parity | policy-wrapper reproduces the stock client |
 | 13 | `R5_nominal_incident.sh` | R2 | | mode gap |
 | 14 | `R6_replay_agreement.sh` | R1 (own server) | V-exp-yaml, V-exp-remote-policy | (agreement) |
 | 15 | `R2_server.sh stop`, then `finetune_dryrun.sh` | R1, R1b, step 6 | V-converter-noisaac, V-finetune-log | merged dataset trains |
@@ -133,6 +134,16 @@ directory, and every finished one has `result.json` and `DONE`.
   `experiment_runner` with its `experiment.yaml`), then `comparison.json`: shared episodes, agreement, both /
   only-first / only-second counts, both rates with intervals, Fisher p, `intervals_overlap`. **Expect** overlapping
   intervals; different per-episode outcomes are possible if the two runners seed differently.
+- **`wrapper_parity.sh`** (V-wrapper-parity; pilot step 2 "done when"). `instruction (policy-wrapper eval config): ...`,
+  the `stock` cell (Arena's client against R2, with that instruction; R4 is reused only when it logged the same
+  string), then `policy-wrapper serve.py on <host>:<port>`, the `wrapper` cell (`policy_runner.py` with
+  `--policy_type policy_wrapper.policy.gr00t_remote_closedloop_policy.Gr00tRemoteClosedloopPolicy`, the checkout on
+  `PYTHONPATH`), the server stopped, and one line `stock k/n = r [lo, hi] | wrapper ... | per-seed agreement ... |
+  intervals overlap: ... | parity: ...`. `parity.json` has both rates with Wilson intervals, the agreement with its
+  interval, both / only-stock / only-wrapper counts, `per_seed` (`env_id:episode_in_env` → both outcomes), Fisher p,
+  the logged instructions and `parity` (both complete and the intervals overlap). `wrapper/serve.log` is the server's
+  log. **Expect** overlapping intervals and high agreement; GR00T's server seeds nothing per request while
+  `serve.py` does (D16), so some per-seed discordance is possible without a client difference.
 - **`R5_nominal_incident.sh`**. One cell, 10 envs, 50 episodes.
 - **`R6_replay_agreement.sh`**. The agreement tool's output; `agreement/replay_agreement.{json,csv}` with the
   agreement k/n and interval, both-success / both-failure / discordant counts, `informative` and its note, and
@@ -151,6 +162,7 @@ directory, and every finished one has `result.json` and `DONE`.
 |---|---|---|
 | **Pilot stays or switches to DROID** | R4 (via R8), R7, R7b | Switch to DROID (`docs/PILOT_AND_ORDER.md`, Candidate C) if R4's nominal rate < 0.8, or if no dark / HDR / colour-temperature cell drops to about 40 % or below (the lighting family would not exist). Otherwise the pilot stays, and the failing cells become the grid's levels (`config/grid_gr1_fridge.yaml`, `rung_b.conditions`). Report R4's Wilson interval with the decision; a lower bound under 0.8 is noted. Thresholds: runbook `gate`. |
 | **Mimic usable or not** | `mimic_override_check.sh` | Usable when the override took effect, the same seed repeats identically, and the stdout parses (V-mimic-out). Then set `reference.mimic.seed.mode` to the check's mode (`fixed` when the flag is missing or different seeds give the same runs; `per_run` with the found flag otherwise). Not usable when the override did not reach Mimic (G2/C1 and Rung B would run on the wrong scene) or the same seed differs. **Inconclusive** (not pass, not fail) when either run has no camera frames or the nominal frames are all black: the brightness rule cannot decide, so check the override by hand (V-mimic-override) before relying on Mimic. A stdout mismatch is fixable: correct `reference.mimic.output.progress`. |
+| **policy-wrapper reproduces the stock client** (pilot step 2) | `wrapper_parity.sh` | Reproduces when both 50-episode runs complete and their Wilson intervals overlap (`parity: true`). If not, the copy differs from Arena's client or server in a way that matters (read the discordant seeds in `per_seed` and `wrapper/serve.log`); fix that before any policy-wrapper number (R6, the grid, the router) is trusted. |
 | **Mode gap real or not** | R4, R5 | Real when the two-sided Fisher exact test on clean vs incident counts gives p < 0.05 (runbook `gate.alpha`); always unpaired (IMPL_PLAN D10). If real, incident-mode results are not compared with clean-mode ones. |
 | **Instruction string** | `instruction_check.sh` | Switch `policy-wrapper/config/eval.yaml` `client.language_instruction` to the training string (`meta/tasks.jsonl`) if it scores at least as well as the eval string (IMPL_PLAN Q2); otherwise keep it. Rung B's converter must use the nominal set's string either way (the mixer refuses different `tasks.jsonl`; the dry run already does this). |
 | **The 50/50 merged dataset trains** | `finetune_dryrun.sh` | Trains when the launcher exits 0, the manifest is complete (parameter counts and `final_model_config.json`), and `meta/stats.json` was computed for the merged directory. If not, the mixer's single-directory approach (Phase 6) needs revisiting before Rung B. |
@@ -166,9 +178,9 @@ Nothing here has been measured, so this is a plan, not a measurement. R8 is the 
 - **Needs the big card first**: `R8_vram.sh` / `R4` (GR00T server and Isaac Sim with cameras on one GPU, VRAM
   unknown until R8 runs), `R5_nominal_incident.sh` (10 envs with cameras), `R6_replay_agreement.sh` (its own
   server next to the stock one unless R2 is stopped), `finetune_dryrun.sh` (Arena's fine-tune minimum is 24 GB,
-  so an L4 has no headroom), and the policy cells of `R7`, `R7b`, `instruction_check.sh`, `runner_parity.sh`.
+  so an L4 has no headroom), and the policy cells of `R7`, `R7b`, `instruction_check.sh`, `runner_parity.sh`, `wrapper_parity.sh` (its own server next to the stock one).
 - **After R8**: if its peak is well under 24 GB, the policy cells (R7, R7b, the grid) can move to L4s with
   `vla_isaac.experiments.grid --host`; fine-tuning stays on the big card.
 - Episode counts per run (wall time unmeasured; R4's sets the scale): R4 50, R7 50, R7b 3 × 50, instruction
-  check 20 per distinct string (2 or 3), runner parity 50 (+50 if R4 is not reusable), R5 50, R6 2 × 50, Mimic
+  check 20 per distinct string (2 or 3), runner parity 50 (+50 if R4 is not reusable), wrapper parity 50 + 50 (R4 is reusable only with the same instruction), R5 50, R6 2 × 50, Mimic
   check 2 + 3 × 5 trials.

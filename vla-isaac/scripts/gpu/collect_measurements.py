@@ -51,6 +51,7 @@ SETTLES: dict[str, tuple[str, Settler]] = {
     "V-exp-yaml": ("R6_replay_agreement", lambda r: "experiment-runner YAML ran (R6)"),
     "V-exp-remote-policy": ("R6_replay_agreement", lambda r: "policy-wrapper remote policy ran in the experiment runner (R6)"),
     "V-runner-parity": ("runner_parity", lambda r: _some(r.get("comparison"))),
+    "V-wrapper-parity": ("wrapper_parity", lambda r: _some(r.get("parity"))),
     "V-instruction": ("instruction_check", lambda r: _some(_instruction_rates(r))),
     "V-train-instr": ("R1b_download_datasets", lambda r: _some(r.get("tasks"))),
     "V-mimic-source": ("R1b_download_datasets", lambda r: r.get("mimic_source")),
