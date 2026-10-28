@@ -1,3 +1,6 @@
 [submodule "hybrid-agent"]
 	path = hybrid-agent
 	url = https://github.com/ani26052007/hagent
+[submodule "external/IsaacLab-Arena"]
+	path = external/IsaacLab-Arena
+	url = https://github.com/isaac-sim/IsaacLab-Arena.git
