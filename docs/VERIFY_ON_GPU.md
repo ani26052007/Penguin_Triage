@@ -1,7 +1,9 @@
 # VERIFY items (settle on the rented GPU box)
 
 Every `# VERIFY(<id>)` marker in `vla-isaac/` and `policy-wrapper/` has a row here. Nothing in this
-list has been run. "Applied" is filled in by `vla-isaac/scripts/gpu/collect_measurements.py`.
+list has been run. `vla-isaac/scripts/gpu/collect_measurements.py` reports, from the runbook's measurements, which
+rows are settled (with the measured value) and which stay open (`measurements/summary.json`); the table at the end says which
+script settles which row.
 
 Prefixes as in `docs/IMPL_PLAN.md` (`A:` Arena, `G:` GR00T). Commands run from `external/IsaacLab-Arena`
 with Arena's venv active unless they say otherwise.
@@ -11,8 +13,8 @@ with Arena's venv active unless they say otherwise.
 | V-viz | `--viz none` is accepted (Isaac Lab AppLauncher flag, not in Arena's CLI files) and runs headless | `BackendConfig.app_flags`, `arena_cmd` | `python isaaclab_arena/evaluation/experiment_runner.py --help \| grep -A3 -- --viz` | P1 |
 | V-exp-yaml | the typed `environment:` keys of `put_item_in_fridge_and_close_door` in an experiment YAML (`type`, `embodiment`, `object`, `enable_cameras`) and the `--experiment_config` / `--experiment_output_directory` invocation | `config/pilot_gr1_fridge.yaml`, `arena_cmd.experiment_yaml` | run the YAML `IsaacBackend` writes (`runs/*/build0_n1/experiment.yaml`) by hand with `num_episodes: 1` | P1 |
 | V-exp-remote-policy | the experiment-runner YAML accepts `policy.type` = a dotted class path of the remote GR00T policy (policy-wrapper's class, registered as `policy_wrapper_gr00t_remote_closedloop`), `policy_config_yaml_path`, `remote_host`, `remote_port` (the DROID example `A:isaaclab_arena_environments/experiment_configs/droid_pnp_gr00t_experiment.yaml` uses them; the GR1 pilot path is untested) | `arena_cmd.PolicySpec` | same run as V-exp-yaml with the stock `isaaclab_arena_gr00t...Gr00tRemoteClosedloopPolicy` and the server from R2 | P1 (user) |
-| V-runner-parity | nominal success via `policy_runner.py` vs the experiment runner, same build seed, same episodes, clean mode | backend switched to the experiment runner (IMPL_PLAN Q1) | `scripts/gpu/R4b_runner_parity.sh` (Phase 7): 50 episodes each, compare per-episode `success` on `(env_id, episode_in_env)` | P1 (user) |
-| V-instruction | nominal success with the eval instruction ("sauce bottle") vs the training instruction from the dataset's `meta/tasks.jsonl` ("ranch dressing bottle" per Arena's converter YAML) | `policy-wrapper/config/eval.yaml` `client.language_instruction` | `scripts/gpu/R4c_instruction_ab.sh` (Phase 7): 20 nominal episodes each; if the training string scores as well, switch eval.yaml to it | P1 (user) |
+| V-runner-parity | nominal success via `policy_runner.py` vs the experiment runner, same build seed, same episodes, clean mode | backend switched to the experiment runner (IMPL_PLAN Q1) | `scripts/gpu/runner_parity.sh` (Phase 7; called R4b in Phases 1-6): 50 episodes each, compare per-episode `success` on `(env_id, episode_in_env)` | P1 (user) |
+| V-instruction | nominal success with the eval instruction ("sauce bottle") vs the training instruction from the dataset's `meta/tasks.jsonl` ("ranch dressing bottle" per Arena's converter YAML) | `policy-wrapper/config/eval.yaml` `client.language_instruction` | `scripts/gpu/instruction_check.sh` (Phase 7; called R4c in Phases 1-6): 20 nominal episodes each; if the training string scores as well, switch eval.yaml to it | P1 (user) |
 | V-timestamped-dir | `policy_runner.py --output_base_dir D` adds a timestamped subdirectory (`timestamped_run_dir`) holding `episode_results_rank0.jsonl` | `IsaacBackend` with `runner: policy_runner` (reads `rglob`) | `ls -R` the R4 output | P1 |
 | V-jsonl-success | `success` is a bool for this task (it is `None` without a `success` termination term, `A:isaaclab_arena/recording/common_terms.py:133-135`) | `results/episode_jsonl.read_records` | `head -1` of an R4 JSONL | P1 |
 | V-var-record | the value format recorded under `variations` for a build-time draw (`[100.0]` or `100.0`) | fake runner fixtures, `vla_isaac/replay/recorded_variations.py` (keys `<asset>.<variation>` as in the factor table) | `jq .variations` on one record of R7; then `python -m vla_isaac.replay.recorded_variations --input <R7 jsonl> --output /tmp/s.jsonl --strip light.intensity` and replay `/tmp/s.jsonl` on the nominal build with `recorded_variation_samples_path` | P1, P5 |
@@ -25,7 +27,7 @@ with Arena's venv active unless they say otherwise.
 | V-ee-frame | GR1 defines no `ee_frame` transformer at this commit (`get_ee_frame_transformer_names` default, no `FrameTransformerCfg` in `gr1t2.py`), so `states/kinematics` is absent and the EE position comes from the policy observations `policy.left_eef_pos` / `policy.right_eef_pos` (Isaac Lab `mdp.get_eef_pos`, unread), logged by the wrapper each step. Check that they are in the same frame as the HDF5 object pose (env-relative?), also with N > 1 envs, and that the instrument's step t (before the action) vs the HDF5's step t (after it) is close enough | `traces.ee`, `vla_isaac/traces/events.py` (reach, grasp record) | traced 2-env run: at step 0, compare `policy.left_eef_pos` with the robot root pose + the link offset; compare object `root_pose` with JSONL `placement`; check the grasp record distance on nominal successes (< 0.1 m) | P0, P3 |
 | V-obj-state | object pose path in HDF5 states, position first in `root_pose`, and the pick-up object's scene name (`ranch_dressing_hope_robolab`) | `traces.hdf5.object_pose`, `traces.object` | HDF5 visit | P0, P3 |
 | V-progress | `progress.events` for this composite task: criteria names `pick_and_place` / `close_door` and predicate indices (0 settled, 1 above height, 2 on destination; door 0 closed), read from `A:isaaclab_arena/tasks/{pick_and_place,close_door}_task.py`; whether the sequential task keeps both criteria names | `traces.subtasks`, `traces.object_rest_event` | `jq .progress.events` on an R4 record of a success and of a failure | P0, P3 |
-| V-mimic-override | `generate_dataset.py` passes the scene's variation overrides (`light.intensity.sampler_cfg.low=[100.0]` ..., appended last) to Arena's registration callback, which consumes them (`A:isaaclab_arena/environments/isaaclab_interop.py:145-146`), and the generated trials then run under them | `vla_isaac/reference/mimic.py` `mimic_argv` | `scripts/gpu/mimic_override_check.sh` (Phase 7): 2 trials with a lighting override; check the recorded variations | P0, P4 |
+| V-mimic-override | `generate_dataset.py` passes the scene's variation overrides (`light.intensity.sampler_cfg.low=[100.0]` ..., appended last) to Arena's registration callback, which consumes them (`A:isaaclab_arena/environments/isaaclab_interop.py:145-146`), and the generated trials then run under them | `vla_isaac/reference/mimic.py` `mimic_argv` | `scripts/gpu/mimic_override_check.sh` (Phase 7): 2 trials with a lighting override. Mimic writes no Arena episode JSONL, so the check looks for variation keys or attributes in the generated HDF5 and decides on the camera frames: the override run must be darker than a nominal run (`mimic_check.darker_ratio`) | P0, P4 |
 | V-hf-rev | HF revision hash of the pilot checkpoint | `policy-wrapper/config/eval.yaml` `TODO_PIN`; `config/finetune_gr1_fridge.yaml` `finetune.base_revision` (manifest `checkpoint.revision_pinned: false` until set) | `python -c "from huggingface_hub import HfApi; print(HfApi().model_info('nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task').sha)"` | P0, P6 |
 | V-ckpt-cfg | the pilot checkpoint has `config.json`, `processor_config.json` (`processor_kwargs.modality_configs.gr1`), `statistics.json` and `embodiment_id.json` in the shapes of the FIXTURE files (`vla-isaac/tests/fixtures/checkpoint_gr1/`); `tune_top_llm_layers`, `num_inference_timesteps`, `action_horizon`, processor crop/resize/jitter | `vla_isaac/specs/extract_training_spec.py`; `vla_isaac/train/finetune_launcher.py` refuses to build a fine-tune command when `tune_top_llm_layers` is not in the base checkpoint's `config.json`, unless `finetune.allow_unknown_top_llm_layers` (recorded in the manifest) | after R2: `python -m vla_isaac.specs.extract_training_spec --backend backend.yaml --output measurements/<ts>/training_spec.json`, then read `extra.disagreements` and `extra.missing` | P0, P6 |
 | V-client-tests | Arena's GR00T client tests import without Isaac Sim | Phase 2 parity | `scripts/gpu/check_client_tests.sh` | P0 |
@@ -48,3 +50,25 @@ with Arena's venv active unless they say otherwise.
 
 P0 = listed in `docs/IMPL_PLAN.md` §4; P1 = added in Phase 1 (user = asked for in the Phase 0 approval);
 P2 = added in Phase 2; P3 = added or extended in Phase 3; P4 = added or extended in Phase 4 (and the fixes before it); P5 = added or extended in Phase 5 (and the decisions before it); P6 = added or extended in Phase 6.
+
+## Which runbook script settles which row (Phase 7)
+
+From `collect_measurements.SETTLES`; a row is settled only when that script finished (`status: ok`) and measured the value.
+
+| Script (`vla-isaac/scripts/gpu/`) | Rows |
+|---|---|
+| `R1_download_checkpoint.sh` | V-hf-rev, V-ckpt-cfg, V-stats-format |
+| `R1b_download_datasets.sh` | V-train-instr, V-mimic-source |
+| `check_client_tests.sh` | V-client-tests |
+| `R3_list_variations.sh` | V-list-var |
+| `R4_nominal_clean.sh` (run through `R8_vram.sh`) | V-viz, V-timestamped-dir, V-jsonl-success, V-progress |
+| `R7_dark_cell.sh` | V-var-record (the recorded value format; the strip-and-replay half stays manual) |
+| `R6_replay_agreement.sh` | V-exp-yaml, V-exp-remote-policy |
+| `instruction_check.sh` | V-instruction |
+| `runner_parity.sh` | V-runner-parity |
+| `mimic_override_check.sh` | V-mimic-override, V-mimic-seed, V-mimic-out, V-mimic-guarantee |
+| `finetune_dryrun.sh` | V-converter-noisaac (the converter runs with every Isaac import blocked), V-finetune-log |
+
+No runbook script settles V-actuator, V-ext-env, V-traj-size, V-hdf5-keys, V-hdf5-export, V-ee-frame, V-obj-state,
+V-rgb-order, V-reset-calls, V-render-defaults, V-ckpt-cache, V-server-seed, V-hdf5-joint-order or V-hand-limits: they need a
+traced `IsaacBackend` run or a hand check, with the commands in the table above.

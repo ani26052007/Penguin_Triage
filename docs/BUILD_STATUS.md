@@ -546,24 +546,77 @@ No new ids. Extended (P6): V-converter-noisaac (the import chain was read; the m
 - **Fine-tune timeout** is its own config value (`finetune.timeout_s`, 48 h). The backend's `timeouts.run_s` (2 h) is too short for 30k steps.
 - **The `plan` / `run` CLI of the launcher** reads a backend YAML and is not exercised here; every function it calls is tested.
 
+## Phase 7: GPU runbook (2026-10-28)
+
+Requirements from `docs/IMPL_PLAN.md` ("Decisions from the Phase 6 review", Phase 7 requirements), recorded there first together with the accepted Phase 6 findings. **The scripts are written, not run.** Baseline before any change: 814 passed, 1 skipped / 331 passed, 1 skipped / 41.
+
+### Built
+- **`vla-isaac/scripts/gpu/`**: `00_check_gpu.sh`, `R0_setup.sh`, `R1_download_checkpoint.sh`, `R1b_download_datasets.sh`, `R2_server.sh`, `R3_list_variations.sh`, `R4_nominal_clean.sh`, `R5_nominal_incident.sh`, `R6_replay_agreement.sh`, `R7_dark_cell.sh`, `R7b_hdr_and_colour_temp.sh`, `R8_vram.sh`, and the day-one scripts `instruction_check.sh`, `runner_parity.sh`, `mimic_override_check.sh`, `check_client_tests.sh`, `finetune_dryrun.sh`; `collect_measurements.py`; `run_order.md`; `env.example` (no secrets).
+- **`_common.sh`** (sourced by all): `require_env` refuses to start and names every missing variable; `begin_measurement` creates and prints `measurements/<RUN_TS>/<script>/` (exported `RUN_TS`, so a script calling another writes into the same timestamp); a finished directory (`DONE`) is skipped unless `FORCE=1`, which moves it aside (never deletes); an unfinished one resumes cell by cell; a failure leaves `result.json` with `status: failed` and the exit code. `run_cell` runs one `policy_runner.py` cell with Arena's **stock** GR00T client against the R2 server, with the argv built by `arena_cmd.policy_runner_argv` and overrides through the factor table.
+- **`runbook_tools.py`**: the tested helpers the scripts call (argv builders, run summaries with `experiments.tables.proportion` / `ladder.stats`, runner comparison, the instruction line, VRAM summary, client-test classification, checkpoint report, LeRobot directory pick, Mimic HDF5 probe and check verdict, Isaac-import blocker, dry-run pipeline variant, conversion, mix, dry-run report, `result.json`). vla_isaac imports are inside the commands.
+- **`config/runbook_gr1_fridge.yaml`** (strict): every task-specific runbook value (checkpoint and dataset repos, stock policy, episode counts, dark cell, R7b probes, Mimic check, dry-run steps, gate thresholds, VRAM interval). A DROID pilot is another file (`VLA_RUNBOOK_CONFIG`).
+- Per requirement:
+  1. Strict header, idempotent, `measurements/<timestamp>/`, output dir printed first and last; downloads only in `R0_setup.sh`, `R1_download_checkpoint.sh`, `R1b_download_datasets.sh`; `HF_TOKEN` is only tested for presence.
+  2. `00_check_gpu.sh` needs only `nvidia-smi`: rejects compute capability < 8.0 (flash-attn) and A100/A800/A30/H100/H800/H200/H20/B100/B200/GB200/GH200 (no RT cores) with the reason; prints VRAM; notes < 48 GB.
+  3. `R0_setup.sh`: Arena submodules, `uv sync --extra dev --group gr00t-client`, GR00T `uv sync --python 3.10`, **tqdm imageio imageio-ffmpeg pandas pyarrow** into Arena's venv, the vla-isaac venv, the backend config written once from the example (serve.py port = `GR00T_PORT + 1`), and `versions.json` with the installed isaacsim / isaaclab / isaaclab_mimic / Arena / torch versions and git describes, as found.
+  4. R4 50 nominal clean episodes; R5 10 envs × 50; R6 the Phase 5 agreement tool on the nominal cell with 50 episodes (refuses a backend port equal to the stock server's); R7 dark; R7b one HDR and two colour-temperature cells; R8 samples whole-GPU and per-process VRAM while it runs R4.
+  5. Day one: `instruction_check.sh` prints one line with the three sources and the differing pairs, then 20 episodes per distinct string with `--language_instruction`; `runner_parity.sh` runs the same seed through both runners (reusing R4's cell when possible) and compares per `(env_id, episode_in_env)`; `mimic_override_check.sh` (below); `check_client_tests.sh` runs Arena's two client test files under the vla-isaac venv and GR00T's venv (neither has Isaac Sim); `finetune_dryrun.sh` prints `tune_top_llm_layers` first, converts the Mimic check's override HDF5 with Isaac imports blocked and the nominal set's instruction, mixes, checks there is no `stats.json`, runs 50 steps, then checks `stats.json` was computed and the manifest is complete.
+  6. `collect_measurements.py`: newest finished run per script; every `VERIFY_ON_GPU.md` id settled (value and source file) or open (with why); the five decisions; GPU, versions, VRAM.
+  7. `run_order.md`: environment table, first three commands, the order (16 steps), expected output per script, the decision rules, and the cost note (L4-safe vs big card).
+  8. Tests below.
+- **`docs/VERIFY_ON_GPU.md`**: script names updated (`runner_parity.sh`, `instruction_check.sh`), the Mimic-override check described as built, and a table of which script settles which row.
+
+### Tests
+```
+cd vla-router     && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 814 passed, 1 skipped
+cd vla-isaac      && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 491 passed, 1 skipped
+cd policy-wrapper && env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q   -> 41 passed
+```
+vla-isaac +160, all in `tests/test_gpu_runbook.py`:
+- **Static, per script**: executable; `#!/usr/bin/env bash` then `set -euo pipefail` as the first command (python3 shebang for the .py); only environment variables documented in `run_order.md` (and every documented one is used; the Python tools read none); no secret patterns, no `set -x`, `HF_TOKEN` only in presence tests; no download/install command outside setup/download scripts; `shellcheck -x` clean (all levels). Every script path in `VERIFY_ON_GPU.md` exists; `run_order.md` names every script and only existing ones; every `rb_get` key exists in the runbook config and every `tool` command exists in the real parser; the collector names only listed ids.
+- **Scripts run**: each script with an empty environment exits non-zero, names documented variables, and creates no measurement directory. `00_check_gpu.sh` against a fake `nvidia-smi`: A100, H100, H200 rejected (no RT cores), T4 and Quadro RTX 8000 rejected (pre-Ampere), RTX 6000 Ada / L4 / A10 pass with VRAM printed; rerun skipped, `FORCE=1` moves the old directory aside; no driver is a clear error.
+- **R4 and R7 end to end on a fake box**: a fake Arena interpreter, the vla-isaac venv pointing at this Python, a backend config from R0's own helper, and the fake ZMQ server on `GR00T_PORT`. R4: argv has 50 episodes, 1 env, seed 0, `--viz none`, the stock policy, the server port; 45/50 with `ladder.stats`' Wilson interval; timestamped subdir and bool `success` detected; a rerun does not rerun Arena. R7 with a failing Arena: `status: failed`, `summary.failed.json`, no `DONE`; the rerun retries, has the dark overrides, and records the variations sample. A missing server and R6 on the stock port are refused.
+- **Helpers**: summaries and comparisons (Fisher p equals `ladder.stats`), incident ranking, the instruction line and pairs, VRAM, client-test classification, checkpoint report on the FIXTURE checkpoint, LeRobot pick, HDF5 probe (timestamp attributes ignored, variation keys found), the Mimic verdict for fixed / per_run / no flag / unstable seeds and for an override that did not take and a summary-only log, the Isaac import blocker (blocks `isaacsim`, runs the rest), the dry-run pipeline variant, mix and report, `result.json`.
+- **Collector** on fake measurement dirs: empty → all open and undecided; a full box → every mapped id settled, the rest open, pilot stays / Mimic usable / mode gap real / instruction switch / merged dataset trains; R4 35/50 and no shifted drop → DROID; 41/50 stays with the lower-bound note; override not taken → Mimic not usable; small gap → not detected; the newest finished run wins and a failed run leaves its ids open; the CLI writes `summary.json`.
+- Mutation check: breaking R5's header, adding an undocumented variable and a `curl` fails 3 tests.
+
+### VERIFY items
+No new ids. Rewritten: V-runner-parity, V-instruction (script names), V-mimic-override (how the check decides).
+
+### Deviations and findings
+- **Mimic records no variations file.** Mimic's `generate_dataset.py` does not go through Arena's episode recorder, and Arena's `VariationRecorder` is in memory (`A:isaaclab_arena/variations/variation_recorder.py`), so there is no recorded-variations JSONL for a Mimic run. The check looks for variation keys/attributes in the generated HDF5 (likely none) and decides on the camera frames (`data/demo_<i>/camera_obs/robot_pov_cam_rgb`, read from Arena's converter): the override run's mean pixel / the nominal run's < 0.8 (runbook `mimic_check.darker_ratio`). This is indirect evidence, stated as such in the result.
+- **The Mimic seed flag is looked up, not assumed.** `generate_dataset.py --help` is captured; without the flag only the same-seed repeat runs, and "identical" gives `mode: fixed`. Identity = same per-attempt outcomes and the same content digest of every HDF5 dataset (attributes excluded).
+- **R4-R7, instruction_check and runner_parity use Arena's stock client and server**, as the pilot doc's commands do: they measure the checkpoint. Only R6 (and `IsaacBackend`) runs policy-wrapper. The pilot doc's step-2 wrapper-vs-stock parity run is not a script yet.
+- **R8 runs R4 itself** (VRAM must be sampled while R4 runs); it refuses when R4 already finished in the same `RUN_TS`.
+- **`R1b_download_datasets.sh` picks the LeRobot directory** inside the dataset repo by listing it (path unverified, V-train-instr); ambiguity stops with the candidates and `LEROBOT_PREFIX`. It downloads the whole LeRobot directory, since the dry run trains on it.
+- **The dry run converts with the nominal set's instruction**, because the mixer refuses different `tasks.jsonl` (Phase 6). Rung B's real conversions need the same; noted in `run_order.md`.
+- **`check_client_tests.sh` needs no GPU**: GR00T's venv is the representative no-Isaac interpreter; the vla-isaac venv is the stricter one.
+- **Cost note is a plan**, not a measurement: R8 gives the first VRAM number; which cells can move to L4s depends on it.
+- The two runner/instruction scripts are named as the user asked (`runner_parity.sh`, `instruction_check.sh`), not `R4b` / `R4c` as in Phases 1-6.
+
 ## Current state (2026-10-28)
 
-Done: Phases 1-6, router changes 1-6, the three fixes before Phase 4, the Mimic changes before Phase 5, and the replay-agreement fix before Phase 6. **Next: Phase 7** (GPU runbook).
+Done: Phases 1-7, router changes 1-6, the three fixes before Phase 4, the Mimic changes before Phase 5, and the replay-agreement fix before Phase 6. **Next: Phase 8** (injected bugs), after the review of Phase 7. The GPU runbook has not been run.
 
 | Repo | Test command (run inside the repo) | Result |
 |---|---|---|
 | vla-router | `env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q` | 814 passed, 1 skipped |
-| vla-isaac | same | 331 passed, 1 skipped (V-converter-noisaac) |
+| vla-isaac | same | 491 passed, 1 skipped (V-converter-noisaac) |
 | policy-wrapper | same | 41 passed |
 
-Commits since Phase 5:
+First three commands on the rented GPU (`vla-isaac/scripts/gpu/run_order.md`):
+```bash
+source ~/vla-env.sh                                  # your edited copy of vla-isaac/scripts/gpu/env.example
+vla-isaac/scripts/gpu/00_check_gpu.sh
+vla-isaac/scripts/gpu/R0_setup.sh
+```
+
+Commits since Phase 6:
 
 | Commit | What |
 |---|---|
-| `1c77108` | IMPL_PLAN: decisions from the Phase 5 review |
-| `642ee28` | Replay agreement keeps both runs' raw Arena files |
-| (this commit) | Phase 6: data pipeline and fine-tuning |
+| (this commit) | IMPL_PLAN: Phase 6 decisions; Phase 7: GPU runbook |
 
-Known limitations carried forward: a stripped recorded-variation file is not replayed through `IsaacBackend` (live restore covers it); the staleness checks see only action-side delay; `FrameStats.missing_texture_fraction` is not measured.
+Known limitations carried forward: a stripped recorded-variation file is not replayed through `IsaacBackend` (live restore covers it); the staleness checks see only action-side delay; `FrameStats.missing_texture_fraction` is not measured; the Mimic override check is indirect (camera brightness), because Mimic records no variations.
 
 Repo hygiene is unchanged: never stage `.gitmodules`, `external/IsaacLab-Arena`, `hybrid-agent` or the moved `PLAN_*.md`; commit with `git commit --only -- <own paths>`.

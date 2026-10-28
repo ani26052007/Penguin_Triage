@@ -1,0 +1,47 @@
+# GPU runbook values for the pilot (vla-isaac/scripts/gpu, run_order.md). Read by scripts/gpu/runbook_tools.py.
+# Every task-specific value of the runbook lives here; a DROID pilot is a new file of this shape
+# (scripts take it from VLA_RUNBOOK_CONFIG). Relative paths resolve against this file's directory.
+task_config: pilot_gr1_fridge.yaml
+grid: grid_gr1_fridge.yaml
+pipeline: finetune_gr1_fridge.yaml
+factor_names: factor_names_gr1_fridge.yaml   # R3: <asset>.<variation> -> factor name, for the regenerated table
+checkpoint:                               # R1 (docs/PILOT_AND_ORDER.md R1)
+  repo: nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task
+  subfolder: ranch_bottle_into_fridge
+  embodiment_tag: GR1
+dataset:                                  # R1b (docs/VERIFY_ON_GPU.md V-train-instr, V-mimic-source)
+  repo: nvidia/Arena-GR1-Manipulation-PlaceItemCloseDoor-Task
+  revision: arena_v0.2_lab_v3.0
+  lerobot_hint: ranch                     # substring of the LeRobot directory holding meta/tasks.jsonl (path unverified)
+  mimic_source: ranch_bottle_into_fridge/ranch_bottle_into_fridge_annotated.hdf5
+stock_policy:                             # Arena's own GR00T client: the R4-R7 numbers measure the checkpoint, not policy-wrapper
+  type: isaaclab_arena_gr00t.policy.gr00t_remote_closedloop_policy.Gr00tRemoteClosedloopPolicy
+  config_yaml: isaaclab_arena_gr00t/policy/config/gr1_manip_ranch_bottle_gr00t_closedloop_config.yaml
+cell_timeout_s: 14400                     # one policy_runner.py run of up to 50 episodes
+nominal: {seed: 0, episodes: 50}          # R4: 50, not 20 (19/20 straddles 0.8)
+incident: {num_envs: 10, episodes: 50}    # R5
+dark_cell: {lighting.intensity: "100.0"}  # R7 (docs/PILOT_AND_ORDER.md R7)
+probes:                                   # R7b: one cell each; PLACEHOLDER levels until the first measurements
+  hdr_home_office: {lighting.hdr: home_office_robolab}
+  colour_temp_warm: {lighting.color_temperature: "2000.0"}
+  colour_temp_cool: {lighting.color_temperature: "9000.0"}
+probe_episodes: 50
+instruction_check: {episodes: 20}         # V-instruction (IMPL_PLAN Q2)
+parity: {episodes: 50}                    # V-runner-parity
+mimic_check:                              # V-mimic-override, V-mimic-seed, V-mimic-out, V-mimic-guarantee
+  override: {lighting.intensity: "100.0"}
+  override_trials: 2
+  seed_trials: 5
+  seeds: [1, 2]                           # two different datagen seeds; the first is also run twice
+  darker_ratio: 0.8                       # override mean pixel / nominal mean pixel below this: the override took effect
+  camera: robot_pov_cam_rgb               # data/demo_<i>/camera_obs/<camera> (A:isaaclab_arena_gr00t/lerobot/convert_hdf5_to_lerobot.py:536-538)
+finetune_dryrun:
+  max_steps: 50
+  timeout_s: 7200
+  condition: {lighting.intensity: "100.0"}  # the condition the Mimic check's override HDF5 was generated under
+gate:                                     # run_order.md decisions
+  nominal_min: 0.8                        # pilot stays only if R4 >= this
+  shifted_max: 0.4                        # ... and some dark / HDR / colour cell drops to or below this
+  confidence: 0.95
+  alpha: 0.05                             # mode gap: two-sided Fisher exact
+vram: {interval_s: 5}
