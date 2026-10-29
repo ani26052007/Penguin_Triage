@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 00. Is this GPU usable? Ampere or newer (flash-attn, GR00T) and with RT cores (Isaac Sim camera rendering).
 # A100 / H100-class compute cards have no RT cores and are rejected; so is anything before Ampere.
+# Also requires the NVIDIA Vulkan ICD (VK_ICD_FILENAMES, default /usr/share/vulkan/icd.d/nvidia_icd.json): Isaac Sim crashed at camera init without it.
 # Needs only nvidia-smi: it runs before R0_setup.sh.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
@@ -19,6 +20,9 @@ nvidia-smi > "$out/nvidia_smi.txt" 2>&1 || true
 
 fail=0
 json_gpus=""
+IFS=',' read -r _ _ _ _ first_driver <<< "$(echo "$query" | head -n1)"
+first_driver="$(echo "$first_driver" | xargs)"
+vk_missing="$(vulkan_icd_missing)"
 while IFS=',' read -r idx name cap mem driver; do
   idx="$(echo "$idx" | xargs)"; name="$(echo "$name" | xargs)"; cap="$(echo "$cap" | xargs)"
   mem="$(echo "$mem" | xargs)"; driver="$(echo "$driver" | xargs)"
@@ -51,10 +55,19 @@ while IFS=',' read -r idx name cap mem driver; do
 done <<< "$query"
 
 [[ -n "$json_gpus" ]] || die "nvidia-smi listed no GPU"
+vk_ok=true
+if [[ -n "$vk_missing" ]]; then
+  vk_ok=false
+  fail=1
+  echo "  REJECTED: Vulkan ICD not found: $(echo "$vk_missing" | xargs)" >&2
+  echo "  $(vulkan_icd_advice "$first_driver")" >&2
+else
+  echo "Vulkan ICD OK: $(vulkan_icd_files)"
+fi
 status=ok
 ((fail == 0)) || status=failed
-printf '{"script": "%s", "run_ts": "%s", "status": "%s", "gpus": [%s]}\n' \
-  "$script_name" "$run_ts" "$status" "$json_gpus" > "$out/result.json"
+printf '{"script": "%s", "run_ts": "%s", "status": "%s", "vulkan_icd": "%s", "vulkan_ok": %s, "gpus": [%s]}\n' \
+  "$script_name" "$run_ts" "$status" "$(vulkan_icd_files)" "$vk_ok" "$json_gpus" > "$out/result.json"
 ((fail == 0)) || die "this GPU cannot run the runbook (reasons above)"
 touch "$out/DONE"
 echo "GPU OK"

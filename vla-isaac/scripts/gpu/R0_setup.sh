@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # R0. Setup (once; idempotent). docs/PILOT_AND_ORDER.md R0, plus:
+#   - on compute capability 12.0 (Blackwell), torch 2.7.1+cu128 / torchvision 0.22.1+cu128 in the GR00T venv,
 #   - the converter's third-party packages in Arena's venv (V-converter-noisaac),
 #   - a vla-isaac venv (VLA_VENV) holding hybrid-agent, vla-router and vla-isaac,
 #   - the backend config (VLA_BACKEND_CONFIG) for this box, written once from backend.example.yaml,
@@ -18,6 +19,10 @@ begin_measurement
 
 step() { echo "== $*"; }
 
+step "Vulkan ICD for Isaac Sim"
+vk_missing="$(vulkan_icd_missing)"
+[[ -z "$vk_missing" ]] || die "Vulkan ICD not found: $(echo "$vk_missing" | xargs). $(vulkan_icd_advice "$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -n1 | xargs)")"
+
 step "Arena submodules (Isaac Lab, GR00T)"
 git -C "$ARENA_ROOT" submodule update --init submodules/IsaacLab submodules/Isaac-GR00T 2>&1 | tee "$out/submodules.log"
 
@@ -26,6 +31,16 @@ step "Arena venv with the GR00T client group (gr00t.rst:72-74)"
 
 step "GR00T venv (G:README.md:107-108)"
 (cd "$ARENA_ROOT/submodules/Isaac-GR00T" && uv sync --python 3.10 && uv pip install -e .) 2>&1 | tee "$out/gr00t_sync.log"
+
+cap="$(gpu_compute_cap)"
+if needs_cu128_torch "$cap"; then
+  step "compute capability $cap: replacing GR00T's torch with the cu128 build (the locked 2.7.1+cu126 has no sm_120 kernels)"
+  # explicit +cu128: a plain ==2.7.1 is a no-op in uv because the installed 2.7.1+cu126 already satisfies it
+  uv pip install --python "$(gr00t_py)" --index-url https://download.pytorch.org/whl/cu128 \
+    torch==2.7.1+cu128 torchvision==0.22.1+cu128 2>&1 | tee "$out/gr00t_torch_cu128.log"
+else
+  echo "compute capability ${cap:-unknown}: GR00T's locked torch is kept"
+fi
 
 step "converter packages in Arena's venv"
 uv pip install --python "$(arena_py)" tqdm imageio imageio-ffmpeg pandas pyarrow 2>&1 | tee "$out/converter_deps.log"

@@ -236,9 +236,12 @@ def fake_nvidia_smi(tmp_path, line: str) -> Path:
     ("0, NVIDIA RTX 6000 Ada Generation, 8.9, 49140, 550.54", True, "GPU OK"),
     ("0, NVIDIA L4, 8.9, 23034, 550.54", True, "may not fit together"),
     ("0, NVIDIA A10, 8.6, 23028, 550.54", True, "GPU OK"),
+    ("0, NVIDIA RTX PRO 6000 Blackwell Server Edition, 12.0, 97887, 580.178.04", True, "GPU OK"),
 ])
 def test_the_gpu_check(tmp_path, line, ok, why):
-    env = bare_env(tmp_path)
+    icd = tmp_path / "nvidia_icd.json"
+    icd.write_text("{}")
+    env = bare_env(tmp_path, VK_ICD_FILENAMES=icd)
     env["PATH"] = f"{fake_nvidia_smi(tmp_path, line)}:{env['PATH']}"
     r = run("00_check_gpu.sh", env)
     assert (r.returncode == 0) is ok, r.stdout + r.stderr
@@ -253,6 +256,48 @@ def test_the_gpu_check(tmp_path, line, ok, why):
         assert again.returncode == 0 and "already complete" in again.stdout
         forced = run("00_check_gpu.sh", {**env, "FORCE": "1"})
         assert forced.returncode == 0 and list((tmp_path / "meas" / "t0").glob("00_check_gpu.old-*"))
+
+
+def test_the_gpu_check_needs_the_vulkan_icd_and_says_which_package(tmp_path):
+    env = bare_env(tmp_path, VK_ICD_FILENAMES=tmp_path / "missing_icd.json")
+    env["PATH"] = f"{fake_nvidia_smi(tmp_path, '0, NVIDIA RTX PRO 6000 Blackwell Server Edition, 12.0, 97887, 580.178.04')}:{env['PATH']}"
+    r = run("00_check_gpu.sh", env)
+    assert r.returncode != 0
+    assert "Vulkan ICD not found" in r.stderr and "libnvidia-gl-580" in r.stderr and "VK_ICD_FILENAMES" in r.stderr
+    res = json.loads((tmp_path / "meas" / "t0" / "00_check_gpu" / "result.json").read_text())
+    assert res["status"] == "failed" and res["vulkan_ok"] is False and res["gpus"][0]["ok"] is True
+    assert not (tmp_path / "meas" / "t0" / "00_check_gpu" / "DONE").exists()
+
+
+def bash_fn(code: str, **env) -> str:
+    r = subprocess.run(["bash", "-c", f'source "{GPU}/_common.sh"; {code}'], env={"PATH": "/usr/bin:/bin", **env},
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return r.stdout.strip()
+
+
+def test_vulkan_icd_missing_lists_only_absent_files_and_defaults_to_the_standard_path(tmp_path):
+    present = tmp_path / "a.json"
+    present.write_text("{}")
+    assert bash_fn("vulkan_icd_missing", VK_ICD_FILENAMES=str(present)) == ""
+    assert bash_fn("vulkan_icd_missing", VK_ICD_FILENAMES=f"{present}:{tmp_path / 'b.json'}") == str(tmp_path / "b.json")
+    assert bash_fn("vulkan_icd_files") == "/usr/share/vulkan/icd.d/nvidia_icd.json"
+    assert bash_fn("vulkan_icd_advice 580.178.04").startswith("Isaac Sim needs the NVIDIA Vulkan ICD: install libnvidia-gl-580 ")
+
+
+@pytest.mark.parametrize("cap, expect", [("12.0", True), ("8.9", False), ("9.0", False), ("10.0", False), ("", False)])
+def test_cu128_torch_is_chosen_for_compute_capability_12_0_only(cap, expect):
+    r = subprocess.run(["bash", "-c", f'source "{GPU}/_common.sh"; needs_cu128_torch "{cap}"'], env={"PATH": "/usr/bin:/bin"})
+    assert (r.returncode == 0) is expect
+
+
+def test_r0_installs_the_pinned_cu128_torch_into_the_gr00t_venv_only_for_that_capability():
+    r0 = (GPU / "R0_setup.sh").read_text()
+    code = "\n".join(line for line in r0.splitlines() if not line.lstrip().startswith("#"))
+    assert re.search(r'if needs_cu128_torch "\$cap"; then', code)
+    m = re.search(r'uv pip install --python "\$\(gr00t_py\)" --index-url https://download\.pytorch\.org/whl/cu128 \\\n\s+(.*?) 2>&1', code)
+    assert m and m[1] == "torch==2.7.1+cu128 torchvision==0.22.1+cu128", "explicit +cu128 pins: a plain ==2.7.1 is a no-op in uv"
+    assert code.index("needs_cu128_torch") > code.index("Isaac-GR00T") and code.index("vulkan_icd_missing") < code.index("uv sync")
 
 
 def test_the_gpu_check_without_a_driver(tmp_path):

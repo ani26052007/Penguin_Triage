@@ -36,6 +36,33 @@ arena_py() { echo "$ARENA_ROOT/.venv/bin/python"; }
 gr00t_py() { echo "$ARENA_ROOT/submodules/Isaac-GR00T/.venv/bin/python"; }
 vla_py() { echo "$VLA_VENV/bin/python"; }
 
+# Isaac Sim's renderer needs the NVIDIA Vulkan ICD (package libnvidia-gl-<driver major>[-server]); without it the
+# process crashed at camera init on the 2026-10-29 session. VK_ICD_FILENAMES may list several files with ':'.
+vulkan_icd_files() { echo "${VK_ICD_FILENAMES:-/usr/share/vulkan/icd.d/nvidia_icd.json}"; }
+
+# vulkan_icd_missing: print each listed ICD file that does not exist, one per line; nothing when all exist.
+vulkan_icd_missing() {
+  local f
+  local -a files
+  IFS=: read -r -a files <<< "$(vulkan_icd_files)"
+  for f in "${files[@]}"; do
+    [[ -e "$f" ]] || echo "$f"
+  done
+}
+
+# vulkan_icd_advice DRIVER_VERSION: what to do when the ICD is missing.
+vulkan_icd_advice() {
+  echo "Isaac Sim needs the NVIDIA Vulkan ICD: install libnvidia-gl-${1%%.*} (libnvidia-gl-${1%%.*}-server on server driver builds) and" \
+    "export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json"
+}
+
+# gpu_compute_cap: compute capability of the first GPU, e.g. 12.0 (empty when nvidia-smi cannot say).
+gpu_compute_cap() { nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 | xargs || true; }
+
+# needs_cu128_torch CAP: GR00T's locked torch (2.7.1+cu126) has no sm_120 kernels ("no kernel image is available");
+# measured on an RTX PRO 6000 Blackwell (compute capability 12.0). Only that capability is treated as affected.
+needs_cu128_torch() { [[ "$1" == 12.0 ]]; }
+
 # tool ARGS...: runbook_tools.py in the vla-isaac venv.
 tool() { "$(vla_py)" "$tools" "$@"; }
 rb_get() { tool get --runbook "$runbook_cfg" "$1"; }

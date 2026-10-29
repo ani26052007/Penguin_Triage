@@ -1,6 +1,6 @@
 # GPU runbook: run order on the rented box
 
-Written in Phase 7 of `docs/PROMPT_sim_side.md`. **None of these scripts has been run.** They are checked
+Written in Phase 7 of `docs/PROMPT_sim_side.md`. **The scripts have not been run as a sequence.** Parts of the stack were run by hand in one session on 2026-10-29 (see "Box prerequisites found in the 2026-10-29 session" and the root `README.md`, "Status"). They are checked
 only by GPU-free tests (`vla-isaac/tests/test_gpu_runbook.py`: strict headers, environment variables,
 no secrets, no downloads outside setup/download scripts, the GPU check against a fake `nvidia-smi`, the
 helpers and the collector on fixture data). Expect the first real run to find things to fix; every
@@ -37,6 +37,7 @@ Copy `env.example` outside the repo, edit it, `source` it in every shell.
 | `DATA_DIR` | R0, R1b | datasets, `IsaacBackend`'s run outputs and its patch store |
 | `OMNI_KIT_ACCEPT_EULA` | scripts that start Isaac Sim | `YES`: you accept the Omniverse EULA |
 | `ACCEPT_EULA` | scripts that start Isaac Sim | `Y` |
+| `VK_ICD_FILENAMES` | `00_check_gpu.sh`, `R0_setup.sh` (and Isaac Sim itself) | the NVIDIA Vulkan ICD file(s), `:`-separated; default `/usr/share/vulkan/icd.d/nvidia_icd.json`. Both scripts refuse to continue when a listed file does not exist |
 | `RUN_TS` | optional, all | the measurement timestamp; set once per session so scripts share `measurements/<RUN_TS>/` (default: a new UTC timestamp per script) |
 | `MEASUREMENTS_DIR` | optional, all | default `<repo>/measurements` |
 | `FORCE` | optional, all | `1` redoes a finished script (old directory moved aside) |
@@ -47,6 +48,27 @@ Copy `env.example` outside the repo, edit it, `source` it in every shell.
 | `MIMIC_SEED_FLAG` | optional, mimic check | the datagen seed flag of `generate_dataset.py` (default: the task config's `reference.mimic.seed.flag`, a placeholder) |
 | `SHIFTED_LEROBOT_DIR` | optional, fine-tune dry run | a LeRobot directory to use as the shifted half instead of converting the Mimic check's HDF5 |
 | `VLA_RUNBOOK_CONFIG` | optional, all | runbook YAML (default `vla-isaac/config/runbook_gr1_fridge.yaml`) |
+
+## Box prerequisites found in the 2026-10-29 session
+
+Measured once, on an RTX PRO 6000 Blackwell Server Edition (compute capability 12.0, 97 GB), driver 580.178.04, Ubuntu 22.04
+on a cloud VM. Not re-checked on any other box.
+
+- **Vulkan ICD.** Isaac Sim crashed at camera init until the NVIDIA Vulkan driver package was installed. Install
+  `libnvidia-gl-<driver major>` matching the driver (`libnvidia-gl-580-server` on that box) and export
+  `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json` (already in `env.example`). `00_check_gpu.sh` and `R0_setup.sh`
+  now stop with this advice when the file is missing.
+- **Blackwell (compute capability 12.0) torch.** The GR00T venv's locked torch 2.7.1+cu126 has no sm_120 kernels
+  (`no kernel image is available`). The fix found in that session: `torch==2.7.1+cu128` and `torchvision==0.22.1+cu128` from
+  `https://download.pytorch.org/whl/cu128`. The explicit `+cu128` matters: a plain `==2.7.1` is a no-op in uv. flash_attn 2.7.4
+  worked afterwards. `R0_setup.sh` now runs that install in the GR00T venv when the first GPU reports 12.0; the scripted version
+  is covered by GPU-free tests only and has **not been run**.
+- **Pinned `RUN_TS`.** Scripts share `measurements/<RUN_TS>/` only if every shell uses the same value. The session kept it in
+  `~/.vla_run_ts` (written once with `date -u +%Y%m%dT%H%M%SZ > ~/.vla_run_ts`) and set `export RUN_TS="$(cat ~/.vla_run_ts)"`
+  in each shell instead of `env.example`'s per-shell `date`. Use one or the other, not both.
+- **Mimic on `--device cpu`.** The Isaac Lab Mimic override check failed at camera init when run with `--device cpu`
+  (cameras worked on `cuda:0` with `policy_runner.py`). Mimic is therefore unverified: V-mimic-override and the Mimic
+  decision remain open.
 
 ## The first three commands
 
