@@ -1,0 +1,55 @@
+[
+ {
+  "attempt": 1,
+  "source": "fallback",
+  "exit": "LimitsExceeded",
+  "equals_clean": false,
+  "files": [],
+  "cost": 0.2002,
+  "secs": 178
+ },
+ {
+  "attempt": 2,
+  "source": "model",
+  "exit": "LimitsExceeded",
+  "equals_clean": false,
+  "files": [
+   "config/statistics.json"
+  ],
+  "cost": 0.1251,
+  "secs": 189
+ },
+ {
+  "attempt": 3,
+  "source": "model",
+  "exit": "Submitted",
+  "equals_clean": false,
+  "files": [
+   "config/statistics.json"
+  ],
+  "cost": 0.127,
+  "secs": 139
+ },
+ {
+  "attempt": 4,
+  "source": "fallback",
+  "exit": "Submitted",
+  "equals_clean": false,
+  "files": [
+   "config/eval.yaml"
+  ],
+  "cost": 0.0398,
+  "secs": 74
+ },
+ {
+  "attempt": 5,
+  "source": "fallback",
+  "exit": "Submitted",
+  "equals_clean": false,
+  "files": [
+   "config/statistics.json"
+  ],
+  "cost": 0.1426,
+  "secs": 316
+ }
+]

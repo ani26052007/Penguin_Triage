@@ -1,0 +1,949 @@
+{
+  "decisions": {
+    "instruction": {
+      "decision": "undecided",
+      "reason": "instruction_check.sh has not finished"
+    },
+    "merged_dataset": {
+      "decision": "undecided",
+      "reason": "finetune_dryrun.sh has not run"
+    },
+    "mimic": {
+      "decision": "undecided",
+      "reason": "mimic_override_check.sh has not finished"
+    },
+    "mode_gap": {
+      "decision": "undecided",
+      "reason": "needs R4 and R5"
+    },
+    "pilot": {
+      "decision": "undecided",
+      "reason": "R4 has not finished"
+    }
+  },
+  "measurements": {
+    "gpu": [
+      {
+        "compute_cap": "12.0",
+        "driver": "580.178.04",
+        "index": 0,
+        "memory_total_mib": "97887",
+        "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+        "ok": true,
+        "reason": ""
+      }
+    ],
+    "versions": {
+      "git": {
+        "arena": "7632eb7d5e-dirty",
+        "gr00t": "n1.5-release-11-ge29d8fc",
+        "isaaclab": "v3.0.0"
+      },
+      "isaaclab": "28.0.0",
+      "isaaclab_arena": "0.3.0",
+      "isaaclab_mimic": "2.0.12",
+      "isaacsim": "6.2.0.0",
+      "python_arena": "3.12.16",
+      "torch_arena": "2.11.0+cu130"
+    },
+    "vram": null
+  },
+  "measurements_dir": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements",
+  "open": [
+    "V-actuator",
+    "V-bug-dark-threshold",
+    "V-bug-gain-tracking",
+    "V-bug-hand-sign",
+    "V-bug-prefetch-load",
+    "V-bug-yaml-swap",
+    "V-ckpt-cache",
+    "V-converter-noisaac",
+    "V-ee-frame",
+    "V-exp-remote-policy",
+    "V-exp-yaml",
+    "V-ext-env",
+    "V-finetune-log",
+    "V-hand-limits",
+    "V-hdf5-export",
+    "V-hdf5-joint-order",
+    "V-hdf5-keys",
+    "V-instruction",
+    "V-jsonl-success",
+    "V-mimic-guarantee",
+    "V-mimic-out",
+    "V-mimic-override",
+    "V-mimic-seed",
+    "V-obj-state",
+    "V-progress",
+    "V-render-defaults",
+    "V-reset-calls",
+    "V-rgb-order",
+    "V-runner-parity",
+    "V-server-seed",
+    "V-timestamped-dir",
+    "V-traj-size",
+    "V-var-record",
+    "V-viz"
+  ],
+  "runs": [
+    {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T101258Z/00_check_gpu/result.json",
+      "run_ts": "20261029T101258Z",
+      "script": "00_check_gpu",
+      "status": "ok"
+    },
+    {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T102204Z/R0_setup/result.json",
+      "run_ts": "20261029T102204Z",
+      "script": "R0_setup",
+      "status": "failed"
+    },
+    {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/00_check_gpu/result.json",
+      "run_ts": "20261029T103432Z",
+      "script": "00_check_gpu",
+      "status": "ok"
+    },
+    {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R0_setup/result.json",
+      "run_ts": "20261029T103432Z",
+      "script": "R0_setup",
+      "status": "ok"
+    },
+    {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint/result.json",
+      "run_ts": "20261029T103432Z",
+      "script": "R1_download_checkpoint",
+      "status": "ok"
+    },
+    {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1b_download_datasets/result.json",
+      "run_ts": "20261029T103432Z",
+      "script": "R1b_download_datasets",
+      "status": "ok"
+    },
+    {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R2_server/result.json",
+      "run_ts": "20261029T103432Z",
+      "script": "R2_server",
+      "status": "ok"
+    },
+    {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R2_server.old-1793274434/result.json",
+      "run_ts": "20261029T103432Z",
+      "script": "R2_server",
+      "status": "ok"
+    },
+    {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R3_list_variations/result.json",
+      "run_ts": "20261029T103432Z",
+      "script": "R3_list_variations",
+      "status": "ok"
+    },
+    {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/check_client_tests/result.json",
+      "run_ts": "20261029T103432Z",
+      "script": "check_client_tests",
+      "status": "ok"
+    },
+    {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
+      "run_ts": "20261029T103432Z",
+      "script": "mimic_override_check",
+      "status": "failed"
+    },
+    {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T120000Z/wrapper_parity/result.json",
+      "run_ts": "20261029T120000Z",
+      "script": "wrapper_parity",
+      "status": "failed"
+    },
+    {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T120100Z/wrapper_parity/result.json",
+      "run_ts": "20261029T120100Z",
+      "script": "wrapper_parity",
+      "status": "ok"
+    },
+    {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T121500Z/wrapper_parity/result.json",
+      "run_ts": "20261029T121500Z",
+      "script": "wrapper_parity",
+      "status": "ok"
+    }
+  ],
+  "settled": [
+    "V-ckpt-cfg",
+    "V-client-tests",
+    "V-hf-rev",
+    "V-list-var",
+    "V-mimic-source",
+    "V-stats-format",
+    "V-train-instr",
+    "V-wrapper-parity"
+  ],
+  "unknown_ids_in_collector": [],
+  "verify": {
+    "V-actuator": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-bug-dark-threshold": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-bug-gain-tracking": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-bug-hand-sign": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-bug-prefetch-load": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-bug-yaml-swap": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-ckpt-cache": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-ckpt-cfg": {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint/result.json",
+      "settled_by": "R1_download_checkpoint",
+      "state": "settled",
+      "value": {
+        "action_horizon": 50,
+        "files": {
+          "config.json": true,
+          "embodiment_id.json": true,
+          "processor_config.json": true,
+          "statistics.json": true
+        },
+        "num_inference_timesteps": 4,
+        "tune_top_llm_layers": 4
+      }
+    },
+    "V-client-tests": {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/check_client_tests/result.json",
+      "settled_by": "check_client_tests",
+      "state": "settled",
+      "value": {
+        "gr00t": false,
+        "vla": false
+      }
+    },
+    "V-converter-noisaac": {
+      "reason": "finetune_dryrun has not run",
+      "settled_by": "finetune_dryrun",
+      "state": "open"
+    },
+    "V-ee-frame": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-exp-remote-policy": {
+      "reason": "R6_replay_agreement has not run",
+      "settled_by": "R6_replay_agreement",
+      "state": "open"
+    },
+    "V-exp-yaml": {
+      "reason": "R6_replay_agreement has not run",
+      "settled_by": "R6_replay_agreement",
+      "state": "open"
+    },
+    "V-ext-env": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-finetune-log": {
+      "reason": "finetune_dryrun has not run",
+      "settled_by": "finetune_dryrun",
+      "state": "open"
+    },
+    "V-hand-limits": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-hdf5-export": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-hdf5-joint-order": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-hdf5-keys": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-hf-rev": {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint/result.json",
+      "settled_by": "R1_download_checkpoint",
+      "state": "settled",
+      "value": "f5e388c35340080644e17a3b3d538150ad894bfa"
+    },
+    "V-instruction": {
+      "reason": "instruction_check has not run",
+      "settled_by": "instruction_check",
+      "state": "open"
+    },
+    "V-jsonl-success": {
+      "reason": "R4_nominal_clean has not run",
+      "settled_by": "R4_nominal_clean",
+      "state": "open"
+    },
+    "V-list-var": {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R3_list_variations/result.json",
+      "settled_by": "R3_list_variations",
+      "state": "settled",
+      "value": {
+        "factor_table_equal": false,
+        "regenerated": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R3_list_variations/factors.yaml"
+      }
+    },
+    "V-mimic-guarantee": {
+      "reason": "mimic_override_check failed",
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
+      "settled_by": "mimic_override_check",
+      "state": "open"
+    },
+    "V-mimic-out": {
+      "reason": "mimic_override_check failed",
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
+      "settled_by": "mimic_override_check",
+      "state": "open"
+    },
+    "V-mimic-override": {
+      "reason": "mimic_override_check failed",
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
+      "settled_by": "mimic_override_check",
+      "state": "open"
+    },
+    "V-mimic-seed": {
+      "reason": "mimic_override_check failed",
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
+      "settled_by": "mimic_override_check",
+      "state": "open"
+    },
+    "V-mimic-source": {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1b_download_datasets/result.json",
+      "settled_by": "R1b_download_datasets",
+      "state": "settled",
+      "value": "/home/aneesh262007/data/datasets/ranch_bottle_into_fridge_annotated.hdf5"
+    },
+    "V-obj-state": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-progress": {
+      "reason": "R4_nominal_clean has not run",
+      "settled_by": "R4_nominal_clean",
+      "state": "open"
+    },
+    "V-render-defaults": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-reset-calls": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-rgb-order": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-runner-parity": {
+      "reason": "runner_parity has not run",
+      "settled_by": "runner_parity",
+      "state": "open"
+    },
+    "V-server-seed": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-stats-format": {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint/result.json",
+      "settled_by": "R1_download_checkpoint",
+      "state": "settled",
+      "value": {
+        "behavior_r1_pro": {
+          "action": {
+            "base": {
+              "max": 3,
+              "mean": 3,
+              "min": 3,
+              "q01": 3,
+              "q99": 3,
+              "std": 3
+            },
+            "left_arm": {
+              "max": 7,
+              "mean": 7,
+              "min": 7,
+              "q01": 7,
+              "q99": 7,
+              "std": 7
+            },
+            "left_gripper": {
+              "max": 1,
+              "mean": 1,
+              "min": 1,
+              "q01": 1,
+              "q99": 1,
+              "std": 1
+            },
+            "right_arm": {
+              "max": 7,
+              "mean": 7,
+              "min": 7,
+              "q01": 7,
+              "q99": 7,
+              "std": 7
+            },
+            "right_gripper": {
+              "max": 1,
+              "mean": 1,
+              "min": 1,
+              "q01": 1,
+              "q99": 1,
+              "std": 1
+            },
+            "torso": {
+              "max": 4,
+              "mean": 4,
+              "min": 4,
+              "q01": 4,
+              "q99": 4,
+              "std": 4
+            }
+          },
+          "relative_action": {
+            "left_arm": {
+              "max": 32,
+              "mean": 32,
+              "min": 32,
+              "q01": 32,
+              "q99": 32,
+              "std": 32
+            },
+            "right_arm": {
+              "max": 32,
+              "mean": 32,
+              "min": 32,
+              "q01": 32,
+              "q99": 32,
+              "std": 32
+            },
+            "torso": {
+              "max": 32,
+              "mean": 32,
+              "min": 32,
+              "q01": 32,
+              "q99": 32,
+              "std": 32
+            }
+          },
+          "state": {
+            "arm_left_qpos": {
+              "max": 7,
+              "mean": 7,
+              "min": 7,
+              "q01": 7,
+              "q99": 7,
+              "std": 7
+            },
+            "arm_left_qpos_cos": {
+              "max": 7,
+              "mean": 7,
+              "min": 7,
+              "q01": 7,
+              "q99": 7,
+              "std": 7
+            },
+            "arm_left_qpos_sin": {
+              "max": 7,
+              "mean": 7,
+              "min": 7,
+              "q01": 7,
+              "q99": 7,
+              "std": 7
+            },
+            "arm_right_qpos": {
+              "max": 7,
+              "mean": 7,
+              "min": 7,
+              "q01": 7,
+              "q99": 7,
+              "std": 7
+            },
+            "arm_right_qpos_cos": {
+              "max": 7,
+              "mean": 7,
+              "min": 7,
+              "q01": 7,
+              "q99": 7,
+              "std": 7
+            },
+            "arm_right_qpos_sin": {
+              "max": 7,
+              "mean": 7,
+              "min": 7,
+              "q01": 7,
+              "q99": 7,
+              "std": 7
+            },
+            "eef_left_pos": {
+              "max": 3,
+              "mean": 3,
+              "min": 3,
+              "q01": 3,
+              "q99": 3,
+              "std": 3
+            },
+            "eef_left_quat": {
+              "max": 4,
+              "mean": 4,
+              "min": 4,
+              "q01": 4,
+              "q99": 4,
+              "std": 4
+            },
+            "eef_right_pos": {
+              "max": 3,
+              "mean": 3,
+              "min": 3,
+              "q01": 3,
+              "q99": 3,
+              "std": 3
+            },
+            "eef_right_quat": {
+              "max": 4,
+              "mean": 4,
+              "min": 4,
+              "q01": 4,
+              "q99": 4,
+              "std": 4
+            },
+            "gripper_left_qpos": {
+              "max": 2,
+              "mean": 2,
+              "min": 2,
+              "q01": 2,
+              "q99": 2,
+              "std": 2
+            },
+            "gripper_right_qpos": {
+              "max": 2,
+              "mean": 2,
+              "min": 2,
+              "q01": 2,
+              "q99": 2,
+              "std": 2
+            },
+            "robot_2d_ori": {
+              "max": 1,
+              "mean": 1,
+              "min": 1,
+              "q01": 1,
+              "q99": 1,
+              "std": 1
+            },
+            "robot_2d_ori_cos": {
+              "max": 1,
+              "mean": 1,
+              "min": 1,
+              "q01": 1,
+              "q99": 1,
+              "std": 1
+            },
+            "robot_2d_ori_sin": {
+              "max": 1,
+              "mean": 1,
+              "min": 1,
+              "q01": 1,
+              "q99": 1,
+              "std": 1
+            },
+            "robot_ang_vel": {
+              "max": 3,
+              "mean": 3,
+              "min": 3,
+              "q01": 3,
+              "q99": 3,
+              "std": 3
+            },
+            "robot_lin_vel": {
+              "max": 3,
+              "mean": 3,
+              "min": 3,
+              "q01": 3,
+              "q99": 3,
+              "std": 3
+            },
+            "robot_ori_cos": {
+              "max": 3,
+              "mean": 3,
+              "min": 3,
+              "q01": 3,
+              "q99": 3,
+              "std": 3
+            },
+            "robot_ori_sin": {
+              "max": 3,
+              "mean": 3,
+              "min": 3,
+              "q01": 3,
+              "q99": 3,
+              "std": 3
+            },
+            "robot_pos": {
+              "max": 3,
+              "mean": 3,
+              "min": 3,
+              "q01": 3,
+              "q99": 3,
+              "std": 3
+            },
+            "trunk_qpos": {
+              "max": 4,
+              "mean": 4,
+              "min": 4,
+              "q01": 4,
+              "q99": 4,
+              "std": 4
+            }
+          }
+        },
+        "gr1": {
+          "action": {
+            "left_arm": {
+              "max": 7,
+              "mean": 7,
+              "min": 7,
+              "q01": 7,
+              "q99": 7,
+              "std": 7
+            },
+            "left_hand": {
+              "max": 6,
+              "mean": 6,
+              "min": 6,
+              "q01": 6,
+              "q99": 6,
+              "std": 6
+            },
+            "right_arm": {
+              "max": 7,
+              "mean": 7,
+              "min": 7,
+              "q01": 7,
+              "q99": 7,
+              "std": 7
+            },
+            "right_hand": {
+              "max": 6,
+              "mean": 6,
+              "min": 6,
+              "q01": 6,
+              "q99": 6,
+              "std": 6
+            },
+            "waist": {
+              "max": 3,
+              "mean": 3,
+              "min": 3,
+              "q01": 3,
+              "q99": 3,
+              "std": 3
+            }
+          },
+          "relative_action": {
+            "left_arm": {
+              "max": 16,
+              "mean": 16,
+              "min": 16,
+              "q01": 16,
+              "q99": 16,
+              "std": 16
+            },
+            "left_hand": {
+              "max": 16,
+              "mean": 16,
+              "min": 16,
+              "q01": 16,
+              "q99": 16,
+              "std": 16
+            },
+            "right_arm": {
+              "max": 16,
+              "mean": 16,
+              "min": 16,
+              "q01": 16,
+              "q99": 16,
+              "std": 16
+            },
+            "right_hand": {
+              "max": 16,
+              "mean": 16,
+              "min": 16,
+              "q01": 16,
+              "q99": 16,
+              "std": 16
+            }
+          },
+          "state": {
+            "left_arm": {
+              "max": 7,
+              "mean": 7,
+              "min": 7,
+              "q01": 7,
+              "q99": 7,
+              "std": 7
+            },
+            "left_hand": {
+              "max": 6,
+              "mean": 6,
+              "min": 6,
+              "q01": 6,
+              "q99": 6,
+              "std": 6
+            },
+            "right_arm": {
+              "max": 7,
+              "mean": 7,
+              "min": 7,
+              "q01": 7,
+              "q99": 7,
+              "std": 7
+            },
+            "right_hand": {
+              "max": 6,
+              "mean": 6,
+              "min": 6,
+              "q01": 6,
+              "q99": 6,
+              "std": 6
+            },
+            "waist": {
+              "max": 3,
+              "mean": 3,
+              "min": 3,
+              "q01": 3,
+              "q99": 3,
+              "std": 3
+            }
+          }
+        },
+        "robocasa_panda_omron": {
+          "action": {
+            "base_motion": {
+              "max": 4,
+              "mean": 4,
+              "min": 4,
+              "q01": 4,
+              "q99": 4,
+              "std": 4
+            },
+            "control_mode": {
+              "max": 1,
+              "mean": 1,
+              "min": 1,
+              "q01": 1,
+              "q99": 1,
+              "std": 1
+            },
+            "end_effector_position": {
+              "max": 3,
+              "mean": 3,
+              "min": 3,
+              "q01": 3,
+              "q99": 3,
+              "std": 3
+            },
+            "end_effector_rotation": {
+              "max": 3,
+              "mean": 3,
+              "min": 3,
+              "q01": 3,
+              "q99": 3,
+              "std": 3
+            },
+            "gripper_close": {
+              "max": 1,
+              "mean": 1,
+              "min": 1,
+              "q01": 1,
+              "q99": 1,
+              "std": 1
+            }
+          },
+          "state": {
+            "base_position": {
+              "max": 3,
+              "mean": 3,
+              "min": 3,
+              "q01": 3,
+              "q99": 3,
+              "std": 3
+            },
+            "base_rotation": {
+              "max": 4,
+              "mean": 4,
+              "min": 4,
+              "q01": 4,
+              "q99": 4,
+              "std": 4
+            },
+            "end_effector_position_relative": {
+              "max": 3,
+              "mean": 3,
+              "min": 3,
+              "q01": 3,
+              "q99": 3,
+              "std": 3
+            },
+            "end_effector_rotation_relative": {
+              "max": 4,
+              "mean": 4,
+              "min": 4,
+              "q01": 4,
+              "q99": 4,
+              "std": 4
+            },
+            "gripper_qpos": {
+              "max": 2,
+              "mean": 2,
+              "min": 2,
+              "q01": 2,
+              "q99": 2,
+              "std": 2
+            }
+          }
+        }
+      }
+    },
+    "V-timestamped-dir": {
+      "reason": "R4_nominal_clean has not run",
+      "settled_by": "R4_nominal_clean",
+      "state": "open"
+    },
+    "V-train-instr": {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1b_download_datasets/result.json",
+      "settled_by": "R1b_download_datasets",
+      "state": "settled",
+      "value": [
+        "Place the ranch dressing bottle on the top shelf of the fridge, and close the fridge door."
+      ]
+    },
+    "V-traj-size": {
+      "reason": "no runbook script measures it",
+      "settled_by": null,
+      "state": "open"
+    },
+    "V-var-record": {
+      "reason": "R7_dark_cell has not run",
+      "settled_by": "R7_dark_cell",
+      "state": "open"
+    },
+    "V-viz": {
+      "reason": "R4_nominal_clean has not run",
+      "settled_by": "R4_nominal_clean",
+      "state": "open"
+    },
+    "V-wrapper-parity": {
+      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T121500Z/wrapper_parity/result.json",
+      "settled_by": "wrapper_parity",
+      "state": "settled",
+      "value": {
+        "agreement": {
+          "confidence": 0.95,
+          "k": 1,
+          "lower": 0.0455872608097006,
+          "n": 4,
+          "rate": 0.25,
+          "upper": 0.699358157417598
+        },
+        "both_failure": 1,
+        "both_success": 0,
+        "comparable": true,
+        "complete": true,
+        "differ": false,
+        "fisher_p": 0.14285714285714285,
+        "instructions": {
+          "stock": [
+            "Place the sauce bottle on the top shelf of the fridge, and close the fridge door."
+          ],
+          "wrapper": [
+            "Place the sauce bottle on the top shelf of the fridge, and close the fridge door."
+          ]
+        },
+        "intervals_overlap": true,
+        "only_stock": 3,
+        "only_wrapper": 0,
+        "parity": true,
+        "per_seed": {
+          "0:0": {
+            "agree": false,
+            "stock": true,
+            "wrapper": false
+          },
+          "0:1": {
+            "agree": false,
+            "stock": true,
+            "wrapper": false
+          },
+          "0:2": {
+            "agree": false,
+            "stock": true,
+            "wrapper": false
+          },
+          "0:3": {
+            "agree": true,
+            "stock": false,
+            "wrapper": false
+          }
+        },
+        "same_instruction": true,
+        "shared_episodes": 4,
+        "stock": {
+          "confidence": 0.95,
+          "k": 3,
+          "lower": 0.300641842582402,
+          "n": 4,
+          "rate": 0.75,
+          "upper": 0.9544127391902995
+        },
+        "wrapper": {
+          "confidence": 0.95,
+          "k": 0,
+          "lower": 0.0,
+          "n": 4,
+          "rate": 0.0,
+          "upper": 0.4898908364545972
+        }
+      }
+    }
+  }
+}

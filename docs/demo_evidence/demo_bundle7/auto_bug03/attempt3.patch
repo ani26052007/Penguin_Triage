@@ -1,0 +1,13 @@
+diff --git a/policy_wrapper/utils/joints_conversion.py b/policy_wrapper/utils/joints_conversion.py
+index 2a7be73..e027297 100644
+--- a/policy_wrapper/utils/joints_conversion.py
++++ b/policy_wrapper/utils/joints_conversion.py
+@@ -168,7 +168,7 @@ def remap_policy_joints_to_sim_joints_np(
+             assert joint_pos.shape[:2] == policy_joint_shape[:2]
+     assert policy_joint_shape is not None
+     data = np.zeros(
+-        (policy_joint_shape[0], policy_joint_shape[1], len(sim_joints_config)),
++        (policy_joint_shape[0], policy_joint_shape[1], max(sim_joints_config.values()) + 1),
+         dtype=np.float64,
+     )
+     for joint_name, joint_index in sim_joints_config.items():

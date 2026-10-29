@@ -1,0 +1,22 @@
+The repair agent should inspect the orientation sensor or camera calibration at obs.orientation to correct the 180-degree rotation mismatch and prevent future contract violations.
+
+## Router hypothesis (verify this first; it may be wrong)
+The automatic router classified this failure as: code (decision-table row 4), destination hagent; suspected location: obs.orientation
+Before editing anything, check this hypothesis against the code and the evidence below. If the
+evidence contradicts it, say so in one sentence and follow the evidence instead.
+
+## Where to look
+Router location: obs.orientation
+Ranked candidates:
+1. [symbol] obs.orientation - The evidence directly points to obs.orientation as the location of the rotation anomaly that triggered the verdict. (evidence: s1.obs.orientation.ego_view)
+Evidence:
+- s1.obs.orientation.ego_view (contract_violation, strength 0.99) @ obs.orientation: camera ego_view: image looks like a rotation by 180 degrees of the training orientation (row/col profile correlation 0.22/-0.81)
+
+## Reproduce
+run policy_runner (not available to the agent)
+
+## Failing rollout summary
+success 0/30 in the failing configuration; stock client 3/4
+
+## Code location
+Controller/wrapper code: /tmp/pw-auto5

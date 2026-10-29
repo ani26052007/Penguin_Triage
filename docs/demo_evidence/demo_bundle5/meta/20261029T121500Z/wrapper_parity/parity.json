@@ -1,0 +1,68 @@
+{
+  "agreement": {
+    "confidence": 0.95,
+    "k": 1,
+    "lower": 0.0455872608097006,
+    "n": 4,
+    "rate": 0.25,
+    "upper": 0.699358157417598
+  },
+  "both_failure": 1,
+  "both_success": 0,
+  "comparable": true,
+  "complete": true,
+  "differ": false,
+  "fisher_p": 0.14285714285714285,
+  "instructions": {
+    "stock": [
+      "Place the sauce bottle on the top shelf of the fridge, and close the fridge door."
+    ],
+    "wrapper": [
+      "Place the sauce bottle on the top shelf of the fridge, and close the fridge door."
+    ]
+  },
+  "intervals_overlap": true,
+  "only_stock": 3,
+  "only_wrapper": 0,
+  "parity": true,
+  "per_seed": {
+    "0:0": {
+      "agree": false,
+      "stock": true,
+      "wrapper": false
+    },
+    "0:1": {
+      "agree": false,
+      "stock": true,
+      "wrapper": false
+    },
+    "0:2": {
+      "agree": false,
+      "stock": true,
+      "wrapper": false
+    },
+    "0:3": {
+      "agree": true,
+      "stock": false,
+      "wrapper": false
+    }
+  },
+  "same_instruction": true,
+  "shared_episodes": 4,
+  "stock": {
+    "confidence": 0.95,
+    "k": 3,
+    "lower": 0.300641842582402,
+    "n": 4,
+    "rate": 0.75,
+    "upper": 0.9544127391902995
+  },
+  "wrapper": {
+    "confidence": 0.95,
+    "k": 0,
+    "lower": 0.0,
+    "n": 4,
+    "rate": 0.0,
+    "upper": 0.4898908364545972
+  }
+}

@@ -35,8 +35,11 @@ VERIFY_MD = ROOT / "docs" / "VERIFY_ON_GPU.md"
 RUN_ORDER = GPU / "run_order.md"
 RUNBOOK = REPO / "config" / "runbook_gr1_fridge.yaml"
 FAKE_SERVER = REPO / "tests" / "fixtures" / "fake_rep_server.py"
-SH = sorted(GPU.glob("*.sh"))
-PY = sorted(GPU.glob("*.py"))
+# Helpers from the 2026-10-29 session: they ran only there and are not part of the runbook sequence
+# (own checks in tests/test_router_obs_check.py).
+SESSION_SCRIPTS = {"record_cell.sh", "router_obs_check.py"}
+SH = sorted(p for p in GPU.glob("*.sh") if p.name not in SESSION_SCRIPTS)
+PY = sorted(p for p in GPU.glob("*.py") if p.name not in SESSION_SCRIPTS)
 SCRIPTS = SH + PY
 BASH_BUILTINS = {"BASH_SOURCE", "SECONDS", "HOME", "PATH", "PWD", "PIPESTATUS", "RANDOM", "LINENO", "FUNCNAME"}
 SECRET_PATTERNS = [r"hf_[A-Za-z0-9]{20,}", r"sk-[A-Za-z0-9_-]{20,}", r"AKIA[0-9A-Z]{16}", r"gh[pousr]_[A-Za-z0-9]{20,}",
@@ -630,6 +633,11 @@ def test_instruction_strings_line_and_pairs(tmp_path):
         tools.instruction_strings(tools.load_runbook(RUNBOOK), str(backend))
 
 
+def _write_json(path, obj):
+    path.write_text(json.dumps(obj))
+    return path
+
+
 def test_vram_client_tests_checkpoint_and_lerobot_pick(tmp_path):
     csv = tmp_path / "v.csv"
     csv.write_text("2026/10/28 10:00:00.000, 0, 1000, 49140\n2026/10/28 10:00:05.000, 0, 21000, 49140\nbad line\n")
@@ -641,6 +649,11 @@ def test_vram_client_tests_checkpoint_and_lerobot_pick(tmp_path):
     assert passed["imports_without_isaac"] and passed["counts"] == {"passed": 12, "skipped": 1}
     other = tools.client_tests_report("No module named 'gr00t'\n1 error", 2)
     assert not other["blocked_by_isaac"] and other["missing_modules"] == ["gr00t"]
+    assert passed["settled"] and not blocked["settled"] and not other["settled"]
+    assert not tools.client_tests_report("/x/python: No module named pytest", 1)["settled"]
+    assert not tools.client_tests_report("1 error in 0.3s\nERROR collecting tests", 2)["settled"]
+    res = tools.write_result(tmp_path, "check_client_tests", run_ts="t", jsons={"gr00t": str(_write_json(tmp_path / "g.json", {"settled": False}))})
+    assert json.loads(res.read_text())["status"] == "not_settled"
     ck = tools.checkpoint_report(REPO / "tests" / "fixtures" / "checkpoint_gr1")
     assert all(ck["files"].values()) and isinstance(ck["tune_top_llm_layers"], int)
     assert set(ck["statistics_shape"]) == {"gr1"}

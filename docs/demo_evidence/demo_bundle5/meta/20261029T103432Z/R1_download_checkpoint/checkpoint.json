@@ -1,0 +1,468 @@
+{
+  "action_horizon": 50,
+  "dir": "/home/aneesh262007/data/models/pilot/ckpt",
+  "files": {
+    "config.json": true,
+    "embodiment_id.json": true,
+    "processor_config.json": true,
+    "statistics.json": true
+  },
+  "num_inference_timesteps": 4,
+  "statistics_shape": {
+    "behavior_r1_pro": {
+      "action": {
+        "base": {
+          "max": 3,
+          "mean": 3,
+          "min": 3,
+          "q01": 3,
+          "q99": 3,
+          "std": 3
+        },
+        "left_arm": {
+          "max": 7,
+          "mean": 7,
+          "min": 7,
+          "q01": 7,
+          "q99": 7,
+          "std": 7
+        },
+        "left_gripper": {
+          "max": 1,
+          "mean": 1,
+          "min": 1,
+          "q01": 1,
+          "q99": 1,
+          "std": 1
+        },
+        "right_arm": {
+          "max": 7,
+          "mean": 7,
+          "min": 7,
+          "q01": 7,
+          "q99": 7,
+          "std": 7
+        },
+        "right_gripper": {
+          "max": 1,
+          "mean": 1,
+          "min": 1,
+          "q01": 1,
+          "q99": 1,
+          "std": 1
+        },
+        "torso": {
+          "max": 4,
+          "mean": 4,
+          "min": 4,
+          "q01": 4,
+          "q99": 4,
+          "std": 4
+        }
+      },
+      "relative_action": {
+        "left_arm": {
+          "max": 32,
+          "mean": 32,
+          "min": 32,
+          "q01": 32,
+          "q99": 32,
+          "std": 32
+        },
+        "right_arm": {
+          "max": 32,
+          "mean": 32,
+          "min": 32,
+          "q01": 32,
+          "q99": 32,
+          "std": 32
+        },
+        "torso": {
+          "max": 32,
+          "mean": 32,
+          "min": 32,
+          "q01": 32,
+          "q99": 32,
+          "std": 32
+        }
+      },
+      "state": {
+        "arm_left_qpos": {
+          "max": 7,
+          "mean": 7,
+          "min": 7,
+          "q01": 7,
+          "q99": 7,
+          "std": 7
+        },
+        "arm_left_qpos_cos": {
+          "max": 7,
+          "mean": 7,
+          "min": 7,
+          "q01": 7,
+          "q99": 7,
+          "std": 7
+        },
+        "arm_left_qpos_sin": {
+          "max": 7,
+          "mean": 7,
+          "min": 7,
+          "q01": 7,
+          "q99": 7,
+          "std": 7
+        },
+        "arm_right_qpos": {
+          "max": 7,
+          "mean": 7,
+          "min": 7,
+          "q01": 7,
+          "q99": 7,
+          "std": 7
+        },
+        "arm_right_qpos_cos": {
+          "max": 7,
+          "mean": 7,
+          "min": 7,
+          "q01": 7,
+          "q99": 7,
+          "std": 7
+        },
+        "arm_right_qpos_sin": {
+          "max": 7,
+          "mean": 7,
+          "min": 7,
+          "q01": 7,
+          "q99": 7,
+          "std": 7
+        },
+        "eef_left_pos": {
+          "max": 3,
+          "mean": 3,
+          "min": 3,
+          "q01": 3,
+          "q99": 3,
+          "std": 3
+        },
+        "eef_left_quat": {
+          "max": 4,
+          "mean": 4,
+          "min": 4,
+          "q01": 4,
+          "q99": 4,
+          "std": 4
+        },
+        "eef_right_pos": {
+          "max": 3,
+          "mean": 3,
+          "min": 3,
+          "q01": 3,
+          "q99": 3,
+          "std": 3
+        },
+        "eef_right_quat": {
+          "max": 4,
+          "mean": 4,
+          "min": 4,
+          "q01": 4,
+          "q99": 4,
+          "std": 4
+        },
+        "gripper_left_qpos": {
+          "max": 2,
+          "mean": 2,
+          "min": 2,
+          "q01": 2,
+          "q99": 2,
+          "std": 2
+        },
+        "gripper_right_qpos": {
+          "max": 2,
+          "mean": 2,
+          "min": 2,
+          "q01": 2,
+          "q99": 2,
+          "std": 2
+        },
+        "robot_2d_ori": {
+          "max": 1,
+          "mean": 1,
+          "min": 1,
+          "q01": 1,
+          "q99": 1,
+          "std": 1
+        },
+        "robot_2d_ori_cos": {
+          "max": 1,
+          "mean": 1,
+          "min": 1,
+          "q01": 1,
+          "q99": 1,
+          "std": 1
+        },
+        "robot_2d_ori_sin": {
+          "max": 1,
+          "mean": 1,
+          "min": 1,
+          "q01": 1,
+          "q99": 1,
+          "std": 1
+        },
+        "robot_ang_vel": {
+          "max": 3,
+          "mean": 3,
+          "min": 3,
+          "q01": 3,
+          "q99": 3,
+          "std": 3
+        },
+        "robot_lin_vel": {
+          "max": 3,
+          "mean": 3,
+          "min": 3,
+          "q01": 3,
+          "q99": 3,
+          "std": 3
+        },
+        "robot_ori_cos": {
+          "max": 3,
+          "mean": 3,
+          "min": 3,
+          "q01": 3,
+          "q99": 3,
+          "std": 3
+        },
+        "robot_ori_sin": {
+          "max": 3,
+          "mean": 3,
+          "min": 3,
+          "q01": 3,
+          "q99": 3,
+          "std": 3
+        },
+        "robot_pos": {
+          "max": 3,
+          "mean": 3,
+          "min": 3,
+          "q01": 3,
+          "q99": 3,
+          "std": 3
+        },
+        "trunk_qpos": {
+          "max": 4,
+          "mean": 4,
+          "min": 4,
+          "q01": 4,
+          "q99": 4,
+          "std": 4
+        }
+      }
+    },
+    "gr1": {
+      "action": {
+        "left_arm": {
+          "max": 7,
+          "mean": 7,
+          "min": 7,
+          "q01": 7,
+          "q99": 7,
+          "std": 7
+        },
+        "left_hand": {
+          "max": 6,
+          "mean": 6,
+          "min": 6,
+          "q01": 6,
+          "q99": 6,
+          "std": 6
+        },
+        "right_arm": {
+          "max": 7,
+          "mean": 7,
+          "min": 7,
+          "q01": 7,
+          "q99": 7,
+          "std": 7
+        },
+        "right_hand": {
+          "max": 6,
+          "mean": 6,
+          "min": 6,
+          "q01": 6,
+          "q99": 6,
+          "std": 6
+        },
+        "waist": {
+          "max": 3,
+          "mean": 3,
+          "min": 3,
+          "q01": 3,
+          "q99": 3,
+          "std": 3
+        }
+      },
+      "relative_action": {
+        "left_arm": {
+          "max": 16,
+          "mean": 16,
+          "min": 16,
+          "q01": 16,
+          "q99": 16,
+          "std": 16
+        },
+        "left_hand": {
+          "max": 16,
+          "mean": 16,
+          "min": 16,
+          "q01": 16,
+          "q99": 16,
+          "std": 16
+        },
+        "right_arm": {
+          "max": 16,
+          "mean": 16,
+          "min": 16,
+          "q01": 16,
+          "q99": 16,
+          "std": 16
+        },
+        "right_hand": {
+          "max": 16,
+          "mean": 16,
+          "min": 16,
+          "q01": 16,
+          "q99": 16,
+          "std": 16
+        }
+      },
+      "state": {
+        "left_arm": {
+          "max": 7,
+          "mean": 7,
+          "min": 7,
+          "q01": 7,
+          "q99": 7,
+          "std": 7
+        },
+        "left_hand": {
+          "max": 6,
+          "mean": 6,
+          "min": 6,
+          "q01": 6,
+          "q99": 6,
+          "std": 6
+        },
+        "right_arm": {
+          "max": 7,
+          "mean": 7,
+          "min": 7,
+          "q01": 7,
+          "q99": 7,
+          "std": 7
+        },
+        "right_hand": {
+          "max": 6,
+          "mean": 6,
+          "min": 6,
+          "q01": 6,
+          "q99": 6,
+          "std": 6
+        },
+        "waist": {
+          "max": 3,
+          "mean": 3,
+          "min": 3,
+          "q01": 3,
+          "q99": 3,
+          "std": 3
+        }
+      }
+    },
+    "robocasa_panda_omron": {
+      "action": {
+        "base_motion": {
+          "max": 4,
+          "mean": 4,
+          "min": 4,
+          "q01": 4,
+          "q99": 4,
+          "std": 4
+        },
+        "control_mode": {
+          "max": 1,
+          "mean": 1,
+          "min": 1,
+          "q01": 1,
+          "q99": 1,
+          "std": 1
+        },
+        "end_effector_position": {
+          "max": 3,
+          "mean": 3,
+          "min": 3,
+          "q01": 3,
+          "q99": 3,
+          "std": 3
+        },
+        "end_effector_rotation": {
+          "max": 3,
+          "mean": 3,
+          "min": 3,
+          "q01": 3,
+          "q99": 3,
+          "std": 3
+        },
+        "gripper_close": {
+          "max": 1,
+          "mean": 1,
+          "min": 1,
+          "q01": 1,
+          "q99": 1,
+          "std": 1
+        }
+      },
+      "state": {
+        "base_position": {
+          "max": 3,
+          "mean": 3,
+          "min": 3,
+          "q01": 3,
+          "q99": 3,
+          "std": 3
+        },
+        "base_rotation": {
+          "max": 4,
+          "mean": 4,
+          "min": 4,
+          "q01": 4,
+          "q99": 4,
+          "std": 4
+        },
+        "end_effector_position_relative": {
+          "max": 3,
+          "mean": 3,
+          "min": 3,
+          "q01": 3,
+          "q99": 3,
+          "std": 3
+        },
+        "end_effector_rotation_relative": {
+          "max": 4,
+          "mean": 4,
+          "min": 4,
+          "q01": 4,
+          "q99": 4,
+          "std": 4
+        },
+        "gripper_qpos": {
+          "max": 2,
+          "mean": 2,
+          "min": 2,
+          "q01": 2,
+          "q99": 2,
+          "std": 2
+        }
+      }
+    }
+  },
+  "tune_top_llm_layers": 4
+}

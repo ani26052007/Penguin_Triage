@@ -1,0 +1,7 @@
+episodes: clean 3 bugged 3 | frames/episode 21
+
+== CLEAN code (checked against its own nominal): 0 evidence item(s)
+
+== BUG-02 code: 1 evidence item(s)
+  source=contract_obs signal=contract_violation id=s1.obs.orientation.ego_view location=obs.orientation strength=0.99
+    camera ego_view: image looks like a rotation by 180 degrees of the training orientation (row/col profile correlation 0.22/-0.81)

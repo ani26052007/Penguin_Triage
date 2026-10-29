@@ -1,0 +1,14 @@
+{
+  "finished": "2026-10-29T10:47:20Z",
+  "lerobot_dir": "/home/aneesh262007/data/datasets/gr1_ranch_bottle_lerobot",
+  "lerobot_prefix": "ranch_bottle_into_fridge/ranch_bottle_into_fridge_generated_100/lerobot",
+  "mimic_source": "/home/aneesh262007/data/datasets/ranch_bottle_into_fridge_annotated.hdf5",
+  "out": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1b_download_datasets",
+  "revision": "arena_v0.2_lab_v3.0",
+  "run_ts": "20261029T103432Z",
+  "script": "R1b_download_datasets",
+  "status": "ok",
+  "tasks": [
+    "Place the ranch dressing bottle on the top shelf of the fridge, and close the fridge door."
+  ]
+}

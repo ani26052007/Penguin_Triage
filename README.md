@@ -2,7 +2,7 @@
 
 Penguin Triage decides why a vision-language-action (VLA) policy fails a task in Isaac Sim, then repairs the cause with the cheapest tool that works. A deterministic router names the cause (code bug, vision gap, or other). For code bugs, a two-model repair agent (hagent) drives Nemotron models hosted on Nebius Token Factory: a small model does almost every step and a big model is consulted rarely. A verification ladder checks the patch before it is accepted.
 
-Status: built and tested against mocks and fakes, and exercised once on a real GPU on 2026-10-29: a stock Arena client with GR00T N1.6 completed episodes, our policy-wrapper client ran 8-episode conditions (clean, one injected bug, after a hagent fix), and hagent fixed the injected bug with Nemotron on Nebius Token Factory. **The router has not been run on real traces, the pilot gate has not been run, and the repair task in that demo was written by hand, not produced by vla-router.** Scale is small (8 episodes per condition). See [Status](#status-what-is-verified) and [Demo evidence](#demo-evidence) before relying on any claim here.
+Status: built and tested against mocks and fakes, and exercised on a real GPU on 2026-10-29. On that box a stock Arena client with GR00T N1.6 completed episodes, our policy-wrapper client ran 10-episode conditions over several seeds (clean 32/40, BUG-02 0/30, after the hagent fix 28/40, BUG-01 22/30), the router's observation-contract check ran on real frames for two injected bugs (it flagged both), and hagent fixed BUG-02 with Nemotron models on Nebius Token Factory. Everything else is "not run": the router's decision table, replays, other Stage 1 checks, Rung 1 and Rung 2, the incident loop, the pilot gate, `IsaacBackend` end to end, the experiment tools, the data pipeline, fine-tuning and the other 12 injected bugs. The router check was run by a script assembled outside `IsaacBackend`, and the hand-off from router to hagent was manual: the repair tasks were written by hand, and the task that worked contained a localization hint. Scale is small (3 episodes per router condition, 10 per policy-wrapper run). See [Status](#status-what-is-verified), [Router evidence on real frames](#router-evidence-on-real-frames) and [Demo evidence](#demo-evidence) before relying on any claim here.
 
 Built for the NVIDIA Nemotron / open models on Nebius Token Factory hackathon, Physical AI track.
 
@@ -74,9 +74,9 @@ What the repository supports:
 - hagent talks to Token Factory's OpenAI-compatible chat endpoint for both models. Using a hosted endpoint avoids serving a 550B-parameter model (the `Ultra-550b-a55b` id) locally.
 - The two-model split is configured against the Token Factory price list (`price_in_per_mtok` / `price_out_per_mtok` in `hybrid-agent/config.toml`), with a cost cap of 1 (`max_cost`) per run.
 
-What was measured on 2026-10-29 (details and caveats under [Demo walkthrough](#demo-walkthrough)): `hagent run --mode hybrid` with `nvidia/Nemotron-3_5-Lightning` (small) and `nvidia/Nemotron-3-Ultra-550b-a55b` (big) on Token Factory fixed an injected bug in 22 small-model calls and 3 big-model calls, at about $0.007 of small-model cost (the big-model cost is not recorded here). A first attempt with a vaguer task made 65 small-model calls (about $0.044) and edited the wrong file. Trajectories are in `docs/demo_evidence/`.
+What was measured on 2026-10-29 (details and caveats under [Demo walkthrough](#demo-walkthrough)): `hagent run --mode hybrid` with `nvidia/Nemotron-3_5-Lightning` (small) and `nvidia/Nemotron-3-Ultra-550b-a55b` (big) on Token Factory fixed an injected bug in 22 small-model calls and 3 big-model calls: about $0.0072 of small-model cost and about $0.0064 of big-model cost (from `usage` in `hagent_bug02_traj.json`), about $0.014 in total. A first attempt with a vaguer task made 65 small-model calls and 4 big-model calls (about $0.044 and $0.026 from `usage` in its trajectory) and edited the wrong file. The trajectory files are not yet in `docs/demo_evidence/`; see [Demo evidence](#demo-evidence).
 
-What the repository does not show: latency or rate-limit measurements, a comparison of the small, big and hybrid modes, or any SWE-bench run. Only one fix on one injected bug was run. No other Nebius service is used; the GPU box was a cloud VM, and the repository does not record which provider. See `docs/SUBMISSION.md` for the feedback section, which is the author's to fill in.
+What the repository does not show: latency or rate-limit measurements, or any SWE-bench Verified run. The small, big and hybrid modes were compared on a separate benchmark (SWE-rebench-V2, 23 tasks; see [hagent benchmark](#hagent-benchmark)), where the big model added nothing measurable in hybrid mode. On the injected-bug demo only one fix on one bug was run. No other Nebius service is used; the GPU box was a cloud VM, and the repository does not record which provider. See `docs/SUBMISSION.md` for the feedback section, which is the author's to fill in.
 
 ## Status: what is verified
 
@@ -84,16 +84,16 @@ Real-hardware session on 2026-10-29: NVIDIA RTX PRO 6000 Blackwell Server Editio
 
 | Component | Tests (GPU-free, mocks and fakes) | Real-hardware status |
 |---|---|---|
-| hagent (`hybrid-agent`) | 175 passed, 19 skipped (container tests skip without Docker) | **Run live** on Nebius Token Factory: two `--mode hybrid` attempts on one injected bug (local backend; Docker not used). One fix is not a benchmark; not run on SWE-bench. |
-| vla-router | 814 passed, 1 skipped against `MockBackend`, scripted hagent models and fixtures | **Not run on real traces.** Router LLM jobs: not run. Rung 1 on a simulator: not run. The repair task in the demo was written by hand, not by the router. |
-| vla-isaac | 631 passed, 1 skipped before this session's changes; 640 passed, 1 skipped after (new Vulkan and cu128 checks) | Partly exercised: Arena's `policy_runner` ran episodes on `cuda:0` with cameras. `IsaacBackend`, the experiment tools, the data pipeline and the fine-tune launcher: not run. |
-| policy-wrapper | 40 passed against `tests/fake_gr00t` | **Run with real GR00T N1.6**: 8 episodes per condition, seed 0, 1 env (clean 5/8, bugged 0/8, fixed 4/8). `wrapper_parity.sh` printed `parity: true` on 4 episodes, which is not meaningful (intervals too wide); the 50-episode parity run is not run. |
-| Stock Arena client + GR00T N1.6 | n/a | 3 of 4 episodes succeeded (object moved 1.0, door moved 1.0). Checkpoint `nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task`, `ranch_bottle_into_fridge`. The documented 0.98 over 50 episodes is not reproduced. |
-| Injected bugs | Ledger and patches tested GPU-free where `detection` is `synthetic` or `real-config` | BUG-02 injected and fixed once (see below). The other 13 bugs and 2 combined cases: not run on a GPU. |
-| Isaac Lab Mimic | override check tested on fixtures | **Fails** at camera init with `--device cpu` (cameras work on `cuda:0` with `policy_runner`). Mimic is unverified. |
-| Pilot gate (50 episodes, lighting probes) | n/a | Not run. |
-| GPU runbook | Headers, env checks, a fake `nvidia-smi`, collector on fixtures | The scripts have not been run as a sequence; the session ran the underlying commands by hand. |
-| Router + hagent end to end | `vla-router/tests/test_loop_hagent.py`: the incident loop with the real `HagentRepairer` and scripted models on a patch-aware `MockBackend` | Not run: the demo joined the pieces by hand. |
+| hagent (`hybrid-agent`) | 175 passed, 19 skipped (container tests skip without Docker) | **Run live**: many runs on the SWE-rebench-V2 subset (see [hagent benchmark](#hagent-benchmark); results from the author's laptop, Docker backend) and two `--mode hybrid` attempts on one injected bug on the GPU box (local backend). Not run on SWE-bench Verified. The repo's own pytest was not run on the VM (missing dependencies, collection errors). |
+| vla-router | 814 passed, 1 skipped against `MockBackend`, scripted hagent models and fixtures | **Observation-contract check run on real frames** (3 episodes per condition, one task; see [Router evidence on real frames](#router-evidence-on-real-frames)). Everything else not run on real data: the decision table, replays, the other Stage 1 checks, Rung 0/1/2, the incident loop and the router LLM jobs. |
+| vla-isaac | 631 passed, 1 skipped before this session's changes; 643 passed, 1 skipped after (new Vulkan and cu128 checks, the not_settled client-test report and the router_obs_check smoke tests) | Instrumentation files and trace reading (`read_instrument_dir`) ran on real data. Arena's `policy_runner` ran episodes on `cuda:0` with cameras. `IsaacBackend` end to end, the experiment tools (grid, agreement, mode gap), the data pipeline and the fine-tune launcher: not run. |
+| policy-wrapper | 40 passed against `tests/fake_gr00t` | **Run with real GR00T N1.6**: clean 32/40 over 4 seeds (10 episodes each, 1 env per process). `wrapper_parity.sh` printed `parity: true` on 4 episodes, which is not meaningful (intervals too wide); the 50-episode parity run is not run. |
+| Stock Arena client + GR00T N1.6 | n/a | 3 of 4 episodes succeeded (object moved 1.0, door moved 1.0). Checkpoint `nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task`, `ranch_bottle_into_fridge`. The documented 0.98 over 50 episodes is not reproduced (only 4 episodes run). |
+| Injected bugs | Ledger and patches tested GPU-free where `detection` is `synthetic` or `real-config` | BUG-02 (0/30; router flagged it; fixed by hagent: 28/40) and BUG-01 (22/30; router flagged it; the policy tolerates the channel swap, so it is not a repair demo) were run. The other 12 bugs, the 2 combined cases and BUG-10 (the helper script passes `--language_instruction` on the command line, which overrides `eval.yaml`): not run. |
+| Isaac Lab Mimic | override check tested on fixtures | **Fails** at camera init with `--device cpu` and with `--device cuda:0` (`Invalid object in Py_Graph in getWrappedGraphFromNode`). Mimic reference: unverified. |
+| Pilot gate (50 episodes, lighting probes) | n/a | Not run. Clean 0.80 over 40 episodes is at the 0.8 threshold, so the gate result is not established. |
+| GPU runbook | Headers, env checks, a fake `nvidia-smi`, collector on fixtures | Run on the box: `00_check_gpu`, `R0_setup`, `R1`, `R1b`, `R2_server`, `R3_list_variations`, `wrapper_parity` (4 episodes). `check_client_tests` reported ok but is not settled (collection error in the vla venv, no pytest in the GR00T venv; the script now reports `not_settled`, covered by GPU-free tests only). Not run: `R4`/`R8`/`R7`/`R7b`, `instruction_check`, `runner_parity`, `R5`, `R6`, `finetune_dryrun`. The session mostly ran the underlying commands by hand. |
+| Router + hagent end to end | `vla-router/tests/test_loop_hagent.py`: the incident loop with the real `HagentRepairer` and scripted models on a patch-aware `MockBackend` | Not run: the router-to-hagent hand-off was manual (the task texts were written by hand). |
 
 Test counts are from runs on 2026-10-29, using `env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q` in each directory.
 
@@ -174,45 +174,103 @@ Found on the RTX PRO 6000 Blackwell (compute capability 12.0) and not tested on 
 
 `R0_setup.sh` now performs the second install when the GPU reports compute capability 12.0, and both scripts check the first; those script changes are covered by GPU-free tests and have not themselves been run.
 
+Other notes from the session:
+
+3. **Arena's nested submodules use SSH URLs.** `R0_setup` needed `git config --global url."https://github.com/".insteadOf git@github.com:` on a box without GitHub SSH keys.
+4. **`R2_server.sh | tail` hangs.** The server keeps the pipe open. Redirect to a file instead (`R2_server.sh > r2.log 2>&1`). The server answered ping after 8-14 s.
+5. **Start parallel runs 60 s apart.** Three simulators starting at once collided on an HDF5 file lock (h5py "unable to lock file"); the crashed run was rerun alone and succeeded. Three parallel runs peaked at 52 GB VRAM and 98% GPU utilisation.
+6. **The VM was a Spot instance and was preempted once.** Results were saved before it went.
+
 ## Demo walkthrough
 
-What was run on 2026-10-29, with the policy-wrapper client against GR00T N1.6 (`nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task`, `ranch_bottle_into_fridge`), seed 0, 1 env, **8 episodes per condition**:
+What was run on 2026-10-29: the policy-wrapper client against GR00T N1.6 (`nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task`, `ranch_bottle_into_fridge`), clean mode, 1 env per process, separate processes (up to three in parallel), 10 episodes per seed, seed passed with `--seed`.
 
 1. **Clean run.** policy-wrapper, no bug.
 2. **Injected bug.** BUG-02: the image is rotated 180 degrees in `policy_wrapper/policy/gr00t_core.py`, function `build_gr00t_policy_observations`, by `[:, ::-1, ::-1]`.
-3. **Bugged run.** The policy fails every episode.
-4. **hagent fix.** `hagent run --mode hybrid`, small `nvidia/Nemotron-3_5-Lightning`, big `nvidia/Nemotron-3-Ultra-550b-a55b`, both on Nebius Token Factory, local backend.
-5. **Fixed run.** Same seed and episodes after applying the patch.
+3. **Bugged run.** The policy succeeds in no episode.
+4. **hagent fix.** `hagent run --mode hybrid`, small `nvidia/Nemotron-3_5-Lightning`, big `nvidia/Nemotron-3-Ultra-550b-a55b`, both on Nebius Token Factory, local backend (the VM had no Docker), `hybrid-agent/config.toml`.
+5. **Fixed run.** The same protocol (seeds 1-4, 10 episodes each) after applying the patch. The fixed repo was verified byte-identical to the clean repo (`diff -rq`).
+6. **BUG-01 for contrast.** `config/eval.yaml` `bgr_conversion` false to true (RGB/BGR swap).
 
-| Condition | Success | Object moved | Door moved |
-|---|---|---|---|
-| policy-wrapper, clean | 5/8 = 0.625 | not recorded here | not recorded here |
-| policy-wrapper, BUG-02 | 0/8 = 0.0 | 0.0 | 0.0 |
-| policy-wrapper, after hagent fix | 4/8 = 0.5 | 1.0 | 1.0 |
-| stock Arena client (4 episodes) | 3/4 | 1.0 | 1.0 |
+| Condition | Per-seed successes (of 10) | Success | Object moved | Door moved |
+|---|---|---|---|---|
+| policy-wrapper, clean | seeds 1-4: 9, 8, 9, 6 | 32/40 = 0.80 (Wilson 95% about 0.65-0.90) | 1.0 on all | 1.0 on all |
+| policy-wrapper, BUG-02 | seeds 1-3: 0, 0, 0 | 0/30 = 0.0 | 0.0 | 0.0 |
+| policy-wrapper, after hagent fix | seeds 1-4: 7, 8, 6, 7 | 28/40 = 0.70 | about 1.0 (0.9 for one seed) | 1.0 |
+| policy-wrapper, BUG-01 (channel swap) | seeds 1-3: 7, 9, 6 | 22/30 = 0.73 | 1.0 | 1.0 |
+| stock Arena client (4 episodes) | one run | 3/4 | 1.0 | 1.0 |
 
-With 8 episodes per condition, 0.5 and 0.625 cannot be told apart; the result shows that the bug removes all successes and that the fix restores behaviour of the same order as clean, not that the fix restores the clean rate exactly. Task completion fractions are reported as measured; their definitions are Arena's.
+Reading the table: the bug removes every success and both behaviour rates fall to 0.0; after the fix success is back in the clean range and both behaviour rates are back to about 1.0. Clean 32/40 against fixed 28/40 is a difference within noise (Fisher p about 0.4), and the two repos are byte-identical, so the 0.70 vs 0.80 gap is run-to-run variation, not a residual defect. This is not "fully recovered" with a demonstrated rate. BUG-01 is **not** a fix demonstration: the policy tolerates the channel swap (22/30 is within the clean range), although the router flags it (below). Task completion fractions are reported as measured; their definitions are Arena's.
 
-The hagent attempts:
+Footnote: earlier seed-0 runs with 8 episodes (clean 5/8, BUG-02 0/8, fixed 4/8) are superseded by the runs above.
 
-| Attempt | Task | Small-model calls | Big-model calls | Cost | Outcome |
-|---|---|---|---|---|---|
-| 1 | Vague ("observation path"), `task_bug02.md` | 65 | not recorded here | about $0.044 | Edited `utils/image_conversion.py`: wrong |
-| 2 | Names `build_gr00t_policy_observations` in `gr00t_core.py`, `task_bug02b.md` | 22 | 3 | about $0.007 (small model only) | `exit_status` Submitted; removed the `[:, ::-1, ::-1]` and nothing else (`bug02_fix.patch`) |
+Video: Arena's `--record_camera_video` records the simulator's robot point-of-view camera, not the image the client sends to the model, so the bugged clip looks like a normal scene with a flailing robot. It does not show an upside-down view.
 
-**What was not automatic.** The router did not run on real traces. Both task texts were written by hand from measured results, in the style of a router task. The second task contained a localization hint (the function and file), so attempt 2 shows that hagent applies a correctly located fix cheaply, not that the system locates the bug. Docker was not used.
+The hagent attempts (costs from `usage` in the trajectories):
+
+| Attempt | Task | Small-model calls (cost) | Big-model calls (cost) | Outcome |
+|---|---|---|---|---|
+| 1 | Vague ("observation path"), `task_bug02.md` | 65 (about $0.044) | 4 (about $0.026) | `exit_status` Submitted but wrong: edited `policy_wrapper/utils/image_conversion.py`; the flip was still present |
+| 2 | Names `policy_wrapper/policy/gr00t_core.py` and `build_gr00t_policy_observations`, `task_bug02b.md` | 22 (about $0.0072) | 3 (about $0.0064) | `exit_status` Submitted; removed `[:, ::-1, ::-1]` and nothing else (`bug02_fix.patch`, 14 lines) |
+
+### Router evidence on real frames
+
+The router's `ObservationContractCheck` (unchanged code) was run on real instrument files from the GPU box: `policy_wrapper.instrument` with `VLA_INSTRUMENT_DIR`, a frame every 5 steps (21 frames per episode), camera `ego_view`, read with `read_instrument_dir` and wrapped into `EpisodeTrace` objects. The nominal was built from 3 clean episodes (seed 11) with the same `obs_nominal` as `vla-isaac/tests/bugs_support.py`.
+
+| Run | Episodes | Evidence items |
+|---|---|---|
+| held-out clean (seed 12, not used for the nominal) | 3 | 0 |
+| BUG-02 (image rotated 180 degrees) | 3 | 1: `s1.obs.orientation.ego_view`, `contract_violation`, strength 0.99, "image looks like a rotation by 180 degrees of the training orientation (row/col profile correlation 0.22/-0.81)" |
+| BUG-01 (RGB/BGR swap) | 3 | 1: `s1.obs.channel_order.ego_view`, strength 1.00, "order appears to be BGR instead of RGB (opponent-vector distance 6.99 ...)" |
+
+Both evidence ids match the ledger's expected ids for BUG-01 and BUG-02. The BUG-01 result is a detection of a contract violation that the policy tolerates: the router flags it, the policy still succeeds in 22/30.
+
+Rerun (on the box, in the vla-isaac venv, with the instrument directories left by `record_cell.sh` runs; the first argument builds the nominal, each further argument is checked against it):
+
+```bash
+python vla-isaac/scripts/gpu/router_obs_check.py <clean_seed11_dir> <clean_seed12_dir> <bug02_dir> <bug01_dir>
+```
+
+`record_cell.sh` and `router_obs_check.py` come from the 2026-10-29 session and ran only there; `vla-isaac/tests/test_router_obs_check.py` checks the script GPU-free on synthetic fixture frames.
+
+Caveats: 3 episodes per condition, one task, a nominal from 3 episodes, and a script assembled outside `IsaacBackend` (the router loop did not drive the run). Only the observation-contract check was run. The decision table, replays, the other Stage 1 checks, Rung 1/2 and the incident loop were not run on real data. The original run read `router_check3.py` and `router_check.py` from the author's home directory; the committed script folds both into one.
+
+### What the demo does and does not show
+
+It shows detection on real frames (the observation check flags both injected bugs and stays silent on a held-out clean run, at 3 episodes each), and repair by Nemotron on Token Factory (a small model with a few big-model consults removed the bad line). It does not show the system locating a bug: the router-to-hagent hand-off was manual, the task texts were written by hand in router style from measured results, and attempt 2 contained a localization hint (the file and function). After the router check the orientation evidence is real and supports the task's "observation path" statement, but the router did not produce the task. The repo's own pytest was not run on the VM; the Phase 8 suite on the laptop covers the silent-bug claim.
 
 The intended full loop, not run end to end on real hardware: the router runs the Stage 1 checks and replays and names the verdict and location (for BUG-02 the ledger expects `code`); the verdict and evidence become the hagent task; Rung 0 checks the patch, Rung 1 re-runs episodes, and Rung 2 re-routes the fixed system. For a combined case (CASE-01), the ledger expects the first fix to expose a second cause, which the second pass routes to `vision`.
 
+## hagent benchmark
+
+hagent has been run live many times; it has not been run on SWE-bench Verified. The benchmark is a SWE-rebench-V2 subset of 23 tasks: 13 "fair" (the issue text specifies what the hidden tests check), 4 mismatched and 6 ambiguous. Modes small, big and hybrid, temperature 0, `max_steps` 80, Docker backend with workdir `/<repo>`, Nebius Token Factory. Measured 2026-10-25 to 2026-10-28 on the author's laptop (source: `HANDOFF_v2.md`).
+
+Fair set, 3 runs of small and 3 runs of hybrid: **small 14/39, hybrid 13/39.** Hybrid did not beat small, and the big model added nothing measurable in hybrid mode. Noise between identical runs is about +-2 tasks.
+
+| Task | Resolved (of 6 runs, small + hybrid) |
+|---|---|
+| werkzeug-2126, traitsui-1554 | 6/6 each |
+| cloud-sql, aiohttp-8742 | 5/6 each |
+| traits-927 | 3/6 |
+| gitpython-1832, ctfd-2751 | 1/6 each |
+| sphinx-needs-1102, aiohttp-7368, cfn-lint-2470, cxxheaderparser-50, werkzeug-2979, narwhals-2372 | 0/6 each |
+
+- Multi-site fixes cover only the first location. sphinx-needs-1102 and aiohttp-7368 failed identically in every configuration because the model took the issue's example or the reporter's guess as the full spec (checked against the hidden tests: both are solvable from the issue).
+- Ultra as the driver did worse than Lightning (mini-swe-agent `big_tb`: 1/23). mini-swe-agent with Lightning solved about 5 of 23, in the same range as hagent.
+- Harness patches 1-6 removed format-error and token-cap deaths and cut no-edit runs from 5 to 0-4, but did not change the resolved count.
+
+The benchmark artifacts live outside this repository (`rebench/` on the author's laptop) unless copied into `docs/hagent_benchmark/`; they are not there yet. Files to copy there: the per-run trajectories, the score tables (per task and mode) and the `analysis/` directory; then link them here.
+
 ## Demo evidence
 
-Files for the run above, in `docs/demo_evidence/` (to be copied there by the author; not present when this section was written):
+`docs/demo_evidence/` does not exist in the repository yet: no evidence file has been copied in, so none is listed as present. Files the 2026-10-29 session produced, on the author's machine and to be copied there:
 
-- `bug02_fix.patch`: the patch hagent produced in attempt 2.
-- `task_bug02.md`: the vague task of attempt 1.
-- `task_bug02b.md`: the task of attempt 2, with the localization hint.
-- `hagent_bug02_attempt1_traj.json`: the trajectory of attempt 1.
-- `hagent_bug02_traj.json`: the trajectory of attempt 2.
+- `bug02_fix.patch`, `task_bug02.md`, `task_bug02b.md`: the patch of attempt 2 and the two hand-written task texts.
+- `hagent_bug02_attempt1_traj.json`, `hagent_bug02_traj.json`: the two hagent trajectories.
+- `router_check.py`, `router_check3.py` (the committed version is `vla-isaac/scripts/gpu/router_obs_check.py`), `router_check3_output.txt` (and `router_check_output.txt`, the earlier two-condition output), `record_cell2.sh` (committed as `vla-isaac/scripts/gpu/record_cell.sh`).
+- The router instrument directories (`router_ev/clean`, `clean2`, `bugged`, `bug01`: `env*_ep*.json`).
+- Arena logs and summaries of the parallel runs (`par_*`: `arena.log`, `episode_results_rank0.jsonl`), the clean/bugged/fixed 8-episode runs (footnoted above) and the stock-client run.
+- Videos (`robot-cam-env0-robot_pov_cam_rgb-episode-*.mp4`): simulator POV, not the client's image.
 
 ## Known limitations
 
@@ -225,8 +283,13 @@ From `docs/BUILD_STATUS.md`, "Current state" and Phase 8 "Limitations" (not soft
 - The GR1 hand sign and the joint-YAML swap are detectable only by elimination.
 - The Docker path of the repairer has not been run (no image; `vla-router/DECISIONS.md`); the session's hagent runs used the local backend.
 - The demo's repair task was written by hand with a localization hint; the router-to-hagent hand-off has not run on real data.
-- Results are 8 episodes per condition (4 for the stock client); the pilot gate (50 episodes) and wrapper parity at a meaningful size are not run.
-- Isaac Lab Mimic fails at camera init with `--device cpu`, so the Mimic reference is unverified.
+- Router evidence on real frames is 3 episodes per condition on one task, with a nominal from 3 episodes, from a script outside `IsaacBackend`; only the observation-contract check ran.
+- BUG-01 (channel swap) is flagged by the router but tolerated by the policy (22/30): detection of a violation is not detection of a failure cause.
+- policy-wrapper results are 10 episodes per seed over 3-4 seeds (stock client: 4 episodes). The pilot gate (50 episodes) is not established: clean 0.80 over 40 episodes is at the 0.8 threshold. `parity: true` on 4 episodes is not meaningful, and wrapper parity at a meaningful size is not run.
+- Isaac Lab Mimic fails at camera init with both `--device cpu` and `--device cuda:0` (`Invalid object in Py_Graph in getWrappedGraphFromNode`, "Unable to create prim for graph at /Render/PostProcess/SDGPipeline"), so the Mimic reference is unverified. Mimic uses `gr1_pink` while `policy_runner` uses `gr1_joint` and creates cameras fine; that difference is a hypothesis, not tested.
+- Arena's `--record_camera_video` records the simulator camera, not the client's (rotated) image.
+- `check_client_tests` is not settled (collection error in the vla venv; no pytest in the GR00T venv).
+- On hagent: on the SWE-rebench-V2 fair set hybrid (13/39) did not beat small (14/39); see [hagent benchmark](#hagent-benchmark).
 - The pilot is a composite task (pick and place, then close door). Its close-door subtask has no slot in `BehaviorTrace.PHASES`, the GR1 scene has no camera-variation family, and the documented 0.98 success may come from a 1-GPU or 2-GPU run (`docs/PILOT_AND_ORDER.md`).
 - The agent runs arbitrary bash. Use the container backend for anything untrusted. hagent is POSIX only.
 - Costs and token budgets are only as accurate as the configured prices; with prices at 0 the cost cap never triggers.
@@ -234,7 +297,7 @@ From `docs/BUILD_STATUS.md`, "Current state" and Phase 8 "Limitations" (not soft
 
 ## License and third-party notices
 
-- Code written for this project: MIT (`LICENSE`). `hybrid-agent/` is a separate repository and currently has no license file of its own. `policy-wrapper/` declares Apache-2.0.
+- Code written for this project: MIT (`LICENSE`). `hybrid-agent/` is a separate repository and currently has no license file of its own (the root `LICENSE` does not cover it). `policy-wrapper/` declares Apache-2.0.
 - Files copied from Isaac Lab-Arena (commit `7632eb7d5e`, Apache-2.0, copyright The Isaac Lab Arena Project Developers) keep their original headers. They are listed in `vla-isaac/NOTICE` and in `policy-wrapper/NOTICE`, with the changes made to each.
 - **Isaac-GR00T is licensed under the NVIDIA License and no part of it is copied into this repository.** `policy-wrapper/serve.py` imports it at run time from a separate install; `policy-wrapper/tests/fake_gr00t` holds test stand-ins written here.
 - Isaac Sim requires accepting the Omniverse EULA (`OMNI_KIT_ACCEPT_EULA=YES`, `ACCEPT_EULA=Y`). Model checkpoints and datasets are downloaded from Hugging Face under their own terms and are not redistributed here.

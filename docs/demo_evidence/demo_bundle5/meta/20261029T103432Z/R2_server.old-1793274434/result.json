@@ -1,0 +1,11 @@
+{
+  "finished": "2026-10-29T11:20:26Z",
+  "host": "127.0.0.1",
+  "out": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R2_server",
+  "port": 5555,
+  "reused": false,
+  "run_ts": "20261029T103432Z",
+  "script": "R2_server",
+  "startup_s": 14,
+  "status": "ok"
+}

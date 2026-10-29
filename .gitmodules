@@ -4,3 +4,6 @@
 [submodule "external/IsaacLab-Arena"]
 	path = external/IsaacLab-Arena
 	url = https://github.com/isaac-sim/IsaacLab-Arena.git
+[submodule "policy-wrapper"]
+	path = policy-wrapper
+	url = https://github.com/ani26052007/policy-wrapper

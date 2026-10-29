@@ -1,0 +1,161 @@
+{
+  "complete": true,
+  "episodes_requested": 4,
+  "exit_code": 0,
+  "files": [
+    "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T120100Z/wrapper_parity/stock/arena/2026-10-29_11-54-27/episode_results_rank0.jsonl"
+  ],
+  "language_instructions": [
+    "Place the sauce bottle on the top shelf of the fridge, and close the fridge door."
+  ],
+  "log": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T120100Z/wrapper_parity/stock/arena.log",
+  "num_envs": 1,
+  "outcomes": {
+    "0:0": true,
+    "0:1": true,
+    "0:2": true,
+    "0:3": false
+  },
+  "progress_sample": {
+    "failure": {
+      "all_complete": false,
+      "consecutive_step_summary": [
+        {
+          "consecutive_steps": 0,
+          "criteria_name": "subtask_0/pick_and_place",
+          "first_satisfied_step": null,
+          "predicate_index": 2,
+          "predicate_name": "TrueForConsecutiveStepsCfg(object_on_destination(force_threshold=0.1, velocity_threshold=0.003, support_cone_half_angle_rad=0.7853981633974483), required_steps=1)",
+          "required_steps": 1,
+          "sequence_name": "default_sequence",
+          "status": "active"
+        }
+      ],
+      "criteria_by_name": {
+        "subtask_0/pick_and_place": {
+          "active_predicates": {
+            "default_sequence": "TrueForConsecutiveStepsCfg(object_on_destination(force_threshold=0.1, velocity_threshold=0.003, support_cone_half_angle_rad=0.7853981633974483), required_steps=1)"
+          },
+          "completed_sequences": 0,
+          "is_complete": false,
+          "score": 0.6666666865348816,
+          "total_sequences": 1
+        },
+        "subtask_1/close_door": {
+          "active_predicates": {
+            "default_sequence": "is_closed(threshold=0.1)"
+          },
+          "completed_sequences": 0,
+          "is_complete": false,
+          "score": 0.0,
+          "total_sequences": 1
+        }
+      },
+      "events": [
+        {
+          "criteria_name": "subtask_0/pick_and_place",
+          "predicate_index": 0,
+          "predicate_name": "objects_settled",
+          "score_delta": 0.3333333333333333,
+          "sequence_name": "default_sequence",
+          "step": 22
+        },
+        {
+          "criteria_name": "subtask_0/pick_and_place",
+          "predicate_index": 1,
+          "predicate_name": "object_is_above_height(object_name='ranch_dressing_hope_robolab', use_settled_state=True)",
+          "score_delta": 0.3333333333333333,
+          "sequence_name": "default_sequence",
+          "step": 83
+        }
+      ],
+      "overall_score": 0.3333333432674408
+    },
+    "success": {
+      "all_complete": true,
+      "consecutive_step_summary": [
+        {
+          "consecutive_steps": 1,
+          "criteria_name": "subtask_0/pick_and_place",
+          "first_satisfied_step": 252,
+          "predicate_index": 2,
+          "predicate_name": "TrueForConsecutiveStepsCfg(object_on_destination(force_threshold=0.1, velocity_threshold=0.003, support_cone_half_angle_rad=0.7853981633974483), required_steps=1)",
+          "required_steps": 1,
+          "sequence_name": "default_sequence",
+          "status": "completed"
+        }
+      ],
+      "criteria_by_name": {
+        "subtask_0/pick_and_place": {
+          "active_predicates": {
+            "default_sequence": null
+          },
+          "completed_sequences": 1,
+          "is_complete": true,
+          "score": 1.0,
+          "total_sequences": 1
+        },
+        "subtask_1/close_door": {
+          "active_predicates": {
+            "default_sequence": null
+          },
+          "completed_sequences": 1,
+          "is_complete": true,
+          "score": 1.0,
+          "total_sequences": 1
+        }
+      },
+      "events": [
+        {
+          "criteria_name": "subtask_0/pick_and_place",
+          "predicate_index": 0,
+          "predicate_name": "objects_settled",
+          "score_delta": 0.3333333333333333,
+          "sequence_name": "default_sequence",
+          "step": 10
+        },
+        {
+          "criteria_name": "subtask_0/pick_and_place",
+          "predicate_index": 1,
+          "predicate_name": "object_is_above_height(object_name='ranch_dressing_hope_robolab', use_settled_state=True)",
+          "score_delta": 0.3333333333333333,
+          "sequence_name": "default_sequence",
+          "step": 67
+        },
+        {
+          "criteria_name": "subtask_0/pick_and_place",
+          "predicate_index": 2,
+          "predicate_name": "TrueForConsecutiveStepsCfg(object_on_destination(force_threshold=0.1, velocity_threshold=0.003, support_cone_half_angle_rad=0.7853981633974483), required_steps=1)",
+          "score_delta": 0.3333333333333333,
+          "sequence_name": "default_sequence",
+          "step": 252
+        },
+        {
+          "criteria_name": "subtask_1/close_door",
+          "predicate_index": 0,
+          "predicate_name": "is_closed(threshold=0.1)",
+          "score_delta": 1.0,
+          "sequence_name": "default_sequence",
+          "step": 329
+        }
+      ],
+      "overall_score": 1.0
+    }
+  },
+  "records": 4,
+  "run_dir": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T120100Z/wrapper_parity/stock/arena",
+  "success": {
+    "confidence": 0.95,
+    "k": 3,
+    "lower": 0.300641842582402,
+    "n": 4,
+    "rate": 0.75,
+    "upper": 0.9544127391902995
+  },
+  "success_types": [
+    "bool"
+  ],
+  "timestamped_subdir": true,
+  "unrecognized_arguments": [],
+  "variations_sample": null
+}

@@ -405,7 +405,10 @@ def client_tests_report(log: str, exit_code: int) -> dict:
     missing = re.findall(r"No module named '([\w.]+)'", log)
     top = sorted({m.split(".")[0] for m in missing})
     isaac = sorted(m for m in top if m in ISAAC_MODULES)
+    # settled: pytest collected and ran tests. A missing pytest, a collection error (exit 2) or no tests is not an answer.
+    settled = exit_code in (0, 1) and bool(counts.get("passed") or counts.get("failed")) and "pytest" not in top
     return {"exit_code": exit_code, "counts": counts, "missing_modules": top, "isaac_modules_missing": isaac,
+            "settled": settled,
             "imports_without_isaac": exit_code == 0 or (bool(counts.get("passed")) and not isaac and not missing),
             "blocked_by_isaac": bool(isaac)}
 
@@ -712,6 +715,8 @@ def write_result(out: str | Path, script: str, *, run_ts: str, jsons: Mapping[st
         res["cells"] = cells
     for k, p in jsons.items():
         res[k] = json.loads(Path(p).read_text(encoding="utf-8"))
+        if isinstance(res[k], dict) and res[k].get("settled") is False:
+            res["status"] = "not_settled"            # the script ran but a part of it did not answer its question
     for k, v in sets.items():
         try:
             res[k] = json.loads(v)

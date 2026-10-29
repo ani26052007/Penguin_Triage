@@ -1,0 +1,13 @@
+{
+  "git": {
+    "arena": "7632eb7d5e-dirty",
+    "gr00t": "n1.5-release-11-ge29d8fc",
+    "isaaclab": "v3.0.0"
+  },
+  "isaaclab": "28.0.0",
+  "isaaclab_arena": "0.3.0",
+  "isaaclab_mimic": "2.0.12",
+  "isaacsim": "6.2.0.0",
+  "python_arena": "3.12.16",
+  "torch_arena": "2.11.0+cu130"
+}

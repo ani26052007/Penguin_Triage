@@ -66,9 +66,20 @@ on a cloud VM. Not re-checked on any other box.
 - **Pinned `RUN_TS`.** Scripts share `measurements/<RUN_TS>/` only if every shell uses the same value. The session kept it in
   `~/.vla_run_ts` (written once with `date -u +%Y%m%dT%H%M%SZ > ~/.vla_run_ts`) and set `export RUN_TS="$(cat ~/.vla_run_ts)"`
   in each shell instead of `env.example`'s per-shell `date`. Use one or the other, not both.
-- **Mimic on `--device cpu`.** The Isaac Lab Mimic override check failed at camera init when run with `--device cpu`
-  (cameras worked on `cuda:0` with `policy_runner.py`). Mimic is therefore unverified: V-mimic-override and the Mimic
-  decision remain open.
+- **Mimic camera init.** The Isaac Lab Mimic override check failed at camera init with both `--device cpu` and
+  `--device cuda:0` (`ValueError: Invalid object in Py_Graph in getWrappedGraphFromNode`, "Unable to create prim for graph at
+  /Render/PostProcess/SDGPipeline"); `policy_runner.py` created cameras fine. Mimic uses `gr1_pink` and `policy_runner` uses
+  `gr1_joint`: a hypothesis, not tested. Mimic is therefore unverified: V-mimic-override and the Mimic decision remain open.
+- **Git over HTTPS.** Arena's nested submodules use SSH URLs. Without GitHub SSH keys run
+  `git config --global url."https://github.com/".insteadOf git@github.com:` before `R0_setup.sh`.
+- **`R2_server.sh` and pipes.** The server keeps the pipe open, so `R2_server.sh | tail` hangs. Redirect to a file:
+  `R2_server.sh > "$MEASUREMENTS_DIR/r2.log" 2>&1`. The server answered ping after 8-14 s.
+- **Parallel runs.** Start parallel cells (separate processes, own ports) 60 s apart: three simulators starting at once
+  collided on an HDF5 lock ("unable to lock file"). Three parallel runs peaked at 52 GB VRAM and 98% GPU utilisation.
+- **Spot instances.** The session's VM was a Spot instance and was preempted once; results were saved before it went.
+  Copy `measurements/` off the box as you go.
+- **`check_client_tests.sh`.** In that session it reported ok although the vla venv had a collection error (exit 2) and the
+  GR00T venv had no pytest. It now writes `"status": "not_settled"` in that case (GPU-free tests only; not re-run on the box).
 
 ## The first three commands
 
@@ -102,9 +113,26 @@ Run from the repo root, in this order, in one shell with `RUN_TS` fixed. Steps 1
 | 14 | `R6_replay_agreement.sh` | R1 (own server) | V-exp-yaml, V-exp-remote-policy | (agreement) |
 | 15 | `R2_server.sh stop`, then `finetune_dryrun.sh` | R1, R1b, step 6 | V-converter-noisaac, V-finetune-log | merged dataset trains |
 | 16 | `$VLA_VENV/bin/python vla-isaac/scripts/gpu/collect_measurements.py` | anything above | prints settled / open ids | all five |
+| (route check) | `router_obs_check.py` on instrument directories (see below) | traced runs of clean and bugged code | (none; not a VERIFY row) | router evidence on real frames |
 
 After step 10, look at the pilot decision before spending more (`collect_measurements.py` can run at any time).
 If it says "switch to DROID", stop here: steps 11-15 measure the GR1 pilot.
+
+## Route check on real frames
+
+`router_obs_check.py` and `record_cell.sh` come from the 2026-10-29 session and ran only there. `record_cell.sh <checkout>
+<label> <episodes> <seed> <port> [video 0|1]` starts policy-wrapper's `serve.py` and one policy-wrapper cell (its paths are
+that box's; edit them). With `VLA_INSTRUMENT_DIR` set (frame every 5 steps) the policy-wrapper instrument leaves
+`env*_ep*.json` files per episode. Build the nominal from a clean run (the session used 3 episodes, seed 11) and check other
+directories against it, including a held-out clean run (seed 12):
+
+```bash
+$VLA_VENV/bin/python vla-isaac/scripts/gpu/router_obs_check.py <clean_seed11_dir> <clean_seed12_dir> <bugged_dir>
+```
+
+On the session's data this gave 0 evidence items for the held-out clean run and one each for BUG-02 (`s1.obs.orientation.ego_view`)
+and BUG-01 (`s1.obs.channel_order.ego_view`), 3 episodes per condition. Only the observation-contract check runs; this is not the
+router loop.
 
 ## What each script should print and write
 
@@ -130,7 +158,7 @@ directory, and every finished one has `result.json` and `DONE`.
   pytest's last line. `client_tests_<venv>.json` has `imports_without_isaac`, the missing modules and which of
   them are Isaac modules. **Expect** either a pass (the copied client tests in policy-wrapper mirror Arena's) or a
   `No module named ...` naming what blocks them.
-- **`R3_list_variations.sh`** (V-list-var). `factor table unchanged: true|false` and the zero-action exit code
+- **`R3_list_variations.sh`** (V-list-var; in the session it printed `false` because `ranch_dressing_hope_robolab.disappear` is new; the five existing factors were identical and the hand-written table was kept). `factor table unchanged: true|false` and the zero-action exit code
   (0 expected). Writes `list_variations.txt`, the regenerated `factors.yaml` and `factors.diff`. If `false`,
   review the diff and copy `factors.yaml` over `config/factors_gr1_fridge.yaml` by hand.
 - **`mimic_override_check.sh`** (V-mimic-override, -seed, -out, -guarantee). First `datagen seed flag --seed

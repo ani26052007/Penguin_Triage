@@ -1,0 +1,1 @@
+{"script": "00_check_gpu", "run_ts": "20261029T101258Z", "status": "ok", "gpus": [{"index": 0, "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition", "compute_cap": "12.0", "memory_total_mib": "97887", "driver": "580.178.04", "ok": true, "reason": ""}]}

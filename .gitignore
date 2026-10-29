@@ -46,8 +46,6 @@ Thumbs.db
 # Logs
 *.log
 
-# Sim side: policy-wrapper is its own git repo (docs/IMPL_PLAN.md Q5)
-policy-wrapper/
 
 # GPU runbook and experiment outputs (vla-isaac/scripts/gpu writes under measurements/)
 measurements/

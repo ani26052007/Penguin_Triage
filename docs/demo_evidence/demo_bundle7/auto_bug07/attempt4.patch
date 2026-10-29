@@ -1,0 +1,18 @@
+diff --git a/config/eval.yaml b/config/eval.yaml
+index 294bc33..b3d0317 100644
+--- a/config/eval.yaml
++++ b/config/eval.yaml
+@@ -16,11 +16,12 @@ client:
+   bgr_conversion: false
+ server:
+   checkpoint: nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task/ranch_bottle_into_fridge
++  norm_stats_override: null
+   checkpoint_revision: TODO_PIN
+   embodiment_tag: GR1
+   denoising_steps: 4
+   seed_per_request: true
+-  norm_stats_override: config/statistics.json
++
+ env:
+   task: put_item_in_fridge_and_close_door
+   embodiment: gr1_joint

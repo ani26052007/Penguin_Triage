@@ -1,0 +1,22 @@
+The repair agent should inspect and correct the orientation configuration or data pipeline for obs.orientation so that the camera ego_view matches the expected training orientation; no code change is needed beyond fixing the observed rotation mismatch.
+
+## Router hypothesis (verify this first; it may be wrong)
+The automatic router classified this failure as: code (decision-table row 4), destination hagent; suspected location: obs.orientation
+Before editing anything, check this hypothesis against the code and the evidence below. If the
+evidence contradicts it, say so in one sentence and follow the evidence instead.
+
+## Where to look
+Router location: obs.orientation
+Ranked candidates:
+1. [config_key] obs.orientation - The evidence s1.obs.orientation.ego_view directly references obs.orientation as the location of the 180-degree rotation mismatch, making it the primary configuration key to review. (evidence: s1.obs.orientation.ego_view)
+Evidence:
+- s1.obs.orientation.ego_view (contract_violation, strength 0.99) @ obs.orientation: camera ego_view: image looks like a rotation by 180 degrees of the training orientation (row/col profile correlation 0.22/-0.81)
+
+## Reproduce
+run policy_runner (not available to the agent)
+
+## Failing rollout summary
+success 0/30 in the failing configuration; stock client 3/4
+
+## Code location
+Controller/wrapper code: /tmp/pw-auto1
