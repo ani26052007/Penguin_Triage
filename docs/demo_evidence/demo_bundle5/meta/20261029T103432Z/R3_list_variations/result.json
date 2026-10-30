@@ -1,9 +1,9 @@
 {
-  "factor_table": "/home/aneesh262007/comp_and_research/Penguin_Triage/vla-isaac/config/factors_gr1_fridge.yaml",
+  "factor_table": "/home/USER/comp_and_research/Penguin_Triage/vla-isaac/config/factors_gr1_fridge.yaml",
   "factor_table_equal": false,
   "finished": "2026-10-29T11:00:00Z",
-  "out": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R3_list_variations",
-  "regenerated": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R3_list_variations/factors.yaml",
+  "out": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R3_list_variations",
+  "regenerated": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R3_list_variations/factors.yaml",
   "run_ts": "20261029T103432Z",
   "script": "R3_list_variations",
   "status": "ok",

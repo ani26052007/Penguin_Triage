@@ -1,0 +1,5 @@
+nohup: ignoring input
+ev_bug09 seed=11 exit=0 [Rank 0/1] Metrics: {'num_episodes': 4, 'success_rate': 0.75, 'object_moved_rate_subtask_0': 1.0, 'revolute_joint_moved_rate_subtask_1': 0.75, 'subtask_success_rate': [0.75, 0.75]}
+ev_clean3 seed=13 exit=0 [Rank 0/1] Metrics: {'num_episodes': 4, 'success_rate': 0.75, 'object_moved_rate_subtask_0': 1.0, 'revolute_joint_moved_rate_subtask_1': 1.0, 'subtask_success_rate': [0.75, 0.75]}
+ev_clean4 seed=14 exit=0 [Rank 0/1] Metrics: {'num_episodes': 4, 'success_rate': 0.75, 'object_moved_rate_subtask_0': 1.0, 'revolute_joint_moved_rate_subtask_1': 1.0, 'subtask_success_rate': [0.75, 0.75]}
+CHAINDONE

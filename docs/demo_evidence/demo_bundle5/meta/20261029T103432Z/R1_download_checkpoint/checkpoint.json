@@ -1,6 +1,6 @@
 {
   "action_horizon": 50,
-  "dir": "/home/aneesh262007/data/models/pilot/ckpt",
+  "dir": "/home/USER/data/models/pilot/ckpt",
   "files": {
     "config.json": true,
     "embodiment_id.json": true,

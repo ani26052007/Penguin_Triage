@@ -27,10 +27,7 @@ found none in the text files of bundles 1-9 (binary files and videos were not sc
 - `demo_bundle6/auto_repair/` and `demo_bundle7/auto_repair/` hold the same BUG-02 attempts (bundle 7 is a later copy).
 - The committed, generalised versions of the session scripts are under `vla-isaac/scripts/gpu/` (`router_obs_check.py`, `router_cfg_check.py`, `auto_repair.py`, `passk.py`).
 - The lighting-sweep results now exist: `demo_bundle8/logs/par_light*/arena.log` hold the final `Metrics:` lines (the earlier bundle-7 logs from the preempted attempt hold none).
-- Absolute home paths with the box's username (`/home/aneesh262007/...`, 97 lines) occur in `demo_bundle5/meta/**/*.json` and
-  `demo_bundle5/mimic_gpu/mimic_tail.txt`. They were left as recorded; replace them before publishing if the username should not appear.
-- The username `aneesh262007` also occurs in absolute paths in 20 files of `demo_bundle8` and `demo_bundle9` (all of them `*.log` files). To redact them before publishing (review the diff first; run from the repo root):
-
-  ```bash
+- The box's username was replaced by `/home/USER` in all absolute paths (text, JSON and log files) before publishing.
+bash
   grep -rIlF /home/aneesh262007 docs/demo_evidence/demo_bundle8 docs/demo_evidence/demo_bundle9 | xargs sed -i 's#/home/aneesh262007#/home/USER#g'
   ```

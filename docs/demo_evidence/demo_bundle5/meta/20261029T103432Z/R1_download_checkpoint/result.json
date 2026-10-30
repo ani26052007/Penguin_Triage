@@ -1,7 +1,7 @@
 {
   "checkpoint": {
     "action_horizon": 50,
-    "dir": "/home/aneesh262007/data/models/pilot/ckpt",
+    "dir": "/home/USER/data/models/pilot/ckpt",
     "files": {
       "config.json": true,
       "embodiment_id.json": true,
@@ -468,11 +468,11 @@
     "tune_top_llm_layers": 4
   },
   "finished": "2026-10-29T10:47:00Z",
-  "out": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint",
+  "out": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint",
   "repo": "nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task",
   "revision_sha": "f5e388c35340080644e17a3b3d538150ad894bfa",
   "run_ts": "20261029T103432Z",
   "script": "R1_download_checkpoint",
   "status": "ok",
-  "training_spec": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint/training_spec.json"
+  "training_spec": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint/training_spec.json"
 }

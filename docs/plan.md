@@ -52,7 +52,7 @@ failing rollout (+ scene spec, training spec)
 ### 3.1 Environment
 
 - **Isaac Sim / Isaac Lab (+ Arena)** for rollouts, data generation and final validation. Headless and parallel.
-- Policy under test: a pretrained VLA (GR00T or the DROID-style pick-and-place example). **First task of the project:** confirm the exact policy and version, read its model code, and list the real module names and tune flags (e.g. visual / LLM / projector / diffusion-model). Do not assume any of this from documentation or chat summaries.
+- Policy under test: a pretrained VLA (GR00T or the DROID-style pick-and-place example). **First task of the project:** confirm the exact policy and version, read its model code, and list the real module names and tune flags (e.g. visual / LLM / projector / diffusion-model). Do not assume any of this from documentation alone.
 - Fine-tuning data must be in the policy's expected format (for GR00T: LeRobot-style parquet + mp4, plus its modality config). Budget time for the conversion step (e.g. LeIsaac or a custom converter).
 - A **known-good reference controller** for the chosen task (scripted IK or planner, see 5.2 option B) is useful beyond data generation: it is how the router tells a simulator or asset problem from a policy problem (3.2.6, 3.2.7). It must emit actions in the policy's own output format, and it must be **qualified** (success measured on nominal and on every shifted condition) before the router relies on it (3.2.2).
 - The router's prerequisites (scene spec, training spec, rollout instrumentation, clean vs incident inference modes, rollout cache, replay-agreement measurement) are built alongside the failure map, see 3.2.2 and Section 8.
@@ -245,7 +245,7 @@ Cap the number of router passes per incident (default two or three). If the cap 
 
 #### 3.2.12 Where the models fit
 
-None of them decides a route. Prices below are from the Token Factory price list you captured (per 1M tokens, input / output); check them again before relying on them.
+None of them decides a route. Prices below are from the Token Factory price list (October 2026) (per 1M tokens, input / output); check them again before relying on them.
 
 | Model | Job | Price |
 |---|---|---|
@@ -526,7 +526,7 @@ Protocol:
 
 ## 8. Build order (time-boxed)
 
-The estimates below were originally scaled to roughly 12 weeks of one person's time. **Replace them with your real deadline**, keep the proportions, and treat steps 1-3 as the likeliest to overrun (policy setup, format conversion and the first fine-tune usually take longer than planned). The router is the part you cannot afford to get wrong, so step 6 and the prerequisites it depends on are not the place to cut first.
+The estimates below were originally scaled to roughly 12 weeks of one person's time. They are planning figures; the hackathon deadline compressed them, so read them as proportions, and treat steps 1-3 as the likeliest to overrun (policy setup, format conversion and the first fine-tune usually take longer than planned). The router is the part you cannot afford to get wrong, so step 6 and the prerequisites it depends on are not the place to cut first.
 
 **Minimum viable version (must finish):**
 
@@ -541,7 +541,7 @@ The estimates below were originally scaled to roughly 12 weeks of one person's t
 | 7 | Implement Rungs 0-2, Rung 2 reading the router re-run, Rung 2 logging, the reviewer pass-probability logging, the router re-run loop and the iteration cap (3.2.11) | 1 week |
 | 8 | Full evaluation including router metrics (Section 7), the fixed-recipe baseline, the LLM report layer (3.2.12), write-up, and the limitations section | 2 weeks |
 
-That totals 13 weeks, which is **1 week more than the 12-week assumption**. The router prerequisites in steps 1 and 2 and the calibration in step 6 are what added time compared with a router built only from replays. These are my planning figures, not measured ones, so replace them with your real deadline. If you must stay at 12 weeks, the levers in order are: cut the stretch list entirely, shrink the bug suite and the router evaluation set (6.4, 6.5), run fewer factor restores per incident (3.2.7), and skip the optional factor search (3.2.12). If step 3 slips by more than a week, apply those before touching steps 6-8.
+That totals 13 weeks, which is **1 week more than the 12-week assumption**. The router prerequisites in steps 1 and 2 and the calibration in step 6 are what added time compared with a router built only from replays. These are planning figures, not measured ones. To stay at 12 weeks, the levers in order are: cut the stretch list entirely, shrink the bug suite and the router evaluation set (6.4, 6.5), run fewer factor restores per incident (3.2.7), and skip the optional factor search (3.2.12). If step 3 slips by more than a week, apply those before touching steps 6-8.
 
 **Stretch (only if time remains):**
 - Cosmos Transfer rung with quality gates.
@@ -571,7 +571,7 @@ That totals 13 weeks, which is **1 week more than the 12-week assumption**. The 
 - State replay for Rung B assumes the logged state is complete enough to reproduce the scene (including articulated objects and gripper contact). Validate on a few episodes before generating at scale.
 - Camera-geometry changes in generated data may invalidate paired actions. Keep the quality gate.
 - Multi-task fine-tuning may interfere with single-task performance; prefer per-task fine-tuning or monitor nominal success.
-- Facts taken from chat summaries are not evidence. Specific benchmark numbers, issue numbers and thresholds attributed to the repo or Isaac Lab-Arena (other than issues #568, #367, #136, which were read directly) must be checked before they are cited.
+- Facts taken from secondary summaries are not evidence. Specific benchmark numbers, issue numbers and thresholds attributed to the repo or Isaac Lab-Arena (other than issues #568, #367, #136, which were read directly) must be checked before they are cited.
 - External repos and benchmarks mentioned in earlier notes (EmbodiedSWE, ARES, SERA, LLM4ADSTest, FailBench/MiraBench) were not verified. Check each exists, is maintained, and fits before depending on it. ARES, robosuite, lerobot and Modal are the safest starting points.
 - Model names, context sizes and prices in the hagent example config are placeholders.
 

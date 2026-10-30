@@ -8,7 +8,7 @@
     "isaac_modules_missing": [],
     "missing_modules": []
   },
-  "out": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/check_client_tests",
+  "out": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/check_client_tests",
   "run_ts": "20261029T103432Z",
   "script": "check_client_tests",
   "status": "ok",

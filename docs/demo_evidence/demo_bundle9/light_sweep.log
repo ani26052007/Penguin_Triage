@@ -1,0 +1,8 @@
+nohup: ignoring input
+par_light1000_s1 seed=1 exit=0 [Rank 0/1] Metrics: {'num_episodes': 10, 'success_rate': 0.7, 'object_moved_rate_subtask_0': 1.0, 'revolute_joint_moved_rate_subtask_1': 1.0, 'subtask_success_rate': [0.7, 0.7]}
+par_light10_s1 seed=1 exit=0 [Rank 0/1] Metrics: {'num_episodes': 10, 'success_rate': 0.0, 'object_moved_rate_subtask_0': 0.0, 'revolute_joint_moved_rate_subtask_1': 1.0, 'subtask_success_rate': [0.0, 0.0]}
+par_light30_s1 seed=1 exit=0 [Rank 0/1] Metrics: {'num_episodes': 10, 'success_rate': 0.0, 'object_moved_rate_subtask_0': 0.0, 'revolute_joint_moved_rate_subtask_1': 1.0, 'subtask_success_rate': [0.0, 0.0]}
+par_light10_s2 seed=2 exit=0 [Rank 0/1] Metrics: {'num_episodes': 10, 'success_rate': 0.0, 'object_moved_rate_subtask_0': 0.0, 'revolute_joint_moved_rate_subtask_1': 1.0, 'subtask_success_rate': [0.0, 0.0]}
+par_light30_s2 seed=2 exit=0 [Rank 0/1] Metrics: {'num_episodes': 10, 'success_rate': 0.0, 'object_moved_rate_subtask_0': 0.0, 'revolute_joint_moved_rate_subtask_1': 1.0, 'subtask_success_rate': [0.0, 0.0]}
+par_light1000_s2 seed=2 exit=0 [Rank 0/1] Metrics: {'num_episodes': 10, 'success_rate': 0.4, 'object_moved_rate_subtask_0': 0.9, 'revolute_joint_moved_rate_subtask_1': 0.9, 'subtask_success_rate': [0.5, 0.5]}
+LIGHTDONE

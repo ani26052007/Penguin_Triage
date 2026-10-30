@@ -1,60 +1,60 @@
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab_physx/isaaclab_physx/renderers/isaac_rtx_renderer.py", line 475, in create_render_data
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab_physx/isaaclab_physx/renderers/isaac_rtx_renderer.py", line 475, in create_render_data
     annotator.attach([rp.path])
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/.venv/lib/python3.12/site-packages/isaacsim/extscache/omni.replicator.core-1.13.38+110.4.0.lx64.r.cp312/omni/replicator/core/scripts/annotators.py", line 1303, in attach
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/.venv/lib/python3.12/site-packages/isaacsim/extscache/omni.replicator.core-1.13.38+110.4.0.lx64.r.cp312/omni/replicator/core/scripts/annotators.py", line 1303, in attach
     activated_result = sdg_iface.activate_node_template(
                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/.venv/lib/python3.12/site-packages/isaacsim/extscache/omni.syntheticdata-0.6.17+187cf21b.lx64.r.cp312/omni/syntheticdata/scripts/SyntheticData.py", line 1671, in activate_node_template
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/.venv/lib/python3.12/site-packages/isaacsim/extscache/omni.syntheticdata-0.6.17+187cf21b.lx64.r.cp312/omni/syntheticdata/scripts/SyntheticData.py", line 1671, in activate_node_template
     self._activate_node_rec(template_name, render_product_path_index, render_product_paths, render_var_activations)
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/.venv/lib/python3.12/site-packages/isaacsim/extscache/omni.syntheticdata-0.6.17+187cf21b.lx64.r.cp312/omni/syntheticdata/scripts/SyntheticData.py", line 1436, in _activate_node_rec
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/.venv/lib/python3.12/site-packages/isaacsim/extscache/omni.syntheticdata-0.6.17+187cf21b.lx64.r.cp312/omni/syntheticdata/scripts/SyntheticData.py", line 1436, in _activate_node_rec
     self._graphNodes[nodePath] = nodeGraph.get_wrapped_graph().create_node(nodePath, nodeType, primExistWorkaround)
                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ValueError: Invalid object in Py_Graph in getWrappedGraphFromNode
 2026-10-29T16:25:55Z [9,978ms] [Warning] [omni.usd] Unexpected reference count of 2 for UsdStage 'anon:0x28fe2f10:World0.usd' while being closed in UsdContext (this may indicate it is still resident in memory).
 Traceback (most recent call last):
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/scripts/imitation_learning/isaaclab_mimic/generate_dataset.py", line 240, in <module>
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/scripts/imitation_learning/isaaclab_mimic/generate_dataset.py", line 240, in <module>
     main()
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/scripts/imitation_learning/isaaclab_mimic/generate_dataset.py", line 113, in main
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/scripts/imitation_learning/isaaclab_mimic/generate_dataset.py", line 113, in main
     generate(env_name)
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/scripts/imitation_learning/isaaclab_mimic/generate_dataset.py", line 144, in generate
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/scripts/imitation_learning/isaaclab_mimic/generate_dataset.py", line 144, in generate
     env = gym.make(env_name, cfg=env_cfg).unwrapped
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/.venv/lib/python3.12/site-packages/gymnasium/envs/registration.py", line 734, in make
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/.venv/lib/python3.12/site-packages/gymnasium/envs/registration.py", line 734, in make
     env = env_creator(**env_spec_kwargs)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/isaaclab_arena/environments/arena_env_builder.py", line 612, in create_env
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/isaaclab_arena/environments/arena_env_builder.py", line 612, in create_env
     return env_type(**(env_kwargs | kwargs))
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/isaaclab_arena/environments/isaaclab_arena_manager_based_env.py", line 69, in __init__
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/isaaclab_arena/environments/isaaclab_arena_manager_based_env.py", line 69, in __init__
     super().__init__(cfg=cfg, render_mode=render_mode, **kwargs)
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/envs/manager_based_rl_env.py", line 79, in __init__
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/envs/manager_based_rl_env.py", line 79, in __init__
     super().__init__(cfg=cfg)
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/envs/manager_based_env.py", line 125, in __init__
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/envs/manager_based_env.py", line 125, in __init__
     self._init_sim()
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/envs/manager_based_env.py", line 197, in _init_sim
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/envs/manager_based_env.py", line 197, in _init_sim
     self.sim.reset()
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/sim/simulation_context.py", line 711, in reset
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/sim/simulation_context.py", line 711, in reset
     self.physics_manager.reset(soft)
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab_physx/isaaclab_physx/physics/physx_manager.py", line 512, in reset
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab_physx/isaaclab_physx/physics/physx_manager.py", line 512, in reset
     cls.raise_callback_exception_if_any()
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab_physx/isaaclab_physx/physics/physx_manager.py", line 705, in raise_callback_exception_if_any
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab_physx/isaaclab_physx/physics/physx_manager.py", line 705, in raise_callback_exception_if_any
     raise exc
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/physics/physics_manager.py", line 630, in safe_callback_invoke
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/physics/physics_manager.py", line 630, in safe_callback_invoke
     fn(*args)
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/sensors/sensor_base.py", line 335, in _invoke
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/sensors/sensor_base.py", line 335, in _invoke
     getattr(obj_ref, callback_name)(event)
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/sensors/sensor_base.py", line 374, in _initialize_callback
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/sensors/sensor_base.py", line 374, in _initialize_callback
     self._initialize_impl()
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/sensors/camera/camera.py", line 701, in _initialize_impl
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab/isaaclab/sensors/camera/camera.py", line 701, in _initialize_impl
     self._render_data = self._renderer.create_render_data(render_spec)
                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab_physx/isaaclab_physx/renderers/isaac_rtx_renderer.py", line 475, in create_render_data
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab_physx/isaaclab_physx/renderers/isaac_rtx_renderer.py", line 475, in create_render_data
     annotator.attach([rp.path])
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/.venv/lib/python3.12/site-packages/isaacsim/extscache/omni.replicator.core-1.13.38+110.4.0.lx64.r.cp312/omni/replicator/core/scripts/annotators.py", line 1303, in attach
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/.venv/lib/python3.12/site-packages/isaacsim/extscache/omni.replicator.core-1.13.38+110.4.0.lx64.r.cp312/omni/replicator/core/scripts/annotators.py", line 1303, in attach
     activated_result = sdg_iface.activate_node_template(
                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/.venv/lib/python3.12/site-packages/isaacsim/extscache/omni.syntheticdata-0.6.17+187cf21b.lx64.r.cp312/omni/syntheticdata/scripts/SyntheticData.py", line 1671, in activate_node_template
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/.venv/lib/python3.12/site-packages/isaacsim/extscache/omni.syntheticdata-0.6.17+187cf21b.lx64.r.cp312/omni/syntheticdata/scripts/SyntheticData.py", line 1671, in activate_node_template
     self._activate_node_rec(template_name, render_product_path_index, render_product_paths, render_var_activations)
-  File "/home/aneesh262007/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/.venv/lib/python3.12/site-packages/isaacsim/extscache/omni.syntheticdata-0.6.17+187cf21b.lx64.r.cp312/omni/syntheticdata/scripts/SyntheticData.py", line 1436, in _activate_node_rec
+  File "/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/.venv/lib/python3.12/site-packages/isaacsim/extscache/omni.syntheticdata-0.6.17+187cf21b.lx64.r.cp312/omni/syntheticdata/scripts/SyntheticData.py", line 1436, in _activate_node_rec
     self._graphNodes[nodePath] = nodeGraph.get_wrapped_graph().create_node(nodePath, nodeType, primExistWorkaround)
                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ValueError: Invalid object in Py_Graph in getWrappedGraphFromNode

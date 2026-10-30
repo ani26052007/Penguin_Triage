@@ -1,0 +1,10 @@
+nohup: ignoring input
+report for b07auto1 fell back to ranked evidence: model output rejected after retry: localization[0].file is only for kind 'symbol' and must be a string | localization[0].file is only for kind 'symbol' and must be a string
+{"attempt": 1, "source": "fallback", "exit": "LimitsExceeded", "equals_clean": false, "files": [], "cost": 0.2002, "secs": 178}
+{"attempt": 2, "source": "model", "exit": "LimitsExceeded", "equals_clean": false, "files": ["config/statistics.json"], "cost": 0.1251, "secs": 189}
+{"attempt": 3, "source": "model", "exit": "Submitted", "equals_clean": false, "files": ["config/statistics.json"], "cost": 0.127, "secs": 139}
+report for b07auto4 fell back to ranked evidence: model output rejected after retry: localization[0].file is only for kind 'symbol' and must be a string | localization[2].file is only for kind 'symbol' and must be a string
+{"attempt": 4, "source": "fallback", "exit": "Submitted", "equals_clean": false, "files": ["config/eval.yaml"], "cost": 0.0398, "secs": 74}
+report for b07auto5 fell back to ranked evidence: model output rejected after retry: summary names the file 's1.cfg', which is neither in the repo nor in the evidence. Name only files from the repo index or the evidence. | summary names the file 's1.cfg', which is neither in the repo nor in the evidence. Name only files from the repo index or the evidence.
+{"attempt": 5, "source": "fallback", "exit": "Submitted", "equals_clean": false, "files": ["config/statistics.json"], "cost": 0.1426, "secs": 316}
+BUG07 AUTO-FIXED 0/5

@@ -48,7 +48,7 @@
     },
     "vram": null
   },
-  "measurements_dir": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements",
+  "measurements_dir": "/home/USER/comp_and_research/Penguin_Triage/measurements",
   "open": [
     "V-actuator",
     "V-bug-dark-threshold",
@@ -87,85 +87,85 @@
   ],
   "runs": [
     {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T101258Z/00_check_gpu/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T101258Z/00_check_gpu/result.json",
       "run_ts": "20261029T101258Z",
       "script": "00_check_gpu",
       "status": "ok"
     },
     {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T102204Z/R0_setup/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T102204Z/R0_setup/result.json",
       "run_ts": "20261029T102204Z",
       "script": "R0_setup",
       "status": "failed"
     },
     {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/00_check_gpu/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/00_check_gpu/result.json",
       "run_ts": "20261029T103432Z",
       "script": "00_check_gpu",
       "status": "ok"
     },
     {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R0_setup/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R0_setup/result.json",
       "run_ts": "20261029T103432Z",
       "script": "R0_setup",
       "status": "ok"
     },
     {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint/result.json",
       "run_ts": "20261029T103432Z",
       "script": "R1_download_checkpoint",
       "status": "ok"
     },
     {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1b_download_datasets/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1b_download_datasets/result.json",
       "run_ts": "20261029T103432Z",
       "script": "R1b_download_datasets",
       "status": "ok"
     },
     {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R2_server/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R2_server/result.json",
       "run_ts": "20261029T103432Z",
       "script": "R2_server",
       "status": "ok"
     },
     {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R2_server.old-1793274434/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R2_server.old-1793274434/result.json",
       "run_ts": "20261029T103432Z",
       "script": "R2_server",
       "status": "ok"
     },
     {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R3_list_variations/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R3_list_variations/result.json",
       "run_ts": "20261029T103432Z",
       "script": "R3_list_variations",
       "status": "ok"
     },
     {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/check_client_tests/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/check_client_tests/result.json",
       "run_ts": "20261029T103432Z",
       "script": "check_client_tests",
       "status": "ok"
     },
     {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
       "run_ts": "20261029T103432Z",
       "script": "mimic_override_check",
       "status": "failed"
     },
     {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T120000Z/wrapper_parity/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T120000Z/wrapper_parity/result.json",
       "run_ts": "20261029T120000Z",
       "script": "wrapper_parity",
       "status": "failed"
     },
     {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T120100Z/wrapper_parity/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T120100Z/wrapper_parity/result.json",
       "run_ts": "20261029T120100Z",
       "script": "wrapper_parity",
       "status": "ok"
     },
     {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T121500Z/wrapper_parity/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T121500Z/wrapper_parity/result.json",
       "run_ts": "20261029T121500Z",
       "script": "wrapper_parity",
       "status": "ok"
@@ -219,7 +219,7 @@
       "state": "open"
     },
     "V-ckpt-cfg": {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint/result.json",
       "settled_by": "R1_download_checkpoint",
       "state": "settled",
       "value": {
@@ -235,7 +235,7 @@
       }
     },
     "V-client-tests": {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/check_client_tests/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/check_client_tests/result.json",
       "settled_by": "check_client_tests",
       "state": "settled",
       "value": {
@@ -294,7 +294,7 @@
       "state": "open"
     },
     "V-hf-rev": {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint/result.json",
       "settled_by": "R1_download_checkpoint",
       "state": "settled",
       "value": "f5e388c35340080644e17a3b3d538150ad894bfa"
@@ -310,43 +310,43 @@
       "state": "open"
     },
     "V-list-var": {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R3_list_variations/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R3_list_variations/result.json",
       "settled_by": "R3_list_variations",
       "state": "settled",
       "value": {
         "factor_table_equal": false,
-        "regenerated": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R3_list_variations/factors.yaml"
+        "regenerated": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R3_list_variations/factors.yaml"
       }
     },
     "V-mimic-guarantee": {
       "reason": "mimic_override_check failed",
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
       "settled_by": "mimic_override_check",
       "state": "open"
     },
     "V-mimic-out": {
       "reason": "mimic_override_check failed",
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
       "settled_by": "mimic_override_check",
       "state": "open"
     },
     "V-mimic-override": {
       "reason": "mimic_override_check failed",
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
       "settled_by": "mimic_override_check",
       "state": "open"
     },
     "V-mimic-seed": {
       "reason": "mimic_override_check failed",
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/mimic_override_check/result.json",
       "settled_by": "mimic_override_check",
       "state": "open"
     },
     "V-mimic-source": {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1b_download_datasets/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1b_download_datasets/result.json",
       "settled_by": "R1b_download_datasets",
       "state": "settled",
-      "value": "/home/aneesh262007/data/datasets/ranch_bottle_into_fridge_annotated.hdf5"
+      "value": "/home/USER/data/datasets/ranch_bottle_into_fridge_annotated.hdf5"
     },
     "V-obj-state": {
       "reason": "no runbook script measures it",
@@ -384,7 +384,7 @@
       "state": "open"
     },
     "V-stats-format": {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1_download_checkpoint/result.json",
       "settled_by": "R1_download_checkpoint",
       "state": "settled",
       "value": {
@@ -850,7 +850,7 @@
       "state": "open"
     },
     "V-train-instr": {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1b_download_datasets/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T103432Z/R1b_download_datasets/result.json",
       "settled_by": "R1b_download_datasets",
       "state": "settled",
       "value": [
@@ -873,7 +873,7 @@
       "state": "open"
     },
     "V-wrapper-parity": {
-      "result": "/home/aneesh262007/comp_and_research/Penguin_Triage/measurements/20261029T121500Z/wrapper_parity/result.json",
+      "result": "/home/USER/comp_and_research/Penguin_Triage/measurements/20261029T121500Z/wrapper_parity/result.json",
       "settled_by": "wrapper_parity",
       "state": "settled",
       "value": {

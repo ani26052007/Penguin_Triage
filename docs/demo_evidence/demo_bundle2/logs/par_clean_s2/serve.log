@@ -1,0 +1,1012 @@
+/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/Isaac-GR00T/.venv/lib/python3.10/site-packages/albumentations/__init__.py:13: UserWarning: A new version of Albumentations is available: 2.0.8 (you have 1.4.18). Upgrade using: pip install -U albumentations. To disable automatic update checks, set the environment variable NO_ALBUMENTATIONS_UPDATE to 1.
+  check_for_updates()
+Tune backbone llm: False
+Tune backbone visual: True
+Backbone trainable parameter: model.vision_model.vision_model.embeddings.patch_embedding.weight
+Backbone trainable parameter: model.vision_model.vision_model.embeddings.patch_embedding.bias
+Backbone trainable parameter: model.vision_model.vision_model.embeddings.position_embedding.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.0.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.1.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.2.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.3.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.4.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.5.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.6.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.7.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.8.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.9.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.10.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.11.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.12.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.13.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.14.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.15.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.16.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.17.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.18.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.19.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.20.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.21.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.22.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.23.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.24.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.25.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.layer_norm1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.layer_norm1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.self_attn.k_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.self_attn.k_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.self_attn.v_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.self_attn.v_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.self_attn.q_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.self_attn.q_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.self_attn.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.self_attn.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.layer_norm2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.layer_norm2.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.encoder.layers.26.mlp.fc2.bias
+Backbone trainable parameter: model.vision_model.vision_model.post_layernorm.weight
+Backbone trainable parameter: model.vision_model.vision_model.post_layernorm.bias
+Backbone trainable parameter: model.vision_model.vision_model.head.probe
+Backbone trainable parameter: model.vision_model.vision_model.head.attention.in_proj_weight
+Backbone trainable parameter: model.vision_model.vision_model.head.attention.in_proj_bias
+Backbone trainable parameter: model.vision_model.vision_model.head.attention.out_proj.weight
+Backbone trainable parameter: model.vision_model.vision_model.head.attention.out_proj.bias
+Backbone trainable parameter: model.vision_model.vision_model.head.layernorm.weight
+Backbone trainable parameter: model.vision_model.vision_model.head.layernorm.bias
+Backbone trainable parameter: model.vision_model.vision_model.head.mlp.fc1.weight
+Backbone trainable parameter: model.vision_model.vision_model.head.mlp.fc1.bias
+Backbone trainable parameter: model.vision_model.vision_model.head.mlp.fc2.weight
+Backbone trainable parameter: model.vision_model.vision_model.head.mlp.fc2.bias
+Backbone trainable parameter: model.language_model.model.layers.12.self_attn.q_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.12.self_attn.k_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.12.self_attn.v_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.12.self_attn.o_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.12.self_attn.q_norm.weight
+Backbone trainable parameter: model.language_model.model.layers.12.self_attn.k_norm.weight
+Backbone trainable parameter: model.language_model.model.layers.12.mlp.gate_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.12.mlp.up_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.12.mlp.down_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.12.input_layernorm.weight
+Backbone trainable parameter: model.language_model.model.layers.12.post_attention_layernorm.weight
+Backbone trainable parameter: model.language_model.model.layers.13.self_attn.q_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.13.self_attn.k_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.13.self_attn.v_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.13.self_attn.o_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.13.self_attn.q_norm.weight
+Backbone trainable parameter: model.language_model.model.layers.13.self_attn.k_norm.weight
+Backbone trainable parameter: model.language_model.model.layers.13.mlp.gate_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.13.mlp.up_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.13.mlp.down_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.13.input_layernorm.weight
+Backbone trainable parameter: model.language_model.model.layers.13.post_attention_layernorm.weight
+Backbone trainable parameter: model.language_model.model.layers.14.self_attn.q_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.14.self_attn.k_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.14.self_attn.v_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.14.self_attn.o_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.14.self_attn.q_norm.weight
+Backbone trainable parameter: model.language_model.model.layers.14.self_attn.k_norm.weight
+Backbone trainable parameter: model.language_model.model.layers.14.mlp.gate_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.14.mlp.up_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.14.mlp.down_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.14.input_layernorm.weight
+Backbone trainable parameter: model.language_model.model.layers.14.post_attention_layernorm.weight
+Backbone trainable parameter: model.language_model.model.layers.15.self_attn.q_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.15.self_attn.k_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.15.self_attn.v_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.15.self_attn.o_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.15.self_attn.q_norm.weight
+Backbone trainable parameter: model.language_model.model.layers.15.self_attn.k_norm.weight
+Backbone trainable parameter: model.language_model.model.layers.15.mlp.gate_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.15.mlp.up_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.15.mlp.down_proj.weight
+Backbone trainable parameter: model.language_model.model.layers.15.input_layernorm.weight
+Backbone trainable parameter: model.language_model.model.layers.15.post_attention_layernorm.weight
+Backbone trainable parameter: model.mlp1.0.weight
+Backbone trainable parameter: model.mlp1.0.bias
+Backbone trainable parameter: model.mlp1.1.weight
+Backbone trainable parameter: model.mlp1.1.bias
+Backbone trainable parameter: model.mlp1.3.weight
+Backbone trainable parameter: model.mlp1.3.bias
+Casting trainable parameter model.vision_model.vision_model.embeddings.patch_embedding.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.embeddings.patch_embedding.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.embeddings.position_embedding.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.0.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.1.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.2.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.3.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.4.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.5.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.6.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.7.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.8.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.9.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.10.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.11.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.12.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.13.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.14.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.15.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.16.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.17.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.18.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.19.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.20.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.21.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.22.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.23.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.24.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.25.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.layer_norm1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.layer_norm1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.self_attn.k_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.self_attn.v_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.self_attn.q_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.self_attn.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.self_attn.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.layer_norm2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.layer_norm2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.encoder.layers.26.mlp.fc2.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.post_layernorm.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.post_layernorm.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.head.probe to fp32
+Casting trainable parameter model.vision_model.vision_model.head.attention.in_proj_weight to fp32
+Casting trainable parameter model.vision_model.vision_model.head.attention.in_proj_bias to fp32
+Casting trainable parameter model.vision_model.vision_model.head.attention.out_proj.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.head.attention.out_proj.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.head.layernorm.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.head.layernorm.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.head.mlp.fc1.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.head.mlp.fc1.bias to fp32
+Casting trainable parameter model.vision_model.vision_model.head.mlp.fc2.weight to fp32
+Casting trainable parameter model.vision_model.vision_model.head.mlp.fc2.bias to fp32
+Casting trainable parameter model.language_model.model.layers.12.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.12.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.12.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.12.self_attn.o_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.12.self_attn.q_norm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.12.self_attn.k_norm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.12.mlp.gate_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.12.mlp.up_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.12.mlp.down_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.12.input_layernorm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.12.post_attention_layernorm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.13.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.13.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.13.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.13.self_attn.o_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.13.self_attn.q_norm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.13.self_attn.k_norm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.13.mlp.gate_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.13.mlp.up_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.13.mlp.down_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.13.input_layernorm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.13.post_attention_layernorm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.14.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.14.self_attn.k_proj.weight to fp32
+/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/Isaac-GR00T/gr00t/model/modules/dit.py:205: FutureWarning: Accessing config attribute `compute_dtype` directly via 'AlternateVLDiT' object attribute is deprecated. Please access 'compute_dtype' over 'AlternateVLDiT's config object instead, e.g. 'unet.config.compute_dtype'.
+  embedding_dim=self.inner_dim, compute_dtype=self.compute_dtype
+/home/USER/comp_and_research/Penguin_Triage/external/IsaacLab-Arena/submodules/Isaac-GR00T/gr00t/model/modules/dit.py:236: FutureWarning: Accessing config attribute `output_dim` directly via 'AlternateVLDiT' object attribute is deprecated. Please access 'output_dim' over 'AlternateVLDiT's config object instead, e.g. 'unet.config.output_dim'.
+  self.proj_out_2 = nn.Linear(self.inner_dim, self.output_dim)
+`use_fast` is set to `True` but the image processor class does not have a fast version.  Falling back to the slow version.
+Casting trainable parameter model.language_model.model.layers.14.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.14.self_attn.o_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.14.self_attn.q_norm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.14.self_attn.k_norm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.14.mlp.gate_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.14.mlp.up_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.14.mlp.down_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.14.input_layernorm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.14.post_attention_layernorm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.15.self_attn.q_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.15.self_attn.k_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.15.self_attn.v_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.15.self_attn.o_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.15.self_attn.q_norm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.15.self_attn.k_norm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.15.mlp.gate_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.15.mlp.up_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.15.mlp.down_proj.weight to fp32
+Casting trainable parameter model.language_model.model.layers.15.input_layernorm.weight to fp32
+Casting trainable parameter model.language_model.model.layers.15.post_attention_layernorm.weight to fp32
+Casting trainable parameter model.mlp1.0.weight to fp32
+Casting trainable parameter model.mlp1.0.bias to fp32
+Casting trainable parameter model.mlp1.1.weight to fp32
+Casting trainable parameter model.mlp1.1.bias to fp32
+Casting trainable parameter model.mlp1.3.weight to fp32
+Casting trainable parameter model.mlp1.3.bias to fp32
+Total number of DiT parameters:  1091722240
+Using AlternateVLDiT for diffusion model
+Tune action head projector: True
+Tune action head diffusion model: True
+Tune action head vlln: True
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:00<00:00,  1.11it/s]Loading checkpoint shards: 100%|██████████| 2/2 [00:01<00:00,  1.26it/s]Loading checkpoint shards: 100%|██████████| 2/2 [00:01<00:00,  1.24it/s]
+policy_wrapper.serve: nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task/ranch_bottle_into_fridge on 127.0.0.1:5562

@@ -1,0 +1,7 @@
+nohup: ignoring input
+{"attempt": 1, "exit": "LimitsExceeded", "fixed": false, "files": [], "cost": 0.1366, "secs": 167}
+{"attempt": 2, "exit": "LimitsExceeded", "fixed": false, "files": [], "cost": 0.1226, "secs": 171}
+{"attempt": 3, "exit": "Submitted", "fixed": false, "files": ["policy_wrapper/utils/joints_conversion.py"], "cost": 0.0782, "secs": 223}
+{"attempt": 4, "exit": "Submitted", "fixed": true, "files": ["policy_wrapper/utils/joints_conversion.py"], "cost": 0.0333, "secs": 63}
+{"attempt": 5, "exit": "LimitsExceeded", "fixed": false, "files": [], "cost": 0.1222, "secs": 277}
+BUG03 AUTO-FIXED 1/5
