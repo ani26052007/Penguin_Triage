@@ -59,6 +59,7 @@ from hagent.models import Model
 from hagent.task_template import IncidentContext, TaskTemplate, load_task_template
 
 from router.llm import LLMFailure, LLMOutputError, query_json
+from router.remediation import menu_text
 from router.schemas import Destination, Evidence, Verdict
 
 log = logging.getLogger("router.report")
@@ -252,13 +253,15 @@ class Report:
     cost: float = 0.0
     tokens: int = 0
     task: str = ""
+    remediation: str = ""     # fixed menu text from router.remediation; set by code, never by a model
 
     def to_dict(self) -> dict:
         return {"verdict": self.verdict.to_dict(), "summary": self.summary,
                 "evidence_ids": list(self.evidence_ids),
                 "localization": [i.to_dict() for i in self.localization], "hagent_prompt": self.hagent_prompt,
                 "source": self.source, "attempts": self.attempts, "rejections": list(self.rejections),
-                "fallback_reason": self.fallback_reason, "cost": self.cost, "tokens": self.tokens, "task": self.task}
+                "fallback_reason": self.fallback_reason, "cost": self.cost, "tokens": self.tokens, "task": self.task,
+                "remediation": self.remediation}
 
 
 # --------------------------------------------------------------------------- #
@@ -550,5 +553,6 @@ def write_report(verdict: Verdict, evidence: Sequence[Evidence], model: Optional
 
     prompt = (build_hagent_prompt(verdict, context, task, localization, evidence, template)
               if verdict.destination in HAGENT_DESTINATIONS else None)
+    menu = "" if verdict.destination is Destination.STOP else menu_text(verdict)
     return Report(verdict, summary, ids, localization, prompt, source, attempts, rejections,
-                  "" if source == "model" else reason, cost, tokens, task)
+                  "" if source == "model" else reason, cost, tokens, task, menu)

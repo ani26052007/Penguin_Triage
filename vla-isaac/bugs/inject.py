@@ -2,7 +2,7 @@
 """Build a policy-wrapper repo with injected bugs, as the repair agent will get it (plan 3.3, 6.4).
 
     python inject.py inject --base <clean policy-wrapper checkout> --out <new dir> --bug BUG-03 [--bug ...]
-                            [--case CASE-01] [--checkpoint-stats <checkpoint statistics.json>]
+                            [--case CASE-01] [--checkpoint-stats <checkpoint statistics.json>] [--embodiment <name>]
     python inject.py audit --repo <injected repo> --base <clean checkout>
     python inject.py list
 
@@ -83,6 +83,7 @@ class Bug:
 @dataclass(frozen=True)
 class Ledger:
     base_commit: str
+    base_tree: str
     bugs: Mapping[str, Bug]
     cases: Mapping[str, Mapping[str, Any]]
     raw: Mapping[str, Any] = field(repr=False)
@@ -128,7 +129,7 @@ def load_ledger(path: str | Path = LEDGER) -> Ledger:
         for bug_id in c["bugs"]:
             if bug_id not in bugs:
                 raise InjectError(f"case {c['id']!r} names unknown bug {bug_id!r}")
-    return Ledger(str(d["base_commit"]), bugs, cases, d)
+    return Ledger(str(d["base_commit"]), str(d.get("base_tree", "")), bugs, cases, d)
 
 
 # --------------------------------------------------------------------------- #
@@ -178,15 +179,27 @@ def export_tree(base: Path, dest: Path) -> None:
 LOCATION_KEYS = ("mean", "min", "max", "q01", "q99", "median")
 
 
-def transform_statistics(stats: Mapping[str, Any], spec: Mapping[str, Any]) -> dict:
+def transform_statistics(stats: Mapping[str, Any], spec: Mapping[str, Any], embodiment: Optional[str] = None) -> dict:
     """A copy of a checkpoint ``statistics.json`` (``{embodiment: {state|action: {group: {stat: [...]}}}}``)
-    with the action statistics changed as ``spec["transform"]`` says. Keys starting with ``_`` are dropped."""
+    with the action statistics changed as ``spec["transform"]`` says. Keys starting with ``_`` are dropped.
+
+    With ``embodiment`` set, only that embodiment is kept and it must have left_arm / right_arm action groups.
+    Without it, embodiments lacking those groups (the checkpoint file also holds embodiments with other
+    action groups) are copied unchanged, and the call raises if no embodiment could be transformed."""
     out = {k: copy.deepcopy(v) for k, v in stats.items() if not k.startswith("_")}
+    if embodiment is not None:
+        if embodiment not in out:
+            raise InjectError(f"no embodiment {embodiment!r} in the statistics; known: {sorted(out)}")
+        out = {embodiment: out[embodiment]}
     kind = spec["transform"]
+    changed = 0
     for emb in out.values():
         action = emb.get("action") or {}
         if not {"left_arm", "right_arm"} <= set(action):
-            raise InjectError(f"statistics have no left_arm / right_arm action groups: {sorted(action)}")
+            if embodiment is not None:
+                raise InjectError(f"statistics have no left_arm / right_arm action groups: {sorted(action)}")
+            continue
+        changed += 1
         if kind == "swap_arm_groups":
             action["left_arm"], action["right_arm"] = action["right_arm"], action["left_arm"]
         elif kind == "shift_arm_location":
@@ -199,10 +212,12 @@ def transform_statistics(stats: Mapping[str, Any], spec: Mapping[str, Any]) -> d
                         g[key] = [x + d for x, d in zip(g[key], delta)]
         else:
             raise InjectError(f"unknown statistics transform {kind!r}")
+    if not changed:
+        raise InjectError("no embodiment in the statistics has left_arm / right_arm action groups")
     return out
 
 
-def write_generated(dest: Path, bug: Bug, checkpoint_stats: Optional[Path]) -> None:
+def write_generated(dest: Path, bug: Bug, checkpoint_stats: Optional[Path], embodiment: Optional[str] = None) -> None:
     spec = bug.generated
     if spec["kind"] != "norm_stats":
         raise InjectError(f"{bug.id}: unknown generated kind {spec['kind']!r}")
@@ -213,7 +228,7 @@ def write_generated(dest: Path, bug: Bug, checkpoint_stats: Optional[Path]) -> N
     if path.exists():
         raise InjectError(f"{bug.id}: {spec['path']} already exists")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(stats_json(transform_statistics(stats, spec)), encoding="utf-8")
+    path.write_text(stats_json(transform_statistics(stats, spec, embodiment)), encoding="utf-8")
 
 
 def stats_json(d: Any, indent: int = 0) -> str:
@@ -258,7 +273,8 @@ def set_mtimes(root: Path, epoch: int) -> None:
 
 
 def inject(base: str | Path, out: str | Path, bug_ids: Sequence[str] = (), *, case: Optional[str] = None,
-           checkpoint_stats: Optional[str | Path] = None, ledger: Optional[Ledger] = None) -> Injected:
+           checkpoint_stats: Optional[str | Path] = None, ledger: Optional[Ledger] = None,
+           embodiment: Optional[str] = None) -> Injected:
     base, out = Path(base).resolve(), Path(out).resolve()
     ledger = ledger or load_ledger()
     if out.exists() and any(out.iterdir()):
@@ -288,7 +304,7 @@ def inject(base: str | Path, out: str | Path, bug_ids: Sequence[str] = (), *, ca
             shutil.rmtree(out)
             raise InjectError(f"{b.id}: the patch does not apply to {base} ({ident.commit[:10]}): {r.stderr.strip()}")
         if b.generated:
-            write_generated(out, b, Path(checkpoint_stats) if checkpoint_stats else None)
+            write_generated(out, b, Path(checkpoint_stats) if checkpoint_stats else None, embodiment)
     set_mtimes(out, ident.epoch)
     with tempfile.TemporaryDirectory(prefix="pw-") as home, tempfile.TemporaryDirectory(prefix="tpl-") as tpl:
         env = _git_env(ident, Path(home))
@@ -406,6 +422,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--bug", action="append", default=[])
     p.add_argument("--case")
     p.add_argument("--checkpoint-stats")
+    p.add_argument("--embodiment", help="keep only this embodiment of the checkpoint statistics")
     p.add_argument("--ledger", default=str(LEDGER))
     p = sub.add_parser("audit", help="check an injected repo for leaks")
     p.add_argument("--repo", required=True)
@@ -423,7 +440,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(f"{c['id']}  bugs {c['bugs']} under {c.get('condition')}")
         return 0
     if a.cmd == "inject":
-        res = inject(a.base, a.out, a.bug, case=a.case, checkpoint_stats=a.checkpoint_stats, ledger=ledger)
+        res = inject(a.base, a.out, a.bug, case=a.case, checkpoint_stats=a.checkpoint_stats, ledger=ledger,
+                     embodiment=a.embodiment)
         problems = audit_repo(res.repo, a.base, ledger)
         print(json.dumps({"repo": str(res.repo), "bugs": res.bugs, "condition": res.condition,
                           "launcher_env": res.launcher_env, "audit": problems or "clean"}, indent=2))

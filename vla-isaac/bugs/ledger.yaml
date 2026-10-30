@@ -23,6 +23,9 @@
 #   labels             extra labels ("injected", "infra")
 #   verify             the docs/VERIFY_ON_GPU.md id that settles what only a real run can show
 base_commit: 5b4b93e
+# The tree of that commit. The policy-wrapper history was rewritten (the tip is now 56f919a); the trees are identical, and
+# the tests compare trees, not commit hashes.
+base_tree: 4181376b4e67fbce6a1e061a39b259318e0bc18f
 bugs:
   - id: BUG-01
     name: rgb_bgr_swap

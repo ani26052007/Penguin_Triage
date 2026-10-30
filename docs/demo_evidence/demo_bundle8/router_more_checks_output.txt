@@ -1,0 +1,16 @@
+== observation check, nominal from clean(11)
+  clean(12): 0 item(s) []
+  clean(13): 0 item(s) []
+  clean(14): 0 item(s) []
+  BUG-02: 1 item(s) ['s1.obs.orientation.ego_view']
+  BUG-01: 1 item(s) ['s1.obs.channel_order.ego_view']
+  BUG-09: 0 item(s) []
+  false positives on held-out clean runs: 0/3
+== extra action delay (steps), from the logged step pairs
+  clean(11): median episode-mean delay 0.00, max 0, probe evidence []
+  clean(12): median episode-mean delay 0.00, max 0, probe evidence []
+  clean(13): median episode-mean delay 0.00, max 0, probe evidence []
+  clean(14): median episode-mean delay 0.00, max 0, probe evidence []
+  BUG-02: median episode-mean delay 0.00, max 0, probe evidence []
+  BUG-01: median episode-mean delay 0.00, max 0, probe evidence []
+  BUG-09: median episode-mean delay 1.99, max 2, probe evidence ['s1.staleness.constant']

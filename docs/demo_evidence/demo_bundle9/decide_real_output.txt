@@ -1,0 +1,9 @@
+== BUG-02: 1 real evidence item(s) ['s1.obs.orientation.ego_view']
+   label=undetermined row=10 location=None elimination=False
+   notes: row 10; row 2 undecided: reference replay missing: G2; row 4 would match but a higher-precedence row is undecided
+== BUG-07: 1 real evidence item(s) ['s1.cfg.norm_stats']
+   label=undetermined row=10 location=None elimination=False
+   notes: row 10; row 2 undecided: reference replay missing: G2; row 4 would match but a higher-precedence row is undecided
+== BUG-03: 0 real evidence item(s) []
+   label=undetermined row=10 location=None elimination=False
+   notes: row 10; row 2 undecided: reference replay missing: G2; row 4 would match but a higher-precedence row is undecided

@@ -1,0 +1,10 @@
+== A1: override file: values DIFFER from checkpoint
+   config check: 1 item(s) ['s1.cfg.norm_stats']
+== A2: override file: values DIFFER from checkpoint
+   config check ERROR: cannot read the normalisation statistics for 'nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task/ranch_bottle_into_fridge': gr1.action: no statistics for groups ['left_arm', 'right_arm', 'left_hand', 'right_hand']
+== A3: override file: values DIFFER from checkpoint
+   config check ERROR: cannot read the normalisation statistics for 'nvidia/GN1.6-Tuned-Arena-GR1-PlaceItemCloseDoor-Task/ranch_bottle_into_fridge': gr1.action: no statistics for groups ['left_arm', 'right_arm', 'left_hand', 'right_hand']
+== A4: override file: values DIFFER from checkpoint
+   config check: 0 item(s) []
+== A5: override file: values equal checkpoint
+   config check: 0 item(s) []

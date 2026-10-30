@@ -134,6 +134,23 @@ On the session's data this gave 0 evidence items for the held-out clean run and 
 and BUG-01 (`s1.obs.channel_order.ego_view`), 3 episodes per condition. Only the observation-contract check runs; this is not the
 router loop.
 
+### Config check, automatic repair and pass@k (2026-10-29 session)
+
+`router_cfg_check.py`, `auto_repair.py` and `passk.py` come from the same session and ran only there; they are not runbook steps.
+`router_cfg_check.py --checkpoint <ckpt_dir> clean=<repo> bug07=<repo> ...` runs `ConfigContractCheck` on injected repos (the
+`TrainingSpec` is hand-assembled, CPU path, outside `IsaacBackend`). `auto_repair.py <bugged_repo> --bug BUG-02 --out <dir> -n 5 ...`
+runs router evidence -> `write_report` (small model) -> `hagent solve` (hybrid, local backend) -> a scripted check, saving
+`results.json` after each attempt; it needs `NEBIUS_API_KEY` in the environment. `passk.py N C [K ...]` prints the per-attempt
+rate, its Wilson interval and pass@k (which assumes a selector). GPU-free checks: `tests/test_gpu_session_scripts.py`.
+
+### Session notes (2026-10-29/30)
+
+- The VM was a Spot instance and was preempted several times; results were bundled to the laptop between runs, and
+  `~/.vla_run_ts` pinned `RUN_TS` across restarts.
+- Clean and bug-suite runs ran in parallel as separate processes with `--num_envs 1` and different `--seed`, started 60 s
+  apart. Three parallel runs peaked at 52 GB VRAM and 98 % GPU utilisation.
+- The lighting sweep (intensities 10, 30, 1000, seeds 1-2) was started and lost to preemption: no result.
+
 ## What each script should print and write
 
 Each script prints `output dir: measurements/<RUN_TS>/<script>` first and last; the files below are in that

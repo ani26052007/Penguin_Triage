@@ -724,6 +724,8 @@ V-bug-hand-sign, V-bug-yaml-swap, V-bug-dark-threshold, V-bug-gain-tracking, V-b
 
 ## Current state (2026-10-28)
 
+*Superseded by the sections below (the runbook was run on 2026-10-29/30; counts were updated on 2026-10-30).*
+
 Done: Phases 1-8, router changes 1-6, the fixes and decisions between phases, Part A (`wrapper_parity.sh`).
 **Next:** the review of Phase 8, then the GPU runbook (not run yet), including the V-bug-* rows.
 
@@ -756,3 +758,79 @@ hand sign and joint-YAML swap are detectable only by elimination (Phase 8, "Limi
 
 Repo hygiene is unchanged: never stage `.gitmodules`, `external/IsaacLab-Arena`, `hybrid-agent` or the moved
 `PLAN_*.md`; commit with `git commit --only -- <own paths>`.
+
+## 2026-10-30: GPU session results, remediation advisor, publishing
+
+Baseline before any change on 2026-10-30 (this machine, `env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q`):
+vla-router 814 passed, 1 skipped; vla-isaac 534 passed, 110 skipped; policy-wrapper 40 passed. After: vla-router 835 passed,
+1 skipped (+21, `tests/test_remediation.py`); vla-isaac 567 passed, 110 skipped (+33: 6 in `test_inject_statistics.py`, 27 in
+`test_gpu_session_scripts.py`); policy-wrapper 40 passed. The vla-isaac skips (110) are the tests that need the ledger's base
+commit `5b4b93e`; the local policy-wrapper `HEAD` is `56f919a` (the reflog shows a `filter-branch` rewrite; `git diff 5b4b93e 56f919a`
+is empty). In a clone checked out at `5b4b93e`, `tests/test_injected_bugs.py` and `tests/test_policy_wrapper_pins.py` give 116 passed
+(4 min), with the changes below in place. The 643-passed count in the 2026-10-29 entries was taken with the checkout at the base commit.
+
+### Session results added to the docs (2026-10-29/30, one Spot VM, preempted several times)
+- **Bug suite** (policy-wrapper, 10 episodes per seed, seeds 1-2; clean 32/40): BUG-03 0/20, BUG-07 0/20, BUG-05 17/20, BUG-09 18/20,
+  BUG-06 13/20. With BUG-02 and BUG-01: 7 bugs run, 3 break the policy (02, 03, 07), 4 tolerated or mild. Per-seed counts were checked
+  against the last `Metrics:` line of each `docs/demo_evidence/demo_bundle7/logs/par_*/arena.log`.
+- **Config check on real repos**: clean 0 items; BUG-07 `s1.cfg.norm_stats`, BUG-05 `s1.cfg.replan_steps`, BUG-06 `s1.cfg.denoising_steps`
+  (all 1.00). Hand-assembled `TrainingSpec`, CPU path, outside `IsaacBackend`.
+- **Automatic repair** (router evidence -> `write_report` with Nemotron small -> `hagent solve` hybrid, local backend -> scripted check; 5
+  attempts per bug; scripts outside the incident loop): BUG-02 4/5 ($0.443 total), BUG-07 2/5 (rescored with the router's config check;
+  the first byte-identical scoring gave 0/5 and was wrong), BUG-03 1/5 (symptom-only task). pass@3 1.00 / 0.90 / 0.60 assumes a selector;
+  no selector was run.
+- **Mimic** still fails at camera init on cpu and cuda:0, also without the lighting override and without `--viz none`. **Lighting sweep**
+  (10, 30, 1000, seeds 1-2) lost to preemption: no result (superseded: rerun later the same day, see "2026-10-30 (later)" below). **Fine-tuning and the data pipeline**: implemented, not run, no claim about
+  its effect.
+- Run notes: parallel runs as separate processes (`--num_envs 1`, different `--seed`, 60 s apart); peak 52 GB and 98 % GPU with three
+  runs; `~/.vla_run_ts` pinned `RUN_TS`.
+
+### Built
+- **`vla-router/router/remediation.py`** (new; `decide.py`, the Stage 1 checks and the replays are untouched):
+  `remediation_options(verdict)` is a pure function of the label and factor; `RemediationOption` is a frozen dataclass (id, title,
+  prerequisites, rough_cost, repo_entry_point, status, caveat). `router/report.py` gains one field, `Report.remediation`, set by code from
+  `menu_text(verdict)` for verdicts that have a menu and a destination other than stop; the model's reply is validated as before and cannot
+  touch it. `docs/REMEDIATION.md` has the table. The module builds its paths from a prefix because `test_rung1_backend_factory.py` greps
+  `router/*.py` for the simulator package name as text.
+- **`vla-isaac/bugs/inject.py`**: `transform_statistics` skips embodiments without `left_arm` / `right_arm` action groups (copied unchanged;
+  raises if none transforms) and `--embodiment` keeps one embodiment. Found because BUG-07 had to be injected from a gr1-only copy.
+- **`vla-isaac/scripts/gpu/`**: `passk.py` (pass@k, Wilson), `router_cfg_check.py`, `auto_repair.py` (generalised from the session scripts;
+  repo, bug id, n and output directory are arguments; `results.json` written after every attempt). Listed in `SESSION_SCRIPTS` of
+  `tests/test_gpu_runbook.py` and described in `run_order.md`.
+
+### Not run, not verified
+- `auto_repair.py` and `router_cfg_check.py` as committed were not run against a model or on the box; only argument handling, scoring and
+  the config check on the fixture checkpoint are tested. `rescore07.py` was not among the files copied from the box (superseded: now in `docs/demo_evidence/demo_bundle7/`).
+- The changed `inject.py` was not used for a simulator run.
+
+### Vendoring policy-wrapper (superseded: the decision is now a submodule, see "2026-10-30 (later)")
+Checked in a temporary clone (nothing in this repo was moved): `inject.py` still produces a clean injection from a policy-wrapper directory
+inside another git repo (`git archive HEAD` from a subdirectory exports that subtree), but (1) the injected repos then carry the outer
+repo's `HEAD` author, date and root-commit subject instead of the policy-wrapper base commit, (2) `needs_base` compares `HEAD` with the
+ledger's `base_commit`, so the 92 injection and pin tests that need it skip, and (3) the ledger already points at a hash that no longer
+exists in the local policy-wrapper. A tree-hash comparison and an explicit identity for the export would fix all three; not done.
+
+## 2026-10-30 (later): lighting, router checks on real runs, submodule
+
+Docs only apart from the ledger/test change below; `decide.py`, the Stage 1 checks and the replays are untouched.
+
+### Measured (GPU session, RTX PRO 6000 Blackwell, Spot VM)
+- **Lighting sweep** (policy-wrapper, dome-light override, 10 episodes per seed, seeds 1-2): intensity 10 0/20, 30 0/20, 1000 11/20 (7, 4); clean on the same seeds 17/20 (9, 8); default intensity 100. Intensity 10 and 30 are a real vision-failure cell found with no code change; 1000 is suggestive (Fisher p about 0.1). Dark instrumented run (intensity 10, seed 11, 4 episodes): 0/4, object_moved 0.0, door_moved 1.0. Only intensity was varied. The 50-episode pilot gate was not formally run.
+- **Observation check on the dark cell** (nominal from clean seed 11, 3 episodes): fires `s1.obs.value_range.ego_view` (0.96) and `s1.obs.channel_order.ego_view` (1.00). Contract evidence alone cannot separate a vision gap from a code bug; the one-factor-restore replay was not run (needs the reference controller). Relates to the ledger's BUG-11 note.
+- **More router checks** (`router_more_checks.py`): observation check on held-out clean seeds 12-14: 0 items each (0/3 false positives); BUG-02 and BUG-01 flagged, BUG-09 not flagged. Staleness probe (constant-delay half): BUG-09 median 1.99 steps (max 2), `s1.staleness.constant`; clean seeds 11-14, BUG-02, BUG-01 0.00. Detection over the 7 simulator bugs: 6 of 7 (01, 02, 05, 06, 07, 09); BUG-03 by elimination only. Not run on real data: variable-delay staleness half, sanity check, action-contract joint tracking.
+- **`decide()` on real evidence** (`decide_real.py`): BUG-02, BUG-07, BUG-03 all `undetermined`, row 10; "row 2 undecided: reference replay missing: G2". Stage 0 and Stage 2 `ReplayResult` objects were hand-built from measured failures, not launched by the router.
+- **hagent automatic repair**, unchanged: BUG-02 4/5 ($0.443), BUG-07 2/5 ($0.635, scored with the router config check), BUG-03 1/5 ($0.493). The BUG-07 rescoring output is `docs/demo_evidence/demo_bundle7/rescore07_output.txt`; `rescore07.py` is a merged version of two steps that ran separately on the VM and the merged form was not run.
+- Preemption: `/tmp`, background jobs and the API key were lost each time; the BUG-02-orig, BUG-03 and BUG-07 repos were rebuilt with `inject.py` (audit clean).
+
+### Changed
+- **`.gitmodules`**: trailing newline added (three submodules: `hybrid-agent`, `external/IsaacLab-Arena`, `policy-wrapper`). Decision: policy-wrapper is a submodule (`https://github.com/ani26052007/policy-wrapper`), not vendored; this replaces the "plain files" decision above. The pointer is `56f919a`, which is on `origin/main`.
+- **`vla-isaac/bugs/ledger.yaml` / `inject.py` / `tests/bugs_support.py`**: the ledger gained `base_tree` (`4181376b4e67fbce6a1e061a39b259318e0bc18f`, the tree of `5b4b93e` and of `56f919a`); `Ledger.base_tree` is read from it; `needs_base` compares `HEAD^{tree}` with it, falling back to the commit prefix when the ledger has no `base_tree`. A fixed export identity was not added: the injected repo takes its author, date and subject from the policy-wrapper `HEAD`, and `56f919a` has the same author, committer date and subject as `5b4b93e`.
+- Docs: README, SUBMISSION, demo_evidence README, REMEDIATION (worked example) updated for the above; new README sections "Plan versus what was done", "Threats to validity", "Logic of the design, as measured", "Reproducibility", "Practical notes".
+
+### Tests (`env -u PYTHONPATH ~/miniconda3/envs/vla-sim/bin/python -m pytest -q` in each directory)
+Before this change: vla-router 835 passed, 1 skipped; vla-isaac 567 passed, 110 skipped; policy-wrapper 40 passed. After: vla-router 835 passed, 1 skipped; vla-isaac 676 passed, 1 skipped (the 109 tests that need the ledger base now run); policy-wrapper 40 passed.
+
+### Not run, not verified
+- The changed `inject.py`/`bugs_support.py` were exercised only by the test run above, not by a simulator run.
+- The README/SUBMISSION figures for the hagent benchmark come from `HANDOFF_v2.md` (laptop); the artifacts are not in this repository.
+- Known limitation carried forward: `git archive` from a directory inside another repo would export that subtree with the outer repo's identity; with the submodule this does not arise.

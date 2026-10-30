@@ -36,8 +36,8 @@ RUN_ORDER = GPU / "run_order.md"
 RUNBOOK = REPO / "config" / "runbook_gr1_fridge.yaml"
 FAKE_SERVER = REPO / "tests" / "fixtures" / "fake_rep_server.py"
 # Helpers from the 2026-10-29 session: they ran only there and are not part of the runbook sequence
-# (own checks in tests/test_router_obs_check.py).
-SESSION_SCRIPTS = {"record_cell.sh", "router_obs_check.py"}
+# (own checks in tests/test_router_obs_check.py and tests/test_gpu_session_scripts.py).
+SESSION_SCRIPTS = {"record_cell.sh", "router_obs_check.py", "router_cfg_check.py", "auto_repair.py", "passk.py"}
 SH = sorted(p for p in GPU.glob("*.sh") if p.name not in SESSION_SCRIPTS)
 PY = sorted(p for p in GPU.glob("*.py") if p.name not in SESSION_SCRIPTS)
 SCRIPTS = SH + PY

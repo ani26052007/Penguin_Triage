@@ -2,8 +2,8 @@
 
 ``bugs/inject.py`` lives outside any package (it must never reach a container), so it is loaded from
 its file. Injected repos and driven runs are cached for the session: each is built once, from the real
-policy-wrapper checkout at the ledger's ``base_commit``; the tests skip when that checkout is absent or
-at another commit (the patches are diffs against it).
+policy-wrapper checkout with the ledger's ``base_tree``; the tests skip when that checkout is absent or
+at another tree (the patches are diffs against it).
 """
 
 from __future__ import annotations
@@ -61,10 +61,21 @@ def _base_head() -> str:
     return r.stdout.strip()
 
 
+def _base_tree() -> str:
+    if not (PW / ".git").exists():
+        return ""
+    r = subprocess.run(["git", "-C", str(PW), "rev-parse", "HEAD^{tree}"], capture_output=True, text=True)
+    return r.stdout.strip()
+
+
 BASE_HEAD = _base_head()
+BASE_TREE = _base_tree()
+# The ledger's base is identified by its tree: the policy-wrapper history was rewritten (same tree, other hashes).
+_at_base = BASE_TREE == LEDGER.base_tree if LEDGER.base_tree else BASE_HEAD.startswith(LEDGER.base_commit)
 needs_base = pytest.mark.skipif(
-    not BASE_HEAD.startswith(LEDGER.base_commit),
-    reason=f"policy-wrapper at {PW} is not the ledger's base commit {LEDGER.base_commit} (HEAD {BASE_HEAD[:10] or 'none'})")
+    not _at_base,
+    reason=f"policy-wrapper at {PW} is not the ledger's base (tree {LEDGER.base_tree[:10] or LEDGER.base_commit}; "
+           f"HEAD {BASE_HEAD[:10] or 'none'}, tree {BASE_TREE[:10] or 'none'})")
 
 
 # --------------------------------------------------------------------------- #
